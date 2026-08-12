@@ -1,0 +1,213 @@
+#Example I-Shaped (H-beam) structural bracket made of S235 steel sheet.
+# Dimensions:
+#   dim_x (flange width)  : 200 mm  (same for top and bottom flange)
+#   dim_y (length)        : 400 mm
+#   thickness             :   4 mm
+#   height (web)          : 150 mm  (between the two flanges)
+#   bend_radius           :   4 mm  (inner arc at BOTH web-flange junctions)
+# Operations: 4 oblong holes 30x12 mm on the middle web face at the 4 corners
+# Shape type: I-Shaped
+
+
+# Part.makeIShape() coordinate system:
+#   X : 0 → dim_x = 200                   (flange full width)
+#   Y : 0 → dim_y = 400                   (length)
+#   Z : 0                                  → bottom face of bottom flange
+#       thickness = 4                      → top of bottom flange / BOTTOM JUNCTION
+#       thickness + height = 154           → bottom of top flange / TOP JUNCTION
+#       2×thickness + height = 158         → top face of top flange
+#
+# Key face positions:
+#   Bottom flange bottom : Z = 0
+#   Bottom flange top    : Z = 4            ← bottom bend arc, r = 4 mm
+#   Web left outer       : X = (200-4)/2 = 98
+#   Web right outer      : X = (200+4)/2 = 102
+#   Top flange bottom    : Z = 154          ← top bend arc, r = 4 mm
+#   Top flange top       : Z = 158
+
+
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+
+# Define the sanitized_title variable
+sanitized_title = "Console_I_S235_400x200x150x4"   # DO NOT CHANGE THIS VALUE
+
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# ── Parameters (mm) ───────────────────────────────────────────────────────────
+dim_x       = 200.0   # Flange total width (same for top and bottom)
+dim_y       = 400.0   # Extrusion / length direction (Y)
+thickness   =   4.0   # Sheet thickness — same for all three plates
+height      = 150.0   # Web height BETWEEN the two flanges
+bend_radius = thickness  # Inner bend radius at both junctions (standard = t)
+
+# ── 1. Create I-shaped console ─────────────────────────────────────────────────
+# Construction: 3 Part.makeBox solids (bottom flange + web + top flange) fused.
+# The web is centred at X = (dim_x - thickness) / 2 = 98 mm.
+#
+# Part.makeIShape() return:
+#   Bottom flange : X ∈ [0 … 200], Z ∈ [0 … 4]
+#   Web           : X ∈ [98 … 102], Z ∈ [4 … 154]
+#   Top flange    : X ∈ [0 … 200], Z ∈ [154 … 158]
+#   Y             : [0 … 400]
+#   Bend arcs     : at Z = 4 and Z = 154, r = 4 mm (4 concave edges total)
+#   Operations    : 4 oblong holes on the Web, dir=(1,0,0)
+i_shape = Part.makeIShape(
+    dim_x=dim_x,
+    dim_y=dim_y,
+    thickness=thickness,
+    height=height,
+    bend_radius=bend_radius,
+)
+
+# ── 1.5. Add oblong holes on the Web ───────────────────────────────────────────
+# We create 4 oblongs at the 4 corners of the Web.
+# Oblong size: 30mm (length) x 12mm (width). We align the length along Y-axis.
+slot_length = 30.0
+slot_width = 12.0
+margin = 30.0
+
+# According to templates.py for dir=(1,0,0):
+# param1 = Z extent = 12.0
+# param2 = Y extent = 30.0
+# pnt.z = cz - p1/2 (SUBTRACT)
+# pnt.y = cy + p2/2 (ADD)
+# pnt.x = outer_face_x (start cut before face)
+
+p1 = slot_width
+p2 = slot_length
+cut_depth = thickness + 2.0
+outer_face_x = (dim_x - thickness) / 2.0
+
+holes = []
+for cy in [margin, dim_y - margin]:
+    for cz in [thickness + margin, thickness + height - margin]:
+        pnt = App.Vector(outer_face_x, cy + p2 / 2.0, cz - p1 / 2.0)
+        hole = Part.makeOblong(p1, p2, cut_depth, pnt, App.Vector(1, 0, 0))
+        holes.append(hole)
+
+if holes:
+    holes_compound = Part.makeCompound(holes)
+    i_shape = i_shape.cut(holes_compound)
+
+# ── 1.6. Add 2 oblong holes on the Base (Bottom Flange) ────────────────────────
+# Centered in length (Y = dim_y / 2).
+# Orient the PAIR along the width of the plate (X-axis).
+# The long axis of each hole is along the length of the base (Y-axis).
+# Dimensions proposed: 12 mm (along X) x 40 mm (along Y)
+base_hole_size_x = 12.0  # short axis
+base_hole_size_y = 40.0  # long axis
+base_hole_depth = thickness + 2.0
+
+# Centered in length
+cy = dim_y / 2.0
+
+# Distributed along the width (X-axis). We place them symmetrically around the web.
+base_hole_cx1 = dim_x * 0.25  # e.g., 50.0
+base_hole_cx2 = dim_x * 0.75  # e.g., 150.0
+
+base_holes = []
+for cx in [base_hole_cx1, base_hole_cx2]:
+    # pnt = lower-left corner
+    pnt = App.Vector(cx - base_hole_size_x / 2.0, cy - base_hole_size_y / 2.0, 0)
+    # dir=(0,0,1) for cutting through Z
+    # param1 = X extent, param2 = Y extent
+    hole = Part.makeOblong(base_hole_size_x, base_hole_size_y, base_hole_depth, pnt, App.Vector(0, 0, 1))
+    base_holes.append(hole)
+
+if base_holes:
+    base_holes_compound = Part.makeCompound(base_holes)
+    i_shape = i_shape.cut(base_holes_compound)
+
+# ── 1.7. Add 2 countersink holes on the Top Flange ───────────────────────────────
+# Same layout as base holes, but on the top flange (Z starts at height + thickness)
+top_hole_radius = 6.0
+top_cs_radius = 12.0
+top_cs_angle = 90.0
+
+top_holes = []
+for cx in [base_hole_cx1, base_hole_cx2]:
+    # pnt on the bottom face of the top flange (Z = height + thickness)
+    pnt = App.Vector(cx, cy, height + thickness)
+    # cs_side="end" opens the countersink at the top face (Z = height + 2*thickness)
+    hole = Part.makeCountersink(
+        hole_radius=top_hole_radius,
+        cs_radius=top_cs_radius,
+        cs_angle_deg=top_cs_angle,
+        thickness=thickness,
+        pnt=pnt,
+        dir=App.Vector(0, 0, 1),
+        cs_side="end"
+    )
+    top_holes.append(hole)
+
+if top_holes:
+    top_holes_compound = Part.makeCompound(top_holes)
+    i_shape = i_shape.cut(top_holes_compound)
+
+# ── 2. Register final object ───────────────────────────────────────────────────
+final_obj = doc.addObject("Part::Feature", "Console_I_Final")
+final_obj.Label = sanitized_title
+final_obj.Shape = i_shape
+doc.recompute()
+
+# ── 3. Export directory ────────────────────────────────────────────────────────
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_obj], step_path)
+
+# ── 4. GEOMETRY ANALYSIS ───────────────────────────────────────────────────────
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+geometry_result = analyze_geometry(i_shape, material="{mapped_material}")
+
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    i_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={"part_name": sanitized_title},
+)
+
+# ── 5. OBJ export (separate mesh per face — MANDATORY PATTERN) ────────────────
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_obj]:
+    shape     = part.Shape
+    part_name = part.Label
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face, LinearDeflection=0.1, AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()

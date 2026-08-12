@@ -1,0 +1,75 @@
+{
+  "class_name": "Tube",
+  "parent_category": "Tubes",
+  "rules": [
+    {
+      "id": "TUBE_3.1",
+      "category": "auto_determination",
+      "title": "Standard Fillet Radii",
+      "description": "Standard fillet radii for tube corners based on thickness",
+      "rule": "Outer fillet radius: 2 * thickness, Inner fillet radius: thickness",
+      "severity": "info",
+      "validation_code": "true",
+      "error_message": "INFO: Standard fillet radii applied based on thickness: outer = 2 * thickness, inner = thickness.",
+      "parameters": [
+        "outer_fillet_radius",
+        "inner_fillet_radius",
+        "thickness"
+      ],
+      "auto_determine": {
+        "when": "outer_fillet_radius or inner_fillet_radius is missing",
+        "logic": {
+          "outer_fillet_radius": "2 * thickness",
+          "inner_fillet_radius": "thickness"
+        }
+      }
+    },
+    {
+      "id": "TUBE_3.2",
+      "category": "auto_determination",
+      "title": "Outer Radius Adjustment",
+      "description": "If inner radius is not equal to thickness, calculate outer radius as inner radius + thickness",
+      "rule": "If inner_fillet_radius != thickness, then outer_fillet_radius = inner_fillet_radius + thickness",
+      "severity": "info",
+      "validation_code": "inner_fillet_radius != thickness",
+      "error_message": "INFO: Outer fillet radius adjusted to inner_fillet_radius + thickness since inner radius differs from thickness.",
+      "parameters": [
+        "outer_fillet_radius",
+        "inner_fillet_radius",
+        "thickness"
+      ],
+      "auto_determine": {
+        "when": "inner_fillet_radius != thickness and outer_fillet_radius is missing",
+        "logic": {
+          "outer_fillet_radius": "inner_fillet_radius + thickness"
+        }
+      }
+    },
+    {
+      "id": "TUBE_3.3",
+      "title": "Max length of TUBE (ONLY MENTION WHEN USER ASKS, DON'T TREAT THIS AS A RULE)",
+      "description": "If the client asks for the maximum length of tubes. Answer: 5800 mm.",
+      "severity": "info"
+    },
+    {
+      "id": "TUBE_3.4",
+      "category": "critical",
+      "title": "Fishmouth on Tubes",
+      "description": "Critical information about fishmouth/wolf-mouth holes in tubes",
+      "rule": [
+        "### CRITICAL - Fishmouth on Tubes:",
+        "- **Fishmouth Definition**: When \"fish-mouth / wolf-mouth\" is mentioned, it refers to a hole.",
+        "- **Example**: fish-mouth Ø40 means a hole with diameter Ø40",
+        "- **Drilling Direction**: If not specified otherwise, drill only one side of the tube, not through to the opposite side"
+      ],
+      "severity": "critical"
+    },
+    {
+      "id": "TUBE_3.5",
+      "title": "Detailed Materials Information at TOLERY (ONLY MENTION WHEN USER ASKS, DON'T TREAT THIS AS A RULE)",
+      "description": "If the client asks for detailed information on materials at TOLERY, provide the link to the materials page.",
+      "error_message": "You will find detailed information at the following link: https://www.tolery.io/nos-matieres",
+      "severity": "info"
+    }
+  ]
+}

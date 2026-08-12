@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tolery CAD Monitor</title>
+  <meta name="description" content="Runtime monitoring dashboard for Tolery CAD generation." />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/css/monitor.css" />
+</head>
+<body>
+
+<!-- ═══ TOPBAR ═══ -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-orb"><i class="fas fa-wave-square"></i></div>
+    <div class="brand-text">
+      <h1>Tolery Monitor</h1>
+      <span class="brand-sub">CAD Runtime Dashboard</span>
+    </div>
+  </div>
+  <nav class="top-nav">
+    <a class="nav-link" href="/"><i class="fas fa-comments"></i><span>Chatbot</span></a>
+    <button id="btn-pause" class="nav-btn" title="Pause auto-refresh (P)">
+      <i class="fas fa-pause"></i><span>Pause</span>
+    </button>
+    <button id="btn-export" class="nav-btn" title="Export JSON">
+      <i class="fas fa-download"></i><span>Export</span>
+    </button>
+    <button id="btn-refresh" class="nav-btn accent" title="Refresh now (R)">
+      <i class="fas fa-rotate"></i><span>Refresh</span>
+    </button>
+  </nav>
+</header>
+
+<!-- ═══ AUTH STRIP ═══ -->
+<div class="auth-strip" id="auth-strip">
+  <div class="auth-left">
+    <i class="fas fa-key auth-icon"></i>
+    <span id="token-state">Checking saved token…</span>
+  </div>
+  <div class="auth-right">
+    <input id="monitor-token" type="password" placeholder="Paste API token" autocomplete="off" />
+    <button id="save-token" class="btn-small">Save</button>
+    <button id="clear-token" class="btn-small btn-ghost">Clear</button>
+  </div>
+</div>
+
+<!-- ═══ KPI STRIP ═══ -->
+<section class="kpi-strip">
+  <div class="kpi-card">
+    <div class="kpi-icon blue"><i class="fas fa-users"></i></div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-active-users">0</div>
+      <div class="kpi-label">Active Users</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon green"><i class="fas fa-bolt"></i></div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-active-requests">0</div>
+      <div class="kpi-label">Chatbot / FreeCAD</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon purple"><i class="fas fa-memory"></i></div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-ram-val">0 MB</div>
+      <div class="kpi-label">Server RAM <span class="info-tip" data-tip="Whole-server RAM used. API process RAM is still available in the API payload as api_process_rss_mb.">?</span></div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon orange"><i class="fas fa-microchip"></i></div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-cpu-val">0%</div>
+      <div class="kpi-label">Server CPU</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon teal"><i class="fas fa-stopwatch"></i></div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-p95-val">–</div>
+      <div class="kpi-label">P95 Latency <span class="info-tip" data-tip="95% of requests complete within this time. Use it to size the server timeout.">?</span></div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon red"><i class="fas fa-circle-dollar-to-slot"></i></div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-cost-val">$0.0000</div>
+      <div class="kpi-label">Recorded Cost</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ MAIN GRID ═══ -->
+<div class="dashboard-grid" id="dashboard-grid">
+
+  <!-- RESIZE HANDLE LEFT -->
+  <div class="resize-handle" id="rh-left" data-col="left"></div>
+
+  <!-- Col 1: System Resources -->
+  <section class="panel" id="panel-resources">
+    <div class="panel-header" id="ph-resources">
+      <div class="panel-title-group">
+        <span class="panel-dot blue"></span>
+        <div>
+          <h2 class="panel-title">System Resources</h2>
+          <p class="panel-sub">RAM &amp; CPU — live</p>
+        </div>
+      </div>
+      <div class="panel-actions">
+        <button class="icon-btn collapse-btn" data-target="panel-resources" title="Collapse panel">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <i class="fas fa-server panel-icon"></i>
+      </div>
+    </div>
+    <div class="panel-body" id="body-resources">
+      <div class="chart-header">
+        <span class="chart-label">Server RAM Used (MB) &amp; Server RAM (%)</span>
+        <div class="chart-controls" aria-label="RAM chart controls">
+          <button class="chart-range active" data-minutes="1">1m</button>
+          <button class="chart-range" data-minutes="5">5m</button>
+          <button class="chart-range" data-minutes="15">15m</button>
+        </div>
+        <button class="expand-chart-btn" data-chart="ram-chart" data-title="Server RAM &amp; Server RAM %" title="Fullscreen">
+          <i class="fas fa-expand"></i>
+          <span>Full</span>
+        </button>
+      </div>
+      <div class="chart-box"><canvas id="ram-chart"></canvas></div>
+
+      <div class="chart-header" style="margin-top:12px">
+        <span class="chart-label">Server CPU (%)</span>
+        <div class="chart-readout" id="resource-readout">Hover chart to inspect each second</div>
+        <button class="expand-chart-btn" data-chart="cpu-chart" data-title="Server CPU Usage" title="Fullscreen">
+          <i class="fas fa-expand"></i>
+          <span>Full</span>
+        </button>
+      </div>
+      <div class="chart-box chart-box-sm"><canvas id="cpu-chart"></canvas></div>
+
+      <div class="stat-grid">
+        <div class="stat-row">
+          <span>RAM Peak <span class="info-tip" data-tip="Highest whole-server RAM used value since the server started. Use it as the sizing baseline for this single-project server.">?</span></span>
+          <strong id="stat-ram-peak">0 MB</strong>
+        </div>
+        <div class="stat-row">
+          <span>CPU Peak</span>
+          <strong id="stat-cpu-peak">0%</strong>
+        </div>
+        <div class="stat-row">
+          <span>CPU Cores</span>
+          <strong id="stat-cores">–</strong>
+        </div>
+      </div>
+
+      <div class="peak-box">
+        <h3 class="peak-title"><i class="fas fa-mountain"></i> RAM Peak Snapshot</h3>
+        <p id="peak-summary" class="peak-text">No peak captured yet.</p>
+        <div id="peak-steps" class="chip-row"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESIZE HANDLE RIGHT -->
+  <div class="resize-handle" id="rh-right" data-col="right"></div>
+
+  <!-- Col 2: Pipeline -->
+  <section class="panel" id="panel-pipeline">
+    <div class="panel-header" id="ph-pipeline">
+      <div class="panel-title-group">
+        <span class="panel-dot green"></span>
+        <div>
+          <h2 class="panel-title">CAD Pipeline</h2>
+          <p class="panel-sub">Active requests &amp; sessions</p>
+        </div>
+      </div>
+      <div class="panel-actions">
+        <button class="icon-btn collapse-btn" data-target="panel-pipeline" title="Collapse panel">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <i class="fas fa-diagram-project panel-icon"></i>
+      </div>
+    </div>
+    <div class="panel-body" id="body-pipeline">
+      <div class="donut-row">
+        <div class="donut-wrap"><canvas id="step-chart"></canvas></div>
+        <div class="step-legend" id="step-legend"><div class="empty-hint">Idle</div></div>
+      </div>
+
+      <h3 class="section-title"><i class="fas fa-circle-play"></i> Active Requests</h3>
+      <div class="request-list" id="active-request-list">
+        <div class="empty-state"><i class="fas fa-satellite-dish"></i><span>No active CAD streams</span></div>
+      </div>
+
+      <h3 class="section-title" style="margin-top:16px">
+        <i class="fas fa-layer-group"></i> Session Groups
+        <span class="section-hint">Click to view details — state is preserved after refresh</span>
+      </h3>
+      <div class="session-groups" id="session-groups">
+        <div class="empty-state"><i class="fas fa-folder-open"></i><span>No session groups yet</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Col 3: Performance + Sizing -->
+  <section class="panel" id="panel-perf">
+    <div class="panel-header" id="ph-perf">
+      <div class="panel-title-group">
+        <span class="panel-dot orange"></span>
+        <div>
+          <h2 class="panel-title">Performance &amp; Sizing</h2>
+          <p class="panel-sub">Latency · Throughput · Server recommendation</p>
+        </div>
+      </div>
+      <div class="panel-actions">
+        <button class="icon-btn collapse-btn" data-target="panel-perf" title="Collapse panel">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <i class="fas fa-gauge-high panel-icon"></i>
+      </div>
+    </div>
+    <div class="panel-body" id="body-perf">
+
+      <!-- Latency -->
+      <div class="sub-section">
+        <h3 class="section-title"><i class="fas fa-hourglass-half"></i> Latency Percentiles</h3>
+        <div class="latency-grid">
+          <div class="lat-card"><div class="lat-val" id="lat-avg">–</div><div class="lat-lbl">Avg</div></div>
+          <div class="lat-card accent-p50"><div class="lat-val" id="lat-p50">–</div><div class="lat-lbl">P50</div></div>
+          <div class="lat-card accent-p90"><div class="lat-val" id="lat-p90">–</div><div class="lat-lbl">P90</div></div>
+          <div class="lat-card accent-p95"><div class="lat-val" id="lat-p95">–</div><div class="lat-lbl">P95</div></div>
+          <div class="lat-card accent-p99"><div class="lat-val" id="lat-p99">–</div><div class="lat-lbl">P99</div></div>
+          <div class="lat-card accent-max"><div class="lat-val" id="lat-max">–</div><div class="lat-lbl">Max</div></div>
+        </div>
+        <div class="sample-note" id="lat-samples">0 samples — run at least 1 request to collect data</div>
+      </div>
+
+      <!-- Throughput -->
+      <div class="sub-section">
+        <h3 class="section-title">
+          <i class="fas fa-chart-line"></i> Throughput (last 60 s)
+          <button class="expand-chart-btn" data-chart="tput-chart" data-title="Throughput (req/min)" title="Fullscreen" style="margin-left:auto">
+            <i class="fas fa-expand"></i>
+          </button>
+        </h3>
+        <div class="tput-row">
+          <div class="tput-item"><div class="tput-val" id="tput-in">0</div><div class="tput-lbl">req/min (in)</div></div>
+          <div class="tput-sep"></div>
+          <div class="tput-item"><div class="tput-val" id="tput-out">0</div><div class="tput-lbl">req/min (done)</div></div>
+        </div>
+        <div class="chart-box chart-box-sm" style="margin-top:8px"><canvas id="tput-chart"></canvas></div>
+      </div>
+
+      <!-- Step latency -->
+      <div class="sub-section">
+        <h3 class="section-title"><i class="fas fa-table-list"></i> Per-Step Avg Latency</h3>
+        <div class="compact-table-wrap">
+          <table id="step-latency-table">
+            <thead><tr><th>Step</th><th>Count</th><th>Avg</th><th>P95</th><th>Max</th></tr></thead>
+            <tbody id="step-latency-body"><tr><td colspan="5" class="muted">No step data yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sizing -->
+      <div class="sub-section sizing-box" id="sizing-box">
+        <h3 class="section-title">
+          <i class="fas fa-server"></i> Server Sizing Recommendation
+          <button class="icon-btn" id="sizing-info-btn" title="View formula explanation" style="margin-left:auto">
+            <i class="fas fa-circle-info" style="color:var(--blue)"></i>
+          </button>
+        </h3>
+        <div id="sizing-confidence" class="confidence-badge">–</div>
+
+        <!-- Formula explainer (hidden by default) -->
+        <div class="formula-box" id="formula-box" style="display:none">
+          <h4><i class="fas fa-calculator"></i> How sizing is calculated</h4>
+          <div class="formula-steps" id="formula-steps">Loading…</div>
+          <button class="btn-small" id="close-formula" style="margin-top:8px">Close</button>
+        </div>
+
+        <div class="sizing-grid">
+          <div class="sizing-card">
+            <div class="sizing-icon"><i class="fas fa-cubes"></i></div>
+            <div class="sizing-val" id="sz-workers">–</div>
+            <div class="sizing-lbl">Workers</div>
+          </div>
+          <div class="sizing-card">
+            <div class="sizing-icon"><i class="fas fa-microchip"></i></div>
+            <div class="sizing-val" id="sz-cores">–</div>
+            <div class="sizing-lbl">CPU Cores</div>
+          </div>
+          <div class="sizing-card">
+            <div class="sizing-icon"><i class="fas fa-memory"></i></div>
+            <div class="sizing-val" id="sz-ram-worker">–</div>
+            <div class="sizing-lbl">RAM / Worker</div>
+          </div>
+          <div class="sizing-card highlight">
+            <div class="sizing-icon"><i class="fas fa-database"></i></div>
+            <div class="sizing-val" id="sz-ram-total">–</div>
+            <div class="sizing-lbl">Total RAM</div>
+          </div>
+        </div>
+
+        <div id="sizing-warnings" class="sizing-warnings"></div>
+        <div id="sizing-notes" class="sizing-notes"></div>
+
+        <div class="sizing-controls">
+          <label>
+            Safety factor
+            <span class="info-tip" data-tip="RAM safety factor. 1.6x adds 60% headroom. Example: peak 249MB → RAM/worker = 249 × 1.6 = 398MB">?</span>
+            <input type="range" id="sz-safety" min="1.0" max="3.0" step="0.1" value="1.6" />
+            <span id="sz-safety-val">1.6×</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Sessions -->
+      <div class="sub-section">
+        <h3 class="section-title"><i class="fas fa-coins"></i> Sessions &amp; Cost</h3>
+        <div class="compact-table-wrap">
+          <table>
+            <thead><tr><th>Session</th><th>User</th><th>Reqs</th><th>Priority</th><th>RAM pk</th><th>Tokens</th><th>Cost</th></tr></thead>
+            <tbody id="sessions-body"><tr><td colspan="7" class="muted">No sessions yet</td></tr></tbody>
+          </table>
+        </div>
+        <div class="sessions-footer">
+          <span id="session-count-label">0 sessions</span>
+          <span id="total-tokens-label">0 tokens</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<!-- ═══ CHART FULLSCREEN MODAL ═══ -->
+<div class="chart-modal" id="chart-modal">
+  <div class="chart-modal-overlay" id="chart-modal-overlay"></div>
+  <div class="chart-modal-box">
+    <div class="chart-modal-header">
+      <span id="chart-modal-title">Chart</span>
+      <button class="icon-btn" id="close-chart-modal"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="chart-modal-body">
+      <canvas id="chart-modal-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TOOLTIP ═══ -->
+<div class="tooltip-popup" id="tooltip-popup"></div>
+
+<!-- ═══ STATUSBAR ═══ -->
+<footer class="statusbar">
+  <div class="status-left">
+    <span class="pulse-dot" id="pulse-dot"></span>
+    <span id="last-updated">Connecting…</span>
+    <span id="paused-label" style="display:none;color:var(--yellow);font-weight:600">⏸ PAUSED</span>
+  </div>
+  <div class="status-right">
+    <span id="refresh-interval-label">Auto-refresh 1s</span>
+    <span id="completed-label">0 completed</span>
+  </div>
+</footer>
+
+<script src="/static/js/monitor.js"></script>
+</body>
+</html>

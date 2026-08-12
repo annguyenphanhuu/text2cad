@@ -1,0 +1,53 @@
+volumes:
+  atn_tolery_data:
+
+services:
+  app:
+    image: registry.dfm-europe.com/rd/ai/ai-2024/tolery/tolery-api-ai:develop
+    container_name: atn_tolery_api
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    ports:
+      - "8124:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    networks:
+      - tolery
+
+  db:
+    image: mysql:8.0.33
+    restart: always
+    container_name: atn_tolery_db
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command: ['mysqld', '--default-authentication-plugin=mysql_native_password']
+    ports:
+      - "3306:3306"
+    volumes:
+      - atn_tolery_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tolery
+
+networks:
+  tolery:

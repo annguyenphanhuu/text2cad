@@ -1,0 +1,163 @@
+#Example 1: Isosceles triangular sheet-metal part with one base flange
+# Create an isosceles triangular sheet-metal part.
+# Long or base edge is 200 mm.
+# The first triangle vertex is placed at the origin (0, 0, 0).
+# The long base edge runs along the +X axis and the third vertex points toward +Y.
+# Coordinate convention: Vertex A = (0,0,0), Vertex B = (base,0,0), Vertex C = (base/2,height,0).
+# The top base edge A-B at Z = thickness is the bend reference edge for the base flange.
+# The two remaining side edges are 140 mm each.
+# Thickness is 2 mm.
+# Add one 20 mm outward flange along the long base edge only.
+# Bend angle is 90 degrees. Bend radius is equal to the thickness.
+# GENERATOR DECISION NOTES:
+# - If the user says "triangle isocele", "triangle isoscele", or gives one base plus two equal sides, use this pattern.
+# - Keep two distinct parameters: `base_length` for A-B and `equal_side_length` for both slanted sides.
+# - Use `get_isosceles_triangle_points(base_length, equal_side_length)`.
+# - If the user says "triangle equilateral" or all three sides are equal, switch to `get_equilateral_triangle_points(side_length)`.
+# - If the user says "angle droit" / right triangle, do not use this helper; use the right-triangle helpers shown in the right-isosceles hypotenuse example.
+# - Bend wording matters: "base edge" / "long base" selects points[0] -> points[1], but "grand cote" on a right triangle selects points[1] -> points[2].
+# Shape type: Triangle
+#
+# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+import os
+import sys
+import FreeCAD as App
+import Part
+import Import
+import Mesh
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# 1) Metadata / document setup
+sanitized_title = "Triangle_Isosceles_Base200_Sides140_Thk2_BaseFlange20"
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# 2) Parameters (mm)
+base_length = 200.0
+equal_side_length = 140.0
+thickness = 2.0
+flange_height = 20.0
+bend_angle_deg = 90.0
+bend_radius = thickness
+
+
+def bootstrap_sheetmetal():
+    sheetmetal_path = os.path.join(project_root, "sheetmetal")
+    if sheetmetal_path not in sys.path:
+        sys.path.insert(0, sheetmetal_path)
+
+    import SheetMetalCmd
+    import SheetMetalTools
+
+    def task_restore_defaults(_obj, _default_vars):
+        pass
+
+    SheetMetalTools.taskRestoreDefaults = task_restore_defaults
+    return SheetMetalCmd
+
+
+SheetMetalCmd = bootstrap_sheetmetal()
+
+# 3) Create triangular base plate
+# GENERATOR DECISION:
+# - The confirmed subtype is isosceles, so the base and equal sides are separate inputs.
+# - The correct helper is `get_isosceles_triangle_points(base_length, equal_side_length)`.
+# - Do not reuse this code for equilateral by setting base_length = equal_side_length; use the equilateral helper instead.
+triangle_points = get_isosceles_triangle_points(base_length, equal_side_length)
+base_shape = make_triangle_plate(triangle_points, thickness)
+
+base_obj = doc.addObject("Part::Feature", "Base_Isosceles_Triangle")
+base_obj.Shape = base_shape
+base_obj.Label = "Triangle base 200 sides 140 thickness 2"
+doc.recompute()
+
+# 4) Add one sheet-metal bend along the long base edge
+# EDGE NAMING:
+# - A-B is the long base edge along +X.
+# - B-C and C-A are the two equal side edges.
+# This example bends only A-B, so later generated code should not bend all edges unless requested.
+base_start = App.Vector(triangle_points[0].x, triangle_points[0].y, thickness)
+base_end = App.Vector(triangle_points[1].x, triangle_points[1].y, thickness)
+base_edge_name = find_edge_by_points(base_obj.Shape, base_start, base_end)
+if not base_edge_name:
+    raise RuntimeError("Could not find the long/base edge for the bend.")
+
+bend_obj = doc.addObject("Part::FeaturePython", "SMBend_Base_Flange")
+SheetMetalCmd.SMBendWall(bend_obj, base_obj, [base_edge_name])
+# SheetMetal SMBendWall expects the straight flange length after the bend zone.
+# Use the same convention as the bracket examples: requested height minus radius and thickness.
+bend_obj.length = flange_height - (bend_radius + thickness)
+bend_obj.angle = 180.0 - bend_angle_deg
+bend_obj.radius = bend_radius
+bend_obj.invert = False
+bend_obj.AutoMiter = True
+bend_obj.minGap = 0.0
+bend_obj.maxExtendDist = flange_height
+bend_obj.reliefw = 0.0
+bend_obj.reliefd = 0.0
+doc.recompute()
+
+final_shape = bend_obj.Shape.removeSplitter()
+
+result = doc.addObject("Part::Feature", "TriangleBaseFlange")
+result.Label = sanitized_title
+result.Shape = final_shape
+doc.recompute()
+
+# 5) Export to STEP, geometry JSON, and OBJ
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([result], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [result]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()

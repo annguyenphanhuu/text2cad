@@ -1,0 +1,13 @@
+Name,Parameters,Description
+"R12 U27,72","length,width,thickness"
+C20 U40,"length,width,thickness"
+R12 T16,"length,width,thickness"
+C25 U30,"length,width,thickness"
+C10 U30,"length,width,thickness"
+LR5x20 Z9x24,"length,width,thickness"
+R10 T13,"length,width,thickness"
+C40 U60,"length,width,thickness"
+C5 U7,"length,width,thickness"
+R5 T8,"length,width,thickness"
+LC5x50 U25x60,"length,width,thickness","rectangular hole, rec_length=50, rec_width=5, center_to_center_x=60, center_to_center_y=25"
+LC10x100 U30x40,"length,width,thickness","rectangular hole, rec_length=100, rec_width=10, spacing_x=30, spacing_y=40"

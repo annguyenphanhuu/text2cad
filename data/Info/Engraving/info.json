@@ -1,0 +1,34 @@
+{
+    "class_name": "Engraving",
+    "parent_category": "Machining",
+    "info_entries": [
+        {
+            "id": "ENG_SHORT_GUIDELINE",
+            "title": "Compact FreeCAD Engraving Guidelines",
+            "description": [
+                "To engrave text on a shape (e.g., base_shape) in FreeCAD with minimum lines of code:",
+                "",
+                "1. Create the ShapeString text object. IMPORTANT: Draft.makeShapeString() always creates its object in FreeCAD's global App.ActiveDocument, not necessarily your local 'doc' variable. If ActiveDocument differs from 'doc' (e.g. a stale/other document is active in the process), the txt object ends up in a different Document than 'doc', and assigning it to ext.Base later raises 'PropertyLink does not support external object'. ALWAYS pin the active document immediately before creating the ShapeString:",
+                "   App.setActiveDocument(doc.Name)",
+                "   txt = Draft.makeShapeString(String='TEXT_TO_ENGRAVE', FontFile='/app/font/boston_traffic.ttf', Size=char_height)",
+                "   doc.recompute()",
+                "",
+                "2. Position the text relative to its boundbox (e.g. centered or offset):",
+                "   bbox = txt.Shape.BoundBox",
+                "   offset_x = (plate_length - bbox.XLength) / 2.0 - bbox.XMin",
+                "   offset_y = (plate_width - bbox.YLength) / 2.0 - bbox.YMin",
+                "   offset_z = plate_thickness # On the top surface",
+                "   txt.Placement.Base = App.Vector(offset_x, offset_y, offset_z)",
+                "   doc.recompute()",
+                "",
+                "3. Create and configure Extrusion downward, then Cut from the base shape:",
+                "   ext = doc.addObject('Part::Extrusion', 'TxtExtrude')",
+                "   ext.Base, ext.Dir, ext.LengthFwd, ext.Solid = txt, (0, 0, -1), engraving_depth, True",
+                "   doc.recompute()",
+                "   final_shape = base_plate_shape.cut(ext.Shape)"
+            ],
+            "rule": "Use this compact sequence to generate engraving features in FreeCAD.",
+            "severity": "info"
+        }
+    ]
+}

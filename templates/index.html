@@ -1,0 +1,3220 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Text-to-CAD Chatbot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <!-- Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <!-- Syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- Three.js for 3D rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- UI Panels -->
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <link rel="stylesheet" href="/static/css/geometric_analysis.css" />
+  <link rel="stylesheet" href="/static/css/geometry-tooltip.css" />
+  <link rel="stylesheet" href="/static/css/json_viewer.css" />
+  <link rel="stylesheet" href="/static/css/viewer-fix.css" />
+  <!-- Face Selection Chips CSS -->
+  <link rel="stylesheet" href="/static/css/face-selection-chips.css" />
+  <!-- Token Authentication CSS -->
+  <link rel="stylesheet" href="/static/css/token-auth.css" />
+  <!-- Download Panel CSS -->
+  <link rel="stylesheet" href="/static/css/download-panel.css" />
+  <!-- PDF Viewer CSS -->
+  <link rel="stylesheet" href="/static/css/pdf-viewer.css" />
+  <!-- Token Debug Helper -->
+  <script src="/static/js/token-debug.js"></script>
+  <!-- Download Manager -->
+  <script src="/static/js/download-manager.js"></script>
+  <!-- PDF Viewer Manager -->
+  <script src="/static/js/pdf-viewer.js"></script>
+
+  <style>
+    /* Chat bubble styles */
+    .chat-bubble {
+      max-width: 80%;
+      overflow-wrap: break-word;
+      /* Standard property for word wrapping */
+      word-wrap: break-word;
+      /* Older alias, good for compatibility */
+      word-break: break-all;
+      /* More aggressive breaking for long strings */
+      white-space: normal;
+      /* Allow text to wrap naturally */
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .chat-bubble.user {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      margin-left: auto;
+      border-radius: 18px 18px 4px 18px;
+    }
+
+    .chat-bubble.bot {
+      background: #f8fafc;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+      margin-right: auto;
+      border-radius: 18px 18px 18px 4px;
+      word-break: normal;
+      overflow-wrap: break-word;
+      hyphens: auto;
+    }
+
+    /* Hide suggestions in chat bubbles - more comprehensive approach */
+    .chat-bubble.bot .suggestion-line,
+    .chat-bubble.bot .suggestion-text,
+    .chat-bubble.bot .suggestions-content {
+      display: none !important;
+    }
+
+    /* Hide any text containing suggestion indicators using JavaScript filtering */
+
+
+    /* Show suggestions when explicitly enabled */
+    .suggestions-visible .chat-bubble.bot .suggestion-line,
+    .suggestions-visible .chat-bubble.bot .suggestion-text,
+    .suggestions-visible .chat-bubble.bot .suggestions-content {
+      display: block !important;
+    }
+
+    .chat-bubble.system {
+      background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+      color: #92400e;
+      margin: 0 auto;
+      border-radius: 18px;
+      text-align: center;
+      font-size: 0.875rem;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Typing indicator */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 18px 18px 18px 4px;
+      margin-right: auto;
+      max-width: 80px;
+    }
+
+    .typing-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #9ca3af;
+      margin: 0 2px;
+      animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-dot:nth-child(1) {
+      animation-delay: 0s;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+
+      0%,
+      60%,
+      100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+
+      30% {
+        transform: translateY(-10px);
+        opacity: 1;
+      }
+    }
+
+    /* Chat input styles */
+    .chat-input-container {
+      background: white;
+      border-radius: 25px;
+      border: 2px solid #e5e7eb;
+      transition: all 0.3s ease;
+    }
+
+    .chat-input-container:focus-within {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .chat-input {
+      border: none;
+      outline: none;
+      resize: none;
+      background: transparent;
+    }
+
+    /* Progress animations */
+    .progress-step {
+      transition: all 0.3s ease;
+    }
+
+    .progress-step.active {
+      background: #eff6ff;
+      border-color: #3b82f6;
+    }
+
+    .progress-step.completed {
+      background: #f0fdf4;
+      border-color: #22c55e;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      .chat-bubble {
+        max-width: 90%;
+      }
+
+      .container {
+        padding: 1rem;
+      }
+    }
+
+    /* File upload area */
+    .file-drop-zone {
+      border: 2px dashed #d1d5db;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .file-drop-zone.drag-over {
+      border-color: #667eea;
+      background: #eff6ff;
+    }
+
+    /* Enhanced File Attachment Cards */
+    .file-attachment-card {
+      display: flex;
+      align-items: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 8px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+      transition: all 0.3s ease;
+    }
+
+    .file-attachment-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.25);
+    }
+
+    .file-attachment-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    .file-preview-container {
+      position: relative;
+      z-index: 2;
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+    }
+
+    .file-icon-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: white;
+    }
+
+    .pdf-gradient {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+    }
+
+    .image-preview {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    .file-details {
+      flex: 1;
+      position: relative;
+      z-index: 2;
+      color: white;
+    }
+
+    .file-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    .file-meta {
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .file-size {
+      font-weight: 500;
+    }
+
+    .file-separator {
+      margin: 0 6px;
+      opacity: 0.7;
+    }
+
+    .file-type-badge {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .file-type-badge i {
+      margin-right: 4px;
+      font-size: 10px;
+    }
+
+    .pdf-badge {
+      color: #ff6b6b;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .image-badge {
+      color: #00d2d3;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .file-remove-btn {
+      position: relative;
+      z-index: 2;
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      font-size: 12px;
+    }
+
+    .file-remove-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.1);
+    }
+
+    .gradient-border {
+      position: relative;
+    }
+
+    .gradient-border::after {
+      content: '';
+      position: absolute;
+      top: -1px;
+      left: -1px;
+      right: -1px;
+      bottom: -1px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.1) 100%);
+      border-radius: 17px;
+      z-index: -1;
+    }
+
+    /* Loading states */
+    .btn-loading {
+      position: relative;
+      color: transparent !important;
+    }
+
+    .btn-loading::after {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      top: 50%;
+      left: 50%;
+      margin-left: -8px;
+      margin-top: -8px;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: button-spin 0.8s linear infinite;
+    }
+
+    @keyframes button-spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+
+
+    /* 3D Viewer styles */
+    .viewer-3d {
+      width: 100%;
+      height: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      position: relative;
+    }
+
+
+
+    .viewer-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 100;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 180px;
+      justify-content: flex-end;
+    }
+
+    /* JSON viewer controls: cột dọc bên TRÁI, không bị ViewCube (bên phải) che */
+    #json-viewer-controls {
+      left: 10px !important;
+      right: auto !important;
+      top: 10px !important;
+      flex-direction: column !important;
+      flex-wrap: nowrap !important;
+      max-width: 40px !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      gap: 4px !important;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(4px);
+      border-radius: 8px;
+      padding: 6px 4px;
+    }
+
+    /* Active state cho các nút toggle */
+    #json-viewer-controls .viewer-control-btn.btn-active {
+      background: rgba(59, 130, 246, 0.9) !important;
+      color: white !important;
+      box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+    }
+
+    #json-viewer-controls .viewer-control-btn.btn-danger-active {
+      background: rgba(239, 68, 68, 0.85) !important;
+      color: white !important;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+    }
+
+    .viewer-control-btn.select-face-active {
+      background: rgba(34, 197, 94, 0.9) !important;
+      color: white !important;
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+    }
+
+    .viewer-control-btn.select-edge-active {
+      background: rgba(59, 130, 246, 0.9) !important;
+      color: white !important;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    }
+
+    .viewer-control-btn.select-curved-surface-active {
+      background: rgba(168, 85, 247, 0.9) !important;
+      color: white !important;
+      box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+    }
+
+
+
+
+
+    .dual-viewer-container {
+      display: flex;
+      flex-direction: row;
+      gap: 1rem;
+      /* Spacing between viewers */
+      height: 500px;
+      /* Or a suitable height */
+    }
+
+    .viewer-column {
+      flex: 1;
+      /* Each column takes up half the space */
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      /* Prevents content from overflowing */
+      height: 100%;
+    }
+
+    .viewer-canvas {
+      flex-grow: 1;
+      /* The canvas fills the available vertical space */
+      position: relative;
+      height: 100%;
+    }
+
+    .viewer-control-btn {
+      width: 32px;
+      height: 32px;
+      background: rgba(255, 255, 255, 0.9);
+      border: none;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 14px;
+      color: #374151;
+    }
+
+    .viewer-control-btn:hover {
+      background: white;
+      transform: scale(1.05);
+    }
+
+    .viewer-info {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      z-index: 100;
+      max-width: 250px;
+      width: auto;
+    }
+
+
+    .face-tooltip {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      z-index: 1000;
+      min-width: 180px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      opacity: 0;
+      transform: scale(0.9);
+      transition: all 0.2s ease;
+      pointer-events: auto;
+    }
+
+    .face-tooltip.show {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .tooltip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .face-id {
+      font-weight: bold;
+      color: #00ff88;
+    }
+
+    .tooltip-close {
+      background: none;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0;
+      width: 18px;
+      height: 18px;
+    }
+
+    .tooltip-close:hover {
+      color: white;
+    }
+
+    .tooltip-body div {
+      margin: 4px 0;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .tooltip-body span {
+      font-weight: bold;
+      color: #fff;
+    }
+
+    /* E
+      .edge-tooltip {
+        position: absolute;
+        background: linear-gradient(135deg, rgba(0, 100, 200, 0.95), rgba(0, 150, 255, 0.95));
+        color: white;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        z-index: 1000;
+        min-width: 200px;
+        box-shadow: 0 4px 20px rgba(0, 100, 200, 0.3);
+        border: 1px solid rgba(100, 200, 255, 0.3);
+        opacity: 0;
+        transform: scale(0.9);
+        transition: all 0.2s ease;
+        pointer-events: auto;
+      }
+
+      .edge-tooltip.show {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .edge-tooltip .tooltip-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .edge-tooltip .edge-id {
+        font-weight: bold;
+        color: #00ddff;
+      }
+
+      .edge-tooltip .tooltip-close {
+        background: none;
+        border: none;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+        width: 18px;
+        height: 18px;
+      }
+
+      .edge-tooltip .tooltip-close:hover {
+        color: white;
+      }
+
+      .edge-tooltip .tooltip-body div {
+        margin: 4px 0;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .edge-tooltip .tooltip-body span {
+        font-weight: bold;
+        color: #fff;
+        font-family: 'Courier New', monospace;
+      }
+
+
+      .curved-surface-tooltip {
+        position: absolute;
+        background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(147, 51, 234, 0.95));
+        color: white;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        z-index: 1000;
+        min-width: 220px;
+        box-shadow: 0 4px 20px rgba(168, 85, 247, 0.3);
+        border: 1px solid rgba(196, 181, 253, 0.3);
+        opacity: 0;
+        transform: scale(0.9);
+        transition: all 0.2s ease;
+        pointer-events: auto;
+      }
+
+      .curved-surface-tooltip.show {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .curved-surface-tooltip .tooltip-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .curved-surface-tooltip .surface-id {
+        font-weight: bold;
+        color: #e879f9;
+      }
+
+      .curved-surface-tooltip .tooltip-close {
+        background: none;
+        border: none;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+        width: 18px;
+        height: 18px;
+      }
+
+      .curved-surface-tooltip .tooltip-close:hover {
+        color: white;
+      }
+
+      .curved-surface-tooltip .tooltip-body div {
+        margin: 4px 0;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .curved-surface-tooltip .tooltip-body span {
+        font-weight: bold;
+        color: #fff;
+        font-family: 'Courier New', monospace;
+      }
+
+
+      .curved-surface-tooltip {
+        position: absolute;
+        background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(147, 51, 234, 0.95));
+        color: white;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        z-index: 1000;
+        min-width: 220px;
+        box-shadow: 0 4px 20px rgba(168, 85, 247, 0.3);
+        border: 1px solid rgba(196, 181, 253, 0.3);
+        opacity: 0;
+        transform: scale(0.9);
+        transition: all 0.2s ease;
+        pointer-events: auto;
+      }
+
+      .curved-surface-tooltip.show {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .curved-surface-tooltip .tooltip-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .curved-surface-tooltip .surface-id {
+        font-weight: bold;
+        color: #e879f9;
+      }
+
+      .curved-surface-tooltip .tooltip-close {
+        background: none;
+        border: none;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+        width: 18px;
+        height: 18px;
+      }
+
+      .curved-surface-tooltip .tooltip-close:hover {
+        color: white;
+      }
+
+      .curved-surface-tooltip .tooltip-body div {
+        margin: 4px 0;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .curved-surface-tooltip .tooltip-body span {
+        font-weight: bold;
+        color: #fff;
+        font-family: 'Courier New', monospace;
+      }
+
+      .viewer-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: white;
+        text-align: center;
+      }
+
+      .viewer-placeholder i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.7;
+      }
+
+      .viewer-loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        text-align: center;
+        z-index: 200;
+      }
+
+      .viewer-loading .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top: 4px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Fullscreen container styles */
+    .fullscreen-container {
+      transition: all 0.3s ease;
+    }
+
+    /* When in fullscreen mode, make containers take full height */
+    :fullscreen .fullscreen-container,
+    :-webkit-full-screen .fullscreen-container,
+    :-moz-full-screen .fullscreen-container {
+      height: 100vh !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    /* Fullscreen viewer adjustments */
+    :fullscreen #json-viewer-panel,
+    :-webkit-full-screen #json-viewer-panel,
+    :-moz-full-screen #json-viewer-panel {
+      height: 100vh !important;
+      margin: 0 !important;
+      border-radius: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    /* Fullscreen viewer content */
+    :fullscreen #json-viewer-panel .p-4,
+    :-webkit-full-screen #json-viewer-panel .p-4,
+    :-moz-full-screen #json-viewer-panel .p-4 {
+      flex: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      padding: 0 !important;
+    }
+
+    /* Fullscreen 3D viewer */
+    :fullscreen #json-viewer-3d,
+    :-webkit-full-screen #json-viewer-3d,
+    :-moz-full-screen #json-viewer-3d {
+      height: 100% !important;
+      border-radius: 0 !important;
+    }
+
+    /* Material Selector Styles */
+    .material-selector-container {
+      display: inline-block;
+    }
+
+    .material-selector {
+      min-width: 180px;
+      font-family: inherit;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .material-selector:hover {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .material-selector:focus {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    }
+
+    .material-selector option {
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+
+    /* Material-specific colors for visual feedback */
+    .material-selector[data-material="STEEL"] {
+      border-left: 3px solid #6b7280;
+    }
+
+    .material-selector[data-material="INOX"] {
+      border-left: 3px solid #8b5cf6;
+    }
+
+    .material-selector[data-material="ALUMINUM"] {
+      border-left: 3px solid #06b6d4;
+    }
+
+    /* Material info tooltip animation */
+    .material-info {
+      transition: opacity 0.2s ease;
+    }
+
+    .material-info:hover {
+      opacity: 1;
+      color: #6b7280;
+    }
+  </style>
+</head>
+
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+  <!-- Token Authentication Panel -->
+  <div id="token-panel" class="token-panel">
+    <div class="token-panel-header">
+      <span>API Authentication</span>
+      <button id="token-panel-toggle" class="token-panel-toggle">
+        <i class="fas fa-chevron-up"></i>
+      </button>
+    </div>
+    <div class="token-input-group">
+      <input type="text" id="api-token-input" class="token-input" placeholder="Enter API token" />
+      <div class="token-buttons">
+        <button id="save-token-btn" class="token-btn token-btn-primary">Save</button>
+        <button id="clear-token-btn" class="token-btn token-btn-secondary">Clear</button>
+      </div>
+      <div id="token-status" class="token-status info">Ready</div>
+    </div>
+  </div>
+
+  <!-- Main Chat Interface -->
+  <div class="container mx-auto px-4 py-6 max-w-6xl">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <div class="flex items-center justify-center mb-4">
+        <div
+          class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mr-4">
+          <i class="fas fa-robot text-white text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-3xl font-bold text-gray-800">
+            Text-to-CAD Assistant
+          </h1>
+          <p class="text-gray-600">
+            Generate 3D models from your descriptions
+          </p>
+        </div>
+      </div>
+
+      <!-- Status Bar -->
+      <div class="flex items-center justify-center space-x-6 text-sm text-gray-500">
+        <div class="flex items-center">
+          <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+          <span>Online</span>
+        </div>
+        <div id="version-indicator" class="flex items-center">
+          <i class="fas fa-code-branch mr-2"></i>
+          <span>API Version: <span id="api-version" class="font-mono">...</span></span>
+        </div>
+        <div id="session-indicator" class="hidden flex items-center">
+          <i class="fas fa-link mr-2"></i>
+          <span>Session: <span id="session-id-display" class="font-mono"></span></span>
+        </div>
+        <div id="edit-mode-indicator" class="hidden flex items-center text-purple-600">
+          <i class="fas fa-pencil-alt mr-2"></i>
+          <span>Edit Mode Active</span>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Chat Area -->
+      <div class="lg:col-span-2">
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden h-[600px] flex flex-col">
+          <!-- Chat Header -->
+          <div class="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <i class="fas fa-comments mr-3"></i>
+                <div>
+                  <h3 class="font-semibold">CAD Assistant</h3>
+                  <p class="text-blue-100 text-sm">
+                    Ready to help you create 3D models
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="edit-mode-toggle" class="sr-only peer" />
+                  <div
+                    class="relative w-11 h-6 bg-blue-400 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600">
+                  </div>
+                  <span class="ml-2 text-sm text-blue-100">Edit Mode</span>
+                </label>
+                <button id="refresh-btn" class="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                  title="New Chat">
+                  <i class="fas fa-plus"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Messages -->
+          <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+            <!-- Welcome Message -->
+            <div class="flex justify-center">
+              <div class="chat-bubble system p-3 max-w-md">
+                <i class="fas fa-sparkles mr-2"></i>
+                Welcome! Describe a 3D model you'd like to create, or upload
+                an image/PDF for reference.
+              </div>
+            </div>
+          </div>
+
+          <!-- Suggestions Toggle Button (Hidden by default) -->
+          <div class="absolute top-4 right-4 z-10">
+            <button id="suggestions-toggle"
+              class="hidden bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded-full transition-colors"
+              title="Toggle suggestions visibility">
+              <i class="fas fa-lightbulb mr-1"></i>
+              <span id="suggestions-toggle-text">Show Tips</span>
+            </button>
+          </div>
+
+          <!-- Chat Input -->
+          <div class="p-4 bg-white border-t border-gray-200">
+            <!-- Material Selector -->
+            <div class="mb-3 flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="text-sm font-medium text-gray-600">
+                  <i class="fas fa-layer-group mr-1"></i>Material:
+                </span>
+                <div class="material-selector-container relative">
+                  <select id="material-selector"
+                    class="material-selector appearance-none bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg px-4 py-2 pr-8 cursor-pointer hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200">
+                    <option value="STEEL" selected>🔩 Steel</option>
+                    <option value="INOX">✨ Stainless Steel (Inox)</option>
+                    <option value="ALUMINUM">🪶 Aluminum</option>
+                  </select>
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                    <i class="fas fa-chevron-down text-xs"></i>
+                  </div>
+                </div>
+              </div>
+              <div class="material-info text-xs text-gray-400" id="material-info">
+                <i class="fas fa-info-circle mr-1"></i>Affects thickness availability
+              </div>
+            </div>
+
+            <!-- File Upload Area -->
+            <div id="selected-file-info" class="mb-3 empty:hidden"></div>
+
+            <!-- Priority Selector -->
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <label for="priority-input" class="flex items-center gap-2 text-sm font-medium text-gray-600">
+                <i class="fas fa-sort-amount-up"></i>
+                Priority
+              </label>
+              <div class="flex items-center gap-2">
+                <input type="number" id="priority-input" min="0" max="100" step="1" value="0"
+                  class="w-24 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  title="FreeCAD queue priority from 0 to 100" />
+                <span class="text-xs text-gray-400">0-100</span>
+              </div>
+            </div>
+
+            <!-- Input Form -->
+            <form id="chat-form" class="chat-input-container flex items-end p-2">
+              <div class="flex-1 relative">
+                <textarea id="user-input" placeholder="Describe your CAD model or ask a question..."
+                  class="chat-input w-full p-3 text-sm max-h-32 min-h-[44px] resize-none" rows="1"></textarea>
+              </div>
+              <div class="flex items-center space-x-2 ml-2">
+                <button type="button" id="attach-file-btn"
+                  class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Attach file">
+                  <i class="fas fa-paperclip"></i>
+                </button>
+                <button type="submit" id="send-btn"
+                  class="p-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled>
+                  <i class="fas fa-paper-plane"></i>
+                </button>
+              </div>
+            </form>
+
+            <!-- Input Hints -->
+            <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+              <div class="flex items-center space-x-4">
+                <span><i class="fas fa-keyboard mr-1"></i>Type description</span>
+                <span><i class="fas fa-image mr-1"></i>Paste image (Ctrl+V)</span>
+                <span><i class="fas fa-file mr-1"></i>Drag & drop files</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span id="char-count">0</span>
+                <span>•</span>
+                <span>JPG, PNG, PDF (max 20MB)</span>
+              </div>
+            </div>
+
+            <!-- Waiting text - shown while processing -->
+            <p id="streaming-waiting-text" class="hidden text-xs text-gray-400 mt-1 text-center">
+              Chatbot is processing, please wait...
+            </p>
+          </div>
+        </div>
+
+        <!-- PDF Viewer Container -->
+        <div id="pdf-viewer-container" class="pdf-viewer-container">
+          <!-- PDF Viewer Header -->
+          <div class="pdf-viewer-header">
+            <div>
+              <div class="pdf-viewer-title">
+                <i class="fas fa-file-pdf"></i>
+                <span>Technical Drawing</span>
+              </div>
+              <div class="pdf-viewer-subtitle" id="pdf-filename-display">
+                PDF Document
+              </div>
+            </div>
+
+            <!-- PDF Controls -->
+            <div class="pdf-viewer-controls">
+              <button id="pdf-download-btn" class="pdf-control-btn download-btn" title="Download PDF">
+                <i class="fas fa-download"></i>
+                <span>Download</span>
+              </button>
+              <button id="pdf-fullscreen-btn" class="pdf-control-btn fullscreen-btn" title="Fullscreen">
+                <i class="fas fa-expand"></i>
+                <span>Fullscreen</span>
+              </button>
+              <button id="pdf-close-btn" class="pdf-control-btn close-btn" title="Close">
+                <i class="fas fa-times"></i>
+                <span>Close</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- PDF Content -->
+          <div class="pdf-viewer-content">
+            <!-- Loading Indicator -->
+            <div id="pdf-loading" class="pdf-loading hidden">
+              <div class="pdf-loading-spinner"></div>
+              <div class="pdf-loading-text">Loading PDF...</div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="pdf-empty-state" class="pdf-empty-state">
+              <i class="fas fa-file-pdf"></i>
+              <div class="pdf-empty-state-title">No PDF Available</div>
+              <div class="pdf-empty-state-subtitle">
+                Generate a CAD model to view the technical drawing
+              </div>
+            </div>
+
+            <!-- PDF Iframe -->
+            <div class="pdf-iframe-wrapper">
+              <iframe id="pdf-iframe" class="pdf-iframe" title="PDF Viewer"></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="space-y-6">
+        <!-- Progress Panel -->
+        <div id="processing-progress-section" class="bg-white rounded-2xl shadow-lg overflow-hidden">
+          <div class="bg-gradient-to-r from-green-500 to-teal-600 text-white p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <i class="fas fa-cogs mr-3"></i>
+                <div>
+                  <h3 class="font-semibold">Processing</h3>
+                  <p class="text-green-100 text-sm">
+                    CAD generation progress
+                  </p>
+                </div>
+              </div>
+              <div id="overall-progress-percentage" class="text-2xl font-bold">
+                0%
+              </div>
+            </div>
+          </div>
+
+          <div class="p-4 space-y-4">
+            <!-- Progress Steps -->
+            <div class="progress-step border border-gray-200 rounded-lg p-3" id="step-analysis">
+              <div class="flex items-center">
+                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3"
+                  id="step-icon-analysis">
+                  <i class="fas fa-search text-gray-500"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-gray-800">Analysis</p>
+                  <p class="text-xs text-gray-500" id="step-status-analysis">
+                    Waiting...
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="progress-step border border-gray-200 rounded-lg p-3" id="step-parameters">
+              <div class="flex items-center">
+                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3"
+                  id="step-icon-parameters">
+                  <i class="fas fa-list-alt text-gray-500"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-gray-800">Parameters</p>
+                  <p class="text-xs text-gray-500" id="step-status-parameters">
+                    Waiting...
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="progress-step border border-gray-200 rounded-lg p-3" id="step-generation_code">
+              <div class="flex items-center">
+                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3"
+                  id="step-icon-generation_code">
+                  <i class="fas fa-code text-gray-500"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-gray-800">Generation</p>
+                  <p class="text-xs text-gray-500" id="step-status-generation_code">
+                    Waiting...
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="progress-step border border-gray-200 rounded-lg p-3" id="step-export">
+              <div class="flex items-center">
+                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3"
+                  id="step-icon-export">
+                  <i class="fas fa-file-export text-gray-500"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-gray-800">Export</p>
+                  <p class="text-xs text-gray-500" id="step-status-export">
+                    Waiting...
+                  </p>
+                  <div class="text-xs text-indigo-600 mt-1 hidden" id="step-eta-export">
+                    Estimated time: --
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="progress-step border border-gray-200 rounded-lg p-3" id="step-complete">
+              <div class="flex items-center">
+                <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3"
+                  id="step-icon-complete">
+                  <i class="fas fa-check-circle text-gray-500"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-gray-800">Complete</p>
+                  <p class="text-xs text-gray-500" id="step-status-complete">
+                    Waiting...
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Overall Progress Bar -->
+            <div class="mt-4">
+              <div class="flex justify-between text-sm text-gray-600 mb-2">
+                <span>Overall Progress</span>
+                <span id="overall-progress-text">0 of 5 steps</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="overall-progress-bar"
+                  class="bg-gradient-to-r from-green-500 to-teal-600 h-2 rounded-full transition-all duration-500"
+                  style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JSON Viewer Panel -->
+        <div id="json-viewer-panel" class="bg-white rounded-2xl shadow-lg overflow-hidden mb-6">
+          <div class="bg-gradient-to-r from-orange-500 to-red-600 text-white p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <i class="fas fa-file-code mr-3"></i>
+                <div>
+                  <h3 class="font-semibold">3D JSON Viewer</h3>
+                  <p class="text-orange-100 text-sm">
+                    FreeCAD & OnShape JSON formats
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2">
+                <button id="fullscreen-json-viewer-btn"
+                  class="px-3 py-1 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors text-sm"
+                  title="Fullscreen">
+                  <i class="fas fa-expand mr-1"></i>Fullscreen
+                </button>
+                <button id="load-json-btn"
+                  class="px-3 py-1 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors text-sm">
+                  <i class="fas fa-upload mr-1"></i>Load JSON File
+                </button>
+                <!-- Hidden file input for JSON files -->
+                <input type="file" id="json-file-input" accept=".json" style="display: none;" />
+              </div>
+            </div>
+          </div>
+
+          <div class="p-4 flex-grow flex flex-col">
+
+            <div id="json-viewer-3d-container" class="mb-4 flex-grow fullscreen-container" style="height: 320px;">
+              <div class="viewer-3d" id="json-viewer-3d">
+                <div class="viewer-placeholder">
+                  <i class="fas fa-file-code"></i>
+                  <p class="text-sm">JSON 3D model will appear here</p>
+                  <p class="text-xs opacity-75 mt-1">
+                    Load a FreeCAD or OnShape JSON file to preview
+                  </p>
+                </div>
+
+                <!-- Loading indicator -->
+                <div id="json-viewer-loading" class="viewer-loading hidden">
+                  <div class="spinner"></div>
+                  <p class="text-sm">Loading JSON model...</p>
+                </div>
+
+                <!-- JSON Viewer controls — hiện sau khi load model, vị trí LEFT -->
+                <div id="json-viewer-controls" class="viewer-controls hidden"
+                  style="left: 10px; right: auto; top: 10px; flex-direction: column; max-width: 40px; gap: 4px;">
+
+                  <!-- Nhóm 1: Điều hướng ViewCube -->
+                  <button class="viewer-control-btn" id="json-toggle-viewcube-btn" title="Bật/Tắt ViewCube Navigation">
+                    <i class="fas fa-cube"></i>
+                  </button>
+
+                  <!-- Separator -->
+                  <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
+
+                  <!-- Nhóm 2: Camera & View -->
+                  <button class="viewer-control-btn" id="json-reset-camera-btn"
+                    title="Reset Camera về góc nhìn mặc định">
+                    <i class="fas fa-home"></i>
+                  </button>
+                  <button class="viewer-control-btn" id="json-select-face-btn"
+                    title="Chọn Face: click vào bất kỳ mặt nào trên model">
+                    <i class="fas fa-hand-pointer"></i>
+                  </button>
+
+                  <!-- Separator -->
+                  <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
+
+                  <!-- Nhóm 3: Hiển thị -->
+                  <button class="viewer-control-btn" id="json-wireframe-toggle-btn"
+                    title="Bật/Tắt Wireframe (hiển thị khung lưới)">
+                    <i class="fas fa-draw-polygon"></i>
+                  </button>
+                  <button class="viewer-control-btn" id="json-color-picker-btn" title="Đổi màu model">
+                    <i class="fas fa-palette"></i>
+                  </button>
+
+                  <!-- Separator -->
+                  <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
+
+                  <!-- Nhóm 4: Xuất -->
+                  <button class="viewer-control-btn" id="json-screenshot-btn" title="Chụp ảnh viewer">
+                    <i class="fas fa-camera"></i>
+                  </button>
+
+                  <!-- Separator -->
+                  <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
+
+                  <!-- Nhóm 5: Debug -->
+                  <button class="viewer-control-btn" id="json-toggle-debug-dot-btn"
+                    title="Bật/Tắt chấm debug tâm hướng mặt">
+                    <i class="fas fa-crosshairs"></i>
+                  </button>
+                </div>
+
+                <!-- JSON Model info -->
+                <div id="json-viewer-info" class="viewer-info hidden">
+                  <div id="json-model-info-text">No JSON model loaded</div>
+                </div>
+
+                <!-- JSON Face Info Tooltip -->
+                <div id="json-face-tooltip" class="face-tooltip hidden">
+                  <div class="tooltip-header">
+                    <span class="face-id">JSON Face</span>
+                    <button class="tooltip-close" onclick="window.jsonModelViewer?.hideFaceTooltip()">×</button>
+                  </div>
+                  <div class="tooltip-body">
+                    <div>Face ID: <span class="json-face-id"></span></div>
+                    <div>Mesh: <span class="json-mesh-name"></span></div>
+                    <div>Format: <span class="json-format"></span></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Floating Info Panel for JSON Viewer -->
+              <div id="json-info-panel"
+                class="absolute bottom-2 left-2 bg-gray-800 bg-opacity-80 text-white text-xs rounded-lg p-3 max-w-xs pointer-events-auto">
+                <h4 id="json-model-filename" class="font-bold mb-2"></h4>
+
+                <!-- Model Info -->
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+                  <div>Vertices:</div>
+                  <div id="json-vertices-count" class="font-mono text-right">-</div>
+                  <div>Faces:</div>
+                  <div id="json-faces-count" class="font-mono text-right">-</div>
+                  <div>Objects:</div>
+                  <div id="json-objects-count" class="font-mono text-right">-</div>
+                  <div>Format:</div>
+                  <div id="json-format-type" class="font-mono text-right">-</div>
+                </div>
+
+                <!-- Geometry Info -->
+                <div id="json-geometry-info" class="mt-3 pt-2 border-t border-gray-600 hidden">
+                  <div class="font-semibold mb-1 text-blue-300">Geometry</div>
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <div>Surface Area:</div>
+                    <div id="json-surface-area" class="font-mono text-right">-</div>
+                    <div>Volume:</div>
+                    <div id="json-volume" class="font-mono text-right">-</div>
+                    <div>Mass:</div>
+                    <div id="json-mass" class="font-mono text-right">-</div>
+                    <div>Material:</div>
+                    <div id="json-material" class="font-mono text-right capitalize">-</div>
+                  </div>
+                </div>
+
+                <!-- Selected Face Info -->
+                <div class="mt-3 pt-2 border-t border-gray-600">
+                  <div id="json-selected-face-info">Click on a face to select</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Download Panel -->
+          <div id="download-panel" class="download-panel hidden">
+            <div class="download-panel-header">
+              <div>
+                <div class="download-panel-title">
+                  <i class="fas fa-download"></i>
+                  <span>Download Files</span>
+                  <span class="file-count-badge">
+                    <i class="fas fa-file"></i>
+                    <span id="available-files-count">0</span> available
+                  </span>
+                </div>
+                <div class="download-panel-subtitle">
+                  Click to download individual files or download all at once
+                </div>
+              </div>
+            </div>
+
+            <!-- Download Grid -->
+            <div class="download-grid">
+              <!-- STEP File -->
+              <button class="download-btn step-btn disabled" id="download-step-btn" data-file-type="step">
+                <span class="download-status unavailable">Unavailable</span>
+                <div class="download-icon">
+                  <i class="fas fa-cube"></i>
+                </div>
+                <div class="download-file-info">
+                  <div class="download-file-name">STEP File</div>
+                  <div class="download-file-size" id="step-file-size">-</div>
+                </div>
+              </button>
+
+              <!-- OBJ File -->
+              <button class="download-btn obj-btn disabled" id="download-obj-btn" data-file-type="obj">
+                <span class="download-status unavailable">Unavailable</span>
+                <div class="download-icon">
+                  <i class="fas fa-shapes"></i>
+                </div>
+                <div class="download-file-info">
+                  <div class="download-file-name">OBJ File</div>
+                  <div class="download-file-size" id="obj-file-size">-</div>
+                </div>
+              </button>
+
+              <!-- JSON File -->
+              <button class="download-btn json-btn disabled" id="download-json-btn" data-file-type="json">
+                <span class="download-status unavailable">Unavailable</span>
+                <div class="download-icon">
+                  <i class="fas fa-code"></i>
+                </div>
+                <div class="download-file-info">
+                  <div class="download-file-name">JSON File</div>
+                  <div class="download-file-size" id="json-file-size">-</div>
+                </div>
+              </button>
+
+              <!-- PDF File -->
+              <button class="download-btn pdf-btn disabled" id="download-pdf-btn" data-file-type="pdf">
+                <span class="download-status unavailable">Unavailable</span>
+                <div class="download-icon">
+                  <i class="fas fa-file-pdf"></i>
+                </div>
+                <div class="download-file-info">
+                  <div class="download-file-name">Technical Drawing</div>
+                  <div class="download-file-size" id="pdf-file-size">-</div>
+                </div>
+              </button>
+            </div>
+
+            <!-- Download All Button -->
+            <button class="download-all-btn" id="download-all-btn" disabled>
+              <i class="fas fa-download"></i>
+              <span>Download All Files</span>
+            </button>
+          </div>
+
+
+          <!-- OBJ Viewer Panel -->
+          <div id="obj-viewer-panel" class="bg-white rounded-2xl shadow-lg overflow-hidden mb-6" style="display: none;">
+            <div class="bg-gradient-to-r from-purple-500 to-pink-600 text-white p-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                  <i class="fas fa-cube mr-3"></i>
+                  <div>
+                    <h3 class="font-semibold">3D Model Viewer</h3>
+                    <p class="text-purple-100 text-sm">
+                      Interactive 3D preview
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button id="fullscreen-viewer-btn"
+                    class="hidden px-3 py-1 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors text-sm"
+                    title="Fullscreen">
+                    <i class="fas fa-expand mr-1"></i>Fullscreen
+                  </button>
+                  <button id="load-obj-btn"
+                    class="px-3 py-1 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors text-sm">
+                    <i class="fas fa-upload mr-1"></i>Load OBJ File
+                  </button>
+                  <!-- Hidden file input for OBJ files -->
+                  <input type="file" id="obj-file-input" accept=".obj" style="display: none;" />
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4">
+
+              <div id="viewer-3d-container" class="h-80 mb-4">
+                <div class="viewer-3d">
+                  <div class="viewer-placeholder">
+                    <i class="fas fa-cube"></i>
+                    <p class="text-sm">3D model will appear here</p>
+                    <p class="text-xs opacity-75 mt-1">
+                      Generate a model to see the preview
+                    </p>
+                  </div>
+
+                  <!-- Loading indicator -->
+                  <div id="viewer-loading" class="viewer-loading hidden">
+                    <div class="spinner"></div>
+                    <p class="text-sm">Loading 3D model...</p>
+                  </div>
+
+                  <!-- Viewer controls -->
+                  <div id="viewer-controls" class="viewer-controls hidden">
+                    <button class="viewer-control-btn" id="reset-camera-btn" title="Reset Camera">
+                      <i class="fas fa-home"></i>
+                    </button>
+                    <button class="viewer-control-btn" id="wireframe-toggle-btn" title="Toggle Wireframe">
+                      <i class="fas fa-project-diagram"></i>
+                    </button>
+                    <button class="viewer-control-btn" id="download-obj-btn" title="Download OBJ">
+                      <i class="fas fa-download"></i>
+                    </button>
+                    <!-- NEW: Unified Intelligent Selection Button -->
+                    <button class="viewer-control-btn hidden" id="unified-select-btn"
+                      title="Intelligent Selection - Auto-detects Cylinders, Curved Surfaces, Faces & Edges (Standard Click)">
+                      <i class="fas fa-magic"></i>
+                    </button>
+
+                    <!-- Face Selection Button -->
+                    <button class="viewer-control-btn" id="select-face-btn"
+                      title="Select Face - Click to enable face selection mode">
+                      <i class="fas fa-hand-pointer"></i>
+                    </button>
+                    <button class="viewer-control-btn hidden" id="select-edge-btn" title="Select Edge (Ctrl+E)">
+                      <i class="fas fa-bezier-curve"></i>
+                    </button>
+                    <button class="viewer-control-btn hidden" id="select-curved-surface-btn"
+                      title="Legacy: Select Circular/Curved Surface (Alt + Click)">
+                      <i class="fas fa-circle-notch"></i>
+                    </button>
+                    <button class="viewer-control-btn hidden" id="toggle-compass-btn"
+                      title="Toggle XYZ Coordinate Compass">
+                      <i class="far fa-compass"></i>
+                    </button>
+                  </div>
+
+                  <!-- Model info -->
+                  <div id="viewer-info" class="viewer-info hidden">
+                    <div id="model-info-text">No model loaded</div>
+                  </div>
+
+                  <!-- Face Info Tooltip -->
+                  <div id="face-tooltip" class="face-tooltip hidden">
+                    <div class="tooltip-header">
+                      <span class="face-id">Face</span>
+                      <button class="tooltip-close" onclick="window.modelViewer?.hideFaceTooltip()">×</button>
+                    </div>
+                    <div class="tooltip-body">
+                      <div>Length: <span class="length"></span></div>
+                      <div>Width: <span class="width"></span></div>
+                      <div>Area: <span class="area"></span></div>
+                    </div>
+                  </div>
+
+                  <!-- Edge Info Tooltip -->
+                  <div id="edge-tooltip" class="edge-tooltip hidden">
+                    <div class="tooltip-header">
+                      <span class="edge-id">Edge</span>
+                      <button class="tooltip-close" onclick="window.modelViewer?.hideEdgeTooltip()">×</button>
+                    </div>
+                    <div class="tooltip-body">
+                      <div>Length: <span class="edge-length"></span></div>
+                    </div>
+                  </div>
+
+                  <!-- Curved Surface Info Tooltip -->
+                  <div id="curved-surface-tooltip" class="curved-surface-tooltip hidden">
+                    <div class="tooltip-header">
+                      <span class="surface-id">Curved Surface</span>
+                      <button class="tooltip-close" onclick="window.modelViewer?.hideCurvedSurfaceTooltip()">×</button>
+                    </div>
+                    <div class="tooltip-body">
+                      <div>Type: <span class="surface-type"></span></div>
+                      <div>Radius: <span class="surface-radius"></span></div>
+                      <div>Area: <span class="surface-area"></span></div>
+                      <div>Circularity: <span class="surface-circularity"></span></div>
+                    </div>
+                  </div>
+
+                  <!-- Curved Surface Info Tooltip -->
+                  <div id="curved-surface-tooltip" class="curved-surface-tooltip hidden">
+                    <div class="tooltip-header">
+                      <span class="surface-id">Curved Surface</span>
+                      <button class="tooltip-close" onclick="window.modelViewer?.hideCurvedSurfaceTooltip()">×</button>
+                    </div>
+                    <div class="tooltip-body">
+                      <div>Type: <span class="surface-type"></span></div>
+                      <div>Radius: <span class="surface-radius"></span></div>
+                      <div>Area: <span class="surface-area"></span></div>
+                      <div>Circularity: <span class="surface-circularity"></span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3D Viewer Debug Tools (initially hidden) -->
+              <div id="viewer-debug-panel" class="border border-gray-200 rounded-lg mb-4 hidden">
+                <div class="p-4">
+                  <h3 class="text-lg font-semibold mb-3">
+                    3D Viewer Debug Tools
+                  </h3>
+
+                  <!-- Debug Tools -->
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <h4 class="font-medium mb-2">1. Check Libraries</h4>
+                      <div class="grid grid-cols-2 gap-2 mb-4">
+                        <button id="check-three"
+                          class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 text-sm">
+                          Check THREE.js
+                        </button>
+                        <button id="check-model-viewer"
+                          class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 text-sm">
+                          Check ModelViewer
+                        </button>
+                        <button id="test-geometric-calculations"
+                          class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 text-sm">
+                          Test Geometric Calculations
+                        </button>
+                        <button id="check-viewer-state"
+                          class="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600 text-sm">
+                          Check Viewer State
+                        </button>
+                        <button id="test-ana-geo"
+                          class="bg-orange-500 text-white py-2 px-4 rounded hover:bg-orange-600 text-sm"
+                          title="Test Ana_Geo geometry analysis system">
+                          🐛 Test Ana_Geo
+                        </button>
+                        <button id="test-race-condition"
+                          class="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600 text-sm"
+                          title="Test race condition fix">
+                          🏁 Test Race Fix
+                        </button>
+                        <button id="test-high-polygon"
+                          class="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600 text-sm"
+                          title="Test high-polygon geometry detection">
+                          🔺 Test High-Poly
+                        </button>
+                        <button id="quick-dependency-check"
+                          class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 text-sm"
+                          title="Quick dependency check">
+                          🔍 Check Deps
+                        </button>
+                        <button id="test-tooltip"
+                          class="bg-pink-500 text-white py-2 px-4 rounded hover:bg-pink-600 text-sm"
+                          title="Test mouse-following tooltip">
+                          🎯 Test Tooltip
+                        </button>
+                        <button id="test-3d-integration"
+                          class="bg-indigo-500 text-white py-2 px-4 rounded hover:bg-indigo-600 text-sm"
+                          title="Test 3D viewer integration">
+                          🔗 Test 3D Integration
+                        </button>
+                        <button id="simulate-mesh-click"
+                          class="bg-teal-500 text-white py-2 px-4 rounded hover:bg-teal-600 text-sm"
+                          title="Simulate mesh click to test tooltip">
+                          🎯 Simulate Click
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 class="font-medium mb-2">2. Check API</h4>
+                      <div class="mb-3">
+                        <input type="text" id="obj-path" class="w-full p-2 border rounded text-sm"
+                          value="outputs/obj/2025-05-30/box_20250530164735.obj" placeholder="Path to OBJ file" />
+                      </div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <button id="check-file"
+                          class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 text-sm">
+                          Check file existence
+                        </button>
+                        <button id="load-model"
+                          class="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600 text-sm">
+                          Load model
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- URL Testing Section -->
+                  <div class="border-t border-gray-200 pt-4 mt-4">
+                    <h4 class="font-medium mb-2">3. URL Analysis</h4>
+                    <div class="mb-3">
+                      <input type="text" id="test-url" class="w-full p-2 border rounded text-sm"
+                        value="/api/3d-viewer/outputs/obj/2025-05-30/box_20250530164735.obj"
+                        placeholder="Enter URL to test" />
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+                      <button id="analyze-url"
+                        class="bg-yellow-500 text-white py-2 px-4 rounded hover:bg-yellow-600 text-sm">
+                        Analyze URL
+                      </button>
+                      <button id="load-url-directly"
+                        class="bg-indigo-500 text-white py-2 px-4 rounded hover:bg-indigo-600 text-sm">
+                        Load URL Directly
+                      </button>
+                      <button id="test-api-get"
+                        class="bg-cyan-500 text-white py-2 px-4 rounded hover:bg-cyan-600 text-sm">
+                        Test GET
+                      </button>
+                      <button id="test-api-head"
+                        class="bg-cyan-500 text-white py-2 px-4 rounded hover:bg-cyan-600 text-sm">
+                        Test HEAD
+                      </button>
+                      <button id="test-download-api"
+                        class="bg-cyan-500 text-white py-2 px-4 rounded hover:bg-cyan-600 text-sm">
+                        Test Download API
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Debug Log -->
+                  <div class="mt-4">
+                    <h4 class="font-medium mb-2">Debug Log</h4>
+                    <div id="debug-log"
+                      class="h-48 bg-gray-900 text-green-400 p-4 rounded-lg overflow-y-auto font-mono text-xs">
+                      <!-- Logs will appear here -->
+                    </div>
+                  </div>
+
+                  <!-- URL Analysis Result -->
+                  <div id="url-analysis" class="mt-4 p-3 bg-gray-100 rounded-lg hidden">
+                    <h4 class="font-semibold text-gray-700 mb-2">
+                      URL Analysis Result
+                    </h4>
+                    <div id="url-analysis-content" class="text-sm"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Code Output (collapsible) -->
+              <div class="border border-gray-200 rounded-lg">
+                <button id="toggle-code-btn"
+                  class="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between">
+                  <span class="text-sm font-medium text-gray-700">
+                    <i class="fas fa-code mr-2"></i>Generated Code
+                  </span>
+                  <i class="fas fa-chevron-down text-gray-400"></i>
+                </button>
+                <div id="code-output-container" class="hidden">
+                  <div id="code-output" class="bg-gray-50 p-4 h-48 overflow-y-auto text-sm border-t border-gray-200">
+                    <div class="flex flex-col items-center justify-center h-full text-gray-400">
+                      <i class="fas fa-code text-2xl mb-2"></i>
+                      <p class="text-center text-sm">
+                        Generated code will appear here
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Quick Actions -->
+          <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div class="p-4 border-b border-gray-200">
+              <h3 class="font-semibold text-gray-800 flex items-center">
+                <i class="fas fa-bolt mr-2 text-yellow-500"></i>
+                Quick Actions
+              </h3>
+            </div>
+            <div class="p-4 space-y-3">
+              <button
+                class="quick-action-btn w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                data-action="box">
+                <div class="flex items-center">
+                  <i class="fas fa-cube text-blue-500 mr-3"></i>
+                  <div>
+                    <p class="text-sm font-medium">Create Box</p>
+                    <p class="text-xs text-gray-500">Simple rectangular box</p>
+                  </div>
+                </div>
+              </button>
+              <button
+                class="quick-action-btn w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                data-action="cylinder">
+                <div class="flex items-center">
+                  <i class="fas fa-circle text-green-500 mr-3"></i>
+                  <div>
+                    <p class="text-sm font-medium">Create Cylinder</p>
+                    <p class="text-xs text-gray-500">Round solid shape</p>
+                  </div>
+                </div>
+              </button>
+              <button
+                class="quick-action-btn w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                data-action="cone">
+                <div class="flex items-center">
+                  <i class="fas fa-play text-purple-500 mr-3"></i>
+                  <div>
+                    <p class="text-sm font-medium">Create Cone</p>
+                    <p class="text-xs text-gray-500">Conical shape</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Chatbot Toggle (for smaller screens) -->
+    <div id="mobile-chat-toggle" class="lg:hidden fixed bottom-6 right-6 z-50">
+      <button
+        class="w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full shadow-lg flex items-center justify-center hover:shadow-xl transition-all">
+        <i class="fas fa-robot text-xl"></i>
+      </button>
+    </div>
+
+    <!-- Hidden elements for compatibility -->
+    <div id="chat-toggle" class="hidden"></div>
+    <div id="chatbot-widget" class="hidden"></div>
+    <div id="chat-history" class="hidden"></div>
+
+    <!-- OPTIMIZED STRUCTURE - Removed duplicates and unused files -->
+
+    <!-- Utility classes -->
+    <!-- performance-manager.js removed - replaced with simple performance.now() -->
+
+    <!-- Geometry detection algorithms REMOVED - using simple mesh selection only -->
+    <!-- All detection algorithms removed for group-based OBJ implementation -->
+
+    <!-- Geometric Analysis for OBJ Viewer -->
+    <script src="/static/js/geometric_analysis_OBJ/GeometryUtils.js?v=20250811"></script>
+    <script src="/static/js/geometric_analysis_OBJ/EdgeAnalyzer.js?v=20250811"></script>
+    <script src="/static/js/geometric_analysis_OBJ/SimpleFaceAnalyzer.js?v=20250811"></script>
+    <script src="/static/js/geometric_analysis_OBJ/GeometryAnalyzer.js?v=20250811"></script>
+    <script src="/static/js/geometric_analysis_OBJ/index.js?v=20250811"></script>
+
+    <script>
+      // Comprehensive Ana_Geo Script Loading Verification System
+      window.anaGeoScriptStatus = {
+        GeometryUtils: false,
+        SimpleFaceAnalyzer: false,
+        EdgeAnalyzer: false,
+        GeometryAnalyzer: false,
+        AnaGeo: false,
+        allLoaded: false
+      };
+
+      // Function to check and update script loading status
+      window.checkAnaGeoScriptStatus = function () {
+        console.log('🔍 Checking Ana_Geo script loading status...');
+
+        // Check if classes are available
+        window.anaGeoScriptStatus.GeometryUtils = typeof GeometryUtils !== 'undefined';
+        window.anaGeoScriptStatus.SimpleFaceAnalyzer = typeof SimpleFaceAnalyzer !== 'undefined';
+        window.anaGeoScriptStatus.EdgeAnalyzer = typeof EdgeAnalyzer !== 'undefined';
+        window.anaGeoScriptStatus.GeometryAnalyzer = typeof GeometryAnalyzer !== 'undefined';
+        window.anaGeoScriptStatus.AnaGeo = typeof AnaGeo !== 'undefined';
+
+        // Check if all are loaded
+        window.anaGeoScriptStatus.allLoaded =
+          window.anaGeoScriptStatus.GeometryUtils &&
+          window.anaGeoScriptStatus.SimpleFaceAnalyzer &&
+          window.anaGeoScriptStatus.EdgeAnalyzer &&
+          window.anaGeoScriptStatus.GeometryAnalyzer &&
+          window.anaGeoScriptStatus.AnaGeo;
+
+        // Log status
+        Object.entries(window.anaGeoScriptStatus).forEach(([key, value]) => {
+          const status = value ? '✅' : '❌';
+          console.log(`${status} ${key}: ${value}`);
+        });
+
+        return window.anaGeoScriptStatus.allLoaded;
+      };
+
+      // Initial check
+      setTimeout(() => {
+        console.log('🔍 Initial Ana_Geo script status check...');
+
+        // Detailed individual checks
+        console.log('Checking individual classes:');
+        console.log('- GeometryUtils:', typeof GeometryUtils, GeometryUtils);
+        console.log('- SimpleFaceAnalyzer:', typeof SimpleFaceAnalyzer, SimpleFaceAnalyzer);
+        console.log('- GeometryAnalyzer:', typeof GeometryAnalyzer, GeometryAnalyzer);
+        console.log('- AnaGeo:', typeof AnaGeo, AnaGeo);
+
+        const allLoaded = window.checkAnaGeoScriptStatus();
+
+        if (allLoaded) {
+          console.log('✅ All Ana_Geo scripts loaded successfully');
+
+          // Try to instantiate each class to check for errors
+          try {
+            console.log('🧪 Testing GeometryUtils instantiation...');
+            const testUtils = new GeometryUtils();
+            console.log('✅ GeometryUtils instantiated successfully');
+          } catch (error) {
+            console.error('❌ GeometryUtils instantiation failed:', error);
+          }
+
+          try {
+            console.log('🧪 Testing SimpleFaceAnalyzer instantiation...');
+            const testAnalyzer = new SimpleFaceAnalyzer();
+            console.log('✅ SimpleFaceAnalyzer instantiated successfully');
+          } catch (error) {
+            console.error('❌ SimpleFaceAnalyzer instantiation failed:', error);
+          }
+
+          try {
+            console.log('🧪 Testing GeometryAnalyzer instantiation...');
+            const testGeoAnalyzer = new GeometryAnalyzer();
+            console.log('✅ GeometryAnalyzer instantiated successfully');
+          } catch (error) {
+            console.error('❌ GeometryAnalyzer instantiation failed:', error);
+          }
+        } else {
+          console.warn('⚠️ Some Ana_Geo scripts failed to load - will retry during OBJ initialization');
+        }
+      }, 100); // Small delay to ensure scripts have time to load
+    </script>
+
+    <!-- Main application files -->
+    <!-- All complex selection algorithms removed - simple mesh selection mode active -->
+    <script src="/static/js/legacy/3d-viewer.js"></script>
+    <script>
+      window.getCadPriorityForSSE = function () {
+        const priorityInput = document.getElementById("priority-input");
+        const parsed = Number.parseInt(priorityInput?.value ?? "0", 10);
+        const priority = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
+        if (priorityInput) priorityInput.value = priority.toString();
+        return priority;
+      };
+
+      (function installPriorityEventSourceGuard() {
+        if (window.__priorityEventSourceGuardInstalled || !window.EventSource) return;
+
+        const NativeEventSource = window.EventSource;
+        window.EventSource = function (url, config) {
+          try {
+            const urlText = String(url);
+            if (urlText.includes("/api/generate-cad-stream") && !urlText.includes("priority=")) {
+              const normalizedUrl = new URL(urlText, window.location.origin);
+              normalizedUrl.searchParams.set("priority", window.getCadPriorityForSSE().toString());
+              console.log("[PRIORITY] EventSource guard appended priority:", normalizedUrl.searchParams.get("priority"));
+              return new NativeEventSource(normalizedUrl.pathname + normalizedUrl.search, config);
+            }
+          } catch (error) {
+            console.warn("[PRIORITY] EventSource guard could not normalize URL:", error);
+          }
+
+          return new NativeEventSource(url, config);
+        };
+        window.EventSource.prototype = NativeEventSource.prototype;
+        window.__priorityEventSourceGuardInstalled = true;
+      })();
+    </script>
+    <script src="/static/js/legacy/main.js?v=export-eta-two-times-20260623"></script>
+    <script>
+      // Debug panel functionality
+      document.addEventListener("DOMContentLoaded", () => {
+        // Diagnostic check for Ana_Geo dependencies
+        console.log('🔍 Starting Ana_Geo diagnostic check...');
+
+        // Check if THREE.js is loaded
+        console.log('THREE.js loaded:', typeof THREE !== 'undefined');
+
+        // Check each Ana_Geo class
+        const requiredClasses = [
+          'GeometryUtils',
+          'SimpleFaceAnalyzer',
+          'EdgeAnalyzer',
+          'GeometryAnalyzer',
+          'AnaGeo'
+        ];
+
+        // Try to initialize Ana_Geo for edge selection even without OBJ
+        setTimeout(() => {
+          if (window.ensureAnaGeoReady) {
+            console.log('🔧 Attempting to initialize Ana_Geo for edge selection...');
+            window.ensureAnaGeoReady();
+          }
+        }, 2000);
+
+        requiredClasses.forEach(className => {
+          const isLoaded = typeof window[className] !== 'undefined';
+          console.log(`${className} loaded:`, isLoaded);
+          if (!isLoaded) {
+            console.error(`❌ Missing class: ${className}`);
+          }
+        });
+
+        // Ana_Geo initialization removed from DOMContentLoaded to prevent race conditions
+        // Ana_Geo will be initialized only when OBJ loading completes via initAnaGeoWhenReady()
+        console.log('ℹ️ Ana_Geo will be initialized after OBJ loading completes');
+
+        const debugPanel = document.getElementById("viewer-debug-panel");
+        const toggleDebugBtn = document.getElementById("toggle-debug-btn");
+        const debugLog = document.getElementById("debug-log");
+        const objPathInput = document.getElementById("obj-path");
+        const testUrlInput = document.getElementById("test-url");
+        const urlAnalysisDiv = document.getElementById("url-analysis");
+        const urlAnalysisContent = document.getElementById(
+          "url-analysis-content"
+        );
+
+        // Toggle debug panel
+        if (toggleDebugBtn && debugPanel) {
+          toggleDebugBtn.addEventListener("click", () => {
+            debugPanel.classList.toggle("hidden");
+
+            // Log initial message when panel is opened
+            if (!debugPanel.classList.contains("hidden")) {
+              addDebugLog("Debug panel opened", "info");
+            }
+          });
+        }
+
+        // Add log entry to debug log
+        function addDebugLog(message, type = "info") {
+          if (!debugLog) return;
+
+          const colors = {
+            info: "text-blue-400",
+            success: "text-green-400",
+            warning: "text-yellow-400",
+            error: "text-red-400",
+          };
+          const time = new Date().toLocaleTimeString();
+          const entry = document.createElement("div");
+          entry.className = colors[type] || colors.info;
+          entry.innerHTML = `[${time}] ${message}`;
+          debugLog.appendChild(entry);
+          debugLog.scrollTop = debugLog.scrollHeight;
+        }
+
+        // Check THREE.js
+        document
+          .getElementById("check-three")
+          ?.addEventListener("click", () => {
+            try {
+              if (typeof THREE === "undefined") {
+                addDebugLog("THREE is not defined!", "error");
+              } else {
+                addDebugLog(
+                  `THREE.js loaded. Version: ${THREE.REVISION}`,
+                  "success"
+                );
+                // Check required components
+                if (typeof THREE.OBJLoader === "undefined") {
+                  addDebugLog("THREE.OBJLoader is not available", "warning");
+                }
+                if (typeof THREE.OrbitControls === "undefined") {
+                  addDebugLog(
+                    "THREE.OrbitControls is not available",
+                    "warning"
+                  );
+                }
+              }
+            } catch (error) {
+              addDebugLog(`Error checking THREE: ${error.message}`, "error");
+            }
+          });
+
+        // Test Geometric Calculations
+        document
+          .getElementById("test-geometric-calculations")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("Testing enhanced geometric calculations...", "info");
+
+              // Test 1: Rectangle dimensions
+              if (typeof GeometryUtils !== 'undefined' && GeometryUtils.enhanceRectangleDimensions) {
+                const testTriangles = [
+                  { vertices: [new THREE.Vector3(0, 0, 0), new THREE.Vector3(10, 0, 0), new THREE.Vector3(0, 5, 0)] },
+                  { vertices: [new THREE.Vector3(10, 0, 0), new THREE.Vector3(10, 5, 0), new THREE.Vector3(0, 5, 0)] }
+                ];
+
+                const rectDims = GeometryUtils.enhanceRectangleDimensions(testTriangles);
+                addDebugLog(`Rectangle test: Length=${rectDims.displayLength?.toFixed(2)}mm, Width=${rectDims.displayWidth?.toFixed(2)}mm, IsSquare=${rectDims.isSquare}`, "success");
+
+                // Test 2: Shape-specific parameters
+                const params = GeometryUtils.calculateShapeSpecificParameters('rectangle', {}, testTriangles);
+                addDebugLog(`Shape parameters: Length=${params.length?.toFixed(2)}mm, Width=${params.width?.toFixed(2)}mm`, "success");
+
+                // Test 3: Check if SelectionManager has enhanced functions
+                if (window.modelViewer && window.modelViewer.selectionManager) {
+                  addDebugLog("SelectionManager is available and ready", "success");
+                } else {
+                  addDebugLog("SelectionManager not available", "warning");
+                }
+
+                addDebugLog("✅ Enhanced geometric calculations are working correctly!", "success");
+              } else {
+                addDebugLog("❌ GeometryUtils enhanced functions not available", "error");
+              }
+            } catch (error) {
+              addDebugLog(`❌ Geometric calculations test failed: ${error.message}`, "error");
+            }
+          });
+
+        // Check Viewer State
+        document
+          .getElementById("check-viewer-state")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("Checking 3D Viewer state...", "info");
+
+              if (window.modelViewer && typeof window.modelViewer.checkViewerState === 'function') {
+                const state = window.modelViewer.checkViewerState();
+
+                // Log the state check results
+                addDebugLog("=== 3D Viewer State Check Results ===", "info");
+                addDebugLog(`THREE.js: ${state.threeJs ? '✅' : '❌'}`, state.threeJs ? "success" : "error");
+                addDebugLog(`OBJ Loader: ${state.objLoader ? '✅' : '❌'}`, state.objLoader ? "success" : "error");
+                addDebugLog(`Orbit Controls: ${state.orbitControls ? '✅' : '❌'}`, state.orbitControls ? "success" : "error");
+                addDebugLog(`Selection Manager: ${state.selectionManager ? '✅' : '❌'}`, state.selectionManager ? "success" : "error");
+                addDebugLog(`Unified Detector: ${state.unifiedDetector ? '✅' : '❌'}`, state.unifiedDetector ? "success" : "error");
+                addDebugLog(`Geometry Utils: ${state.geometryUtils ? '✅' : '❌'}`, state.geometryUtils ? "success" : "error");
+                addDebugLog(`Angle Threshold Manager: ${state.angleThresholdManager ? '✅' : '❌'}`, state.angleThresholdManager ? "success" : "error");
+                addDebugLog(`Viewer Initialized: ${state.viewerInitialized ? '✅' : '❌'}`, state.viewerInitialized ? "success" : "error");
+                addDebugLog(`Selection Manager Instance: ${state.selectionManagerInstance ? '✅' : '❌'}`, state.selectionManagerInstance ? "success" : "error");
+                addDebugLog(`Current Model: ${state.currentModel ? '✅' : '❌'}`, state.currentModel ? "success" : "warning");
+
+                // Overall assessment
+                const criticalComponents = [state.threeJs, state.objLoader, state.orbitControls, state.viewerInitialized];
+                const allCriticalOk = criticalComponents.every(c => c);
+
+                if (allCriticalOk) {
+                  addDebugLog("✅ All critical components are working - OBJ loading should work", "success");
+                } else {
+                  addDebugLog("❌ Some critical components are missing - this may cause OBJ loading issues", "error");
+                }
+
+              } else {
+                addDebugLog("❌ ModelViewer not available or checkViewerState method missing", "error");
+              }
+            } catch (error) {
+              addDebugLog(`❌ Error checking viewer state: ${error.message}`, "error");
+            }
+          });
+
+        // Check ModelViewer
+        document
+          .getElementById("check-model-viewer")
+          ?.addEventListener("click", () => {
+            try {
+              if (typeof ModelViewer3D === "undefined") {
+                addDebugLog("ModelViewer3D is not defined!", "error");
+              } else {
+                addDebugLog("ModelViewer3D class is available", "success");
+
+                // Check if modelViewer already exists globally
+                if (window.modelViewer) {
+                  addDebugLog(
+                    "ModelViewer instance already exists in window",
+                    "success"
+                  );
+                } else {
+                  // Try to create instance
+                  try {
+                    window.modelViewer = new ModelViewer3D(
+                      "viewer-3d-container"
+                    );
+                    addDebugLog(
+                      "ModelViewer3D initialized successfully",
+                      "success"
+                    );
+                  } catch (e) {
+                    addDebugLog(
+                      `Failed to initialize ModelViewer3D: ${e.message}`,
+                      "error"
+                    );
+                  }
+                }
+              }
+            } catch (error) {
+              addDebugLog(
+                `Error checking ModelViewer: ${error.message}`,
+                "error"
+              );
+            }
+          });
+
+        // Check if file exists
+        document
+          .getElementById("check-file")
+          ?.addEventListener("click", async () => {
+            if (!objPathInput) return;
+
+            const objPath = objPathInput.value.trim();
+            if (!objPath) {
+              addDebugLog("Please enter a file path", "warning");
+              return;
+            }
+
+            addDebugLog(`Checking file: ${objPath}`, "info");
+
+            // Prepare URL - ensure proper format
+            let url = objPath;
+            if (!url.startsWith("/api/")) {
+              url = `/api/3d-viewer/${url}`;
+            }
+
+            try {
+              addDebugLog(`Sending HEAD request to: ${url}`, "info");
+              const response = await authenticatedFetch(url, {
+                method: "HEAD",
+                headers: {
+                  Accept: "*/*",
+                  "Cache-Control": "no-cache",
+                },
+              });
+
+              addDebugLog(
+                `Response status: ${response.status} ${response.statusText}`,
+                response.ok ? "success" : "error"
+              );
+
+              // Log response headers
+              const headers = {};
+              response.headers.forEach((value, key) => {
+                headers[key] = value;
+              });
+              addDebugLog(
+                `Response headers: ${JSON.stringify(headers, null, 2)}`,
+                "info"
+              );
+
+              if (response.ok) {
+                addDebugLog(`File exists: ${url}`, "success");
+              } else {
+                addDebugLog(
+                  `File not found: ${url} (${response.status} - ${response.statusText})`,
+                  "error"
+                );
+              }
+            } catch (error) {
+              addDebugLog(`Network error: ${error.message}`, "error");
+              console.error("Fetch error details:", error);
+            }
+          });
+
+        // Load model with enhanced error handling
+        document
+          .getElementById("load-model")
+          ?.addEventListener("click", async () => {
+            if (!objPathInput) return;
+
+            const objPath = objPathInput.value.trim();
+            if (!objPath) {
+              addDebugLog("Please enter a file path", "warning");
+              return;
+            }
+
+            if (!window.modelViewer) {
+              addDebugLog(
+                "ModelViewer not initialized. Initializing now...",
+                "warning"
+              );
+              try {
+                window.modelViewer = new ModelViewer3D("viewer-3d-container");
+              } catch (e) {
+                addDebugLog(
+                  `Failed to initialize ModelViewer: ${e.message}`,
+                  "error"
+                );
+                return;
+              }
+            }
+
+            // Extract filename from path
+            const fileName = objPath.split("/").pop();
+
+            addDebugLog(`Loading model: ${objPath}`, "info");
+
+            // Try a GET request first to diagnose issues
+            try {
+              addDebugLog(`Testing GET request to: ${objPath}`, "info");
+              let testUrl = objPath;
+              if (!testUrl.startsWith("/api/")) {
+                testUrl = `/api/3d-viewer/${testUrl}`;
+              }
+
+              const response = await authenticatedFetch(testUrl, {
+                method: "GET",
+                headers: {
+                  Accept: "*/*",
+                  "Cache-Control": "no-cache",
+                },
+              });
+
+              addDebugLog(
+                `GET test response: ${response.status} ${response.statusText}`,
+                response.ok ? "success" : "error"
+              );
+
+              if (!response.ok) {
+                // Try fallback with a different URL format
+                const fallbackUrl = `/api/3d-viewer/outputs/obj/2025-05-30/${fileName}`;
+                addDebugLog(`Trying fallback URL: ${fallbackUrl}`, "warning");
+
+                const fallbackResponse = await authenticatedFetch(fallbackUrl, {
+                  method: "GET",
+                });
+                addDebugLog(
+                  `Fallback response: ${fallbackResponse.status} ${fallbackResponse.statusText}`,
+                  fallbackResponse.ok ? "success" : "error"
+                );
+
+                if (fallbackResponse.ok) {
+                  // Update path to use fallback
+                  objPath = fallbackUrl;
+                }
+              }
+            } catch (error) {
+              addDebugLog(`GET test error: ${error.message}`, "error");
+            }
+
+            // Now try loading the model
+            try {
+              addDebugLog(
+                `Attempting to load model with path: ${objPath}`,
+                "info"
+              );
+              const success = await window.modelViewer.loadModel(
+                objPath,
+                fileName
+              );
+              if (success) {
+                addDebugLog(
+                  `Model loaded successfully: ${fileName}`,
+                  "success"
+                );
+              } else {
+                addDebugLog("Model failed to load", "error");
+              }
+            } catch (error) {
+              addDebugLog(`Error loading model: ${error.message}`, "error");
+              console.error("Load model error details:", error);
+            }
+          });
+
+        // URL analysis
+        document
+          .getElementById("analyze-url")
+          ?.addEventListener("click", () => {
+            if (!testUrlInput || !urlAnalysisDiv || !urlAnalysisContent) return;
+
+            const url = testUrlInput.value.trim();
+            if (!url) {
+              addDebugLog("Please enter a URL to analyze", "warning");
+              return;
+            }
+
+            addDebugLog(`Analyzing URL: ${url}`, "info");
+
+            try {
+              // Parse URL
+              const parser = document.createElement("a");
+              parser.href = url.startsWith("http")
+                ? url
+                : window.location.origin + url;
+
+              // Get URL parts
+              const protocol = parser.protocol;
+              const host = parser.host;
+              const path = parser.pathname;
+              const queryString = parser.search;
+              const hash = parser.hash;
+
+              // Break down path parts
+              const pathParts = path.split("/").filter((part) => part);
+              const extension = path.split(".").pop();
+
+              // Analyze possible issues
+              const issues = [];
+              if (path.includes("//"))
+                issues.push("URL contains double slashes");
+              if (!extension) issues.push("URL does not have a file extension");
+              if (
+                extension &&
+                !["obj", "mtl", "glb", "stl"].includes(
+                  extension.toLowerCase()
+                )
+              ) {
+                issues.push("File extension is not a common 3D format");
+              }
+
+              // Suggested fixes
+              const suggestions = [];
+              if (issues.length > 0) {
+                if (path.includes("//")) {
+                  suggestions.push(
+                    "Remove double slashes: " + path.replace(/\/+/g, "/")
+                  );
+                }
+
+                // Suggest direct download URL
+                if (path.includes("api/3d-viewer")) {
+                  const downloadPath = path.replace(
+                    "/api/3d-viewer",
+                    "/download"
+                  );
+                  suggestions.push(`Try download endpoint: ${downloadPath}`);
+                }
+              }
+
+              // Create analysis result
+              const analysis = {
+                original: url,
+                absoluteUrl: parser.href,
+                protocol,
+                host,
+                path,
+                queryString,
+                hash,
+                pathParts,
+                extension,
+                issues,
+                suggestions,
+              };
+
+              // Display analysis
+              urlAnalysisDiv.classList.remove("hidden");
+              urlAnalysisContent.innerHTML = `
+              <div class="grid grid-cols-1 gap-2">
+                <div><strong>Original:</strong> ${analysis.original}</div>
+                <div><strong>Absolute URL:</strong> ${analysis.absoluteUrl
+                }</div>
+                <div><strong>Protocol:</strong> ${analysis.protocol}</div>
+                <div><strong>Host:</strong> ${analysis.host}</div>
+                <div><strong>Path:</strong> ${analysis.path}</div>
+                <div><strong>Path Parts:</strong> ${analysis.pathParts.join(
+                  " / "
+                )}</div>
+                <div><strong>Extension:</strong> ${analysis.extension || "None"
+                }</div>
+
+                ${analysis.issues.length > 0
+                  ? `
+                  <div class="mt-2">
+                    <strong class="text-red-500">Issues (${analysis.issues.length
+                  }):</strong>
+                    <ul class="list-disc ml-4 text-red-500">
+                      ${analysis.issues
+                    .map((issue) => `<li>${issue}</li>`)
+                    .join("")}
+                    </ul>
+                  </div>
+                `
+                  : '<div class="text-green-500 mt-2"><strong>No issues detected</strong></div>'
+                }
+
+                ${analysis.suggestions.length > 0
+                  ? `
+                  <div class="mt-2">
+                    <strong class="text-blue-500">Suggestions:</strong>
+                    <ul class="list-disc ml-4 text-blue-500">
+                      ${analysis.suggestions
+                    .map((suggestion) => `<li>${suggestion}</li>`)
+                    .join("")}
+                    </ul>
+                  </div>
+                `
+                  : ""
+                }
+              </div>
+            `;
+
+              addDebugLog("URL analysis complete", "success");
+            } catch (error) {
+              addDebugLog(`Error analyzing URL: ${error.message}`, "error");
+              console.error("URL analysis error:", error);
+            }
+          });
+
+        // Load URL directly
+        document
+          .getElementById("load-url-directly")
+          ?.addEventListener("click", () => {
+            if (!testUrlInput) return;
+
+            const url = testUrlInput.value.trim();
+            if (!url) {
+              addDebugLog("Please enter a URL to load", "warning");
+              return;
+            }
+
+            addDebugLog(`Opening URL directly: ${url}`, "info");
+
+            // Open URL in new tab
+            window.open(url, "_blank");
+          });
+
+        // Test API with GET
+        document
+          .getElementById("test-api-get")
+          ?.addEventListener("click", async () => {
+            if (!testUrlInput) return;
+
+            const url = testUrlInput.value.trim();
+            if (!url) {
+              addDebugLog("Please enter a URL to test", "warning");
+              return;
+            }
+
+            addDebugLog(`Testing GET request to: ${url}`, "info");
+
+            try {
+              const response = await authenticatedFetch(url, {
+                method: "GET",
+                headers: {
+                  Accept: "*/*",
+                  "Cache-Control": "no-cache",
+                },
+              });
+
+              addDebugLog(
+                `GET response status: ${response.status} ${response.statusText}`,
+                response.ok ? "success" : "error"
+              );
+
+              // Log response headers
+              const headers = {};
+              response.headers.forEach((value, key) => {
+                headers[key] = value;
+              });
+              addDebugLog(
+                `Response headers: ${JSON.stringify(headers, null, 2)}`,
+                "info"
+              );
+
+              // Try to get response body for text files
+              const contentType = response.headers.get("content-type");
+              if (
+                response.ok &&
+                contentType &&
+                (contentType.includes("text") || contentType.includes("json"))
+              ) {
+                const body = await response.text();
+                addDebugLog(
+                  `Response body (first 100 chars): ${body.substring(
+                    0,
+                    100
+                  )}...`,
+                  "info"
+                );
+              }
+            } catch (error) {
+              addDebugLog(`GET request error: ${error.message}`, "error");
+              console.error("GET error details:", error);
+            }
+          });
+
+        // Test API with HEAD
+        document
+          .getElementById("test-api-head")
+          ?.addEventListener("click", async () => {
+            if (!testUrlInput) return;
+
+            const url = testUrlInput.value.trim();
+            if (!url) {
+              addDebugLog("Please enter a URL to test", "warning");
+              return;
+            }
+
+            addDebugLog(`Testing HEAD request to: ${url}`, "info");
+
+            try {
+              const response = await authenticatedFetch(url, {
+                method: "HEAD",
+                headers: {
+                  Accept: "*/*",
+                  "Cache-Control": "no-cache",
+                },
+              });
+
+              addDebugLog(
+                `HEAD response status: ${response.status} ${response.statusText}`,
+                response.ok ? "success" : "error"
+              );
+
+              // Log response headers
+              const headers = {};
+              response.headers.forEach((value, key) => {
+                headers[key] = value;
+              });
+              addDebugLog(
+                `Response headers: ${JSON.stringify(headers, null, 2)}`,
+                "info"
+              );
+            } catch (error) {
+              addDebugLog(`HEAD request error: ${error.message}`, "error");
+              console.error("HEAD error details:", error);
+            }
+          });
+
+        // Test download API
+        document
+          .getElementById("test-download-api")
+          ?.addEventListener("click", async () => {
+            if (!testUrlInput) return;
+
+            const url = testUrlInput.value.trim();
+            if (!url) {
+              addDebugLog("Please enter a URL to test", "warning");
+              return;
+            }
+
+            // Convert 3d-viewer URL to download URL
+            let downloadUrl = url;
+            if (url.includes("/api/3d-viewer/")) {
+              downloadUrl = url.replace("/api/3d-viewer/", "/download/");
+            }
+
+            addDebugLog(`Testing download URL: ${downloadUrl}`, "info");
+
+            try {
+              const response = await authenticatedFetch(downloadUrl, {
+                method: "GET",
+                headers: {
+                  Accept: "*/*",
+                  "Cache-Control": "no-cache",
+                },
+              });
+
+              addDebugLog(
+                `Download response status: ${response.status} ${response.statusText}`,
+                response.ok ? "success" : "error"
+              );
+
+              // Log response headers
+              const headers = {};
+              response.headers.forEach((value, key) => {
+                headers[key] = value;
+              });
+              addDebugLog(
+                `Response headers: ${JSON.stringify(headers, null, 2)}`,
+                "info"
+              );
+
+              if (response.ok) {
+                addDebugLog(
+                  "Download URL works! File can be downloaded.",
+                  "success"
+                );
+                // Open download in new tab
+                window.open(downloadUrl, "_blank");
+              }
+            } catch (error) {
+              addDebugLog(`Download request error: ${error.message}`, "error");
+              console.error("Download error details:", error);
+            }
+          });
+
+        // Test Ana_Geo System
+        document
+          .getElementById("test-ana-geo")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("🐛 Testing Ana_Geo system...", "info");
+
+              // Check if Ana_Geo is initialized
+              if (typeof window.anaGeo === 'undefined') {
+                addDebugLog("❌ Ana_Geo system not initialized", "error");
+                return;
+              }
+
+              addDebugLog("✅ Ana_Geo system found", "success");
+
+              // Check Ana_Geo components
+              const anaGeo = window.anaGeo;
+              addDebugLog(`Initialized: ${anaGeo.isInitialized}`, anaGeo.isInitialized ? "success" : "warning");
+              addDebugLog(`Geometry Analyzer: ${anaGeo.geometryAnalyzer ? '✅' : '❌'}`, anaGeo.geometryAnalyzer ? "success" : "error");
+              addDebugLog(`Analysis History: ${anaGeo.analysisHistory.length} entries`, "info");
+
+              // Use the built-in test method
+              if (anaGeo.testAnalysis && typeof anaGeo.testAnalysis === 'function') {
+                addDebugLog("Running built-in Ana_Geo test...", "info");
+                anaGeo.testAnalysis();
+                addDebugLog("✅ Built-in test initiated - check console for detailed results", "success");
+
+                // Add manual test buttons
+                const testButton = document.createElement('button');
+                testButton.textContent = '🧪 Run Vertex Analysis Test';
+                testButton.style.cssText = 'margin: 10px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
+                testButton.onclick = () => {
+                  console.log('🔬 Manual vertex analysis test triggered...');
+                  if (window.testVertexAnalysis) {
+                    window.testVertexAnalysis();
+                  } else {
+                    console.error('❌ testVertexAnalysis function not available');
+                  }
+                };
+                debugPanel.appendChild(testButton);
+
+                // Add dependency check button
+                const depButton = document.createElement('button');
+                depButton.textContent = '🔍 Check Dependencies';
+                depButton.style.cssText = 'margin: 10px; padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;';
+                depButton.onclick = () => {
+                  if (window.checkAnaGeoDependencies) {
+                    window.checkAnaGeoDependencies();
+                  } else {
+                    console.error('❌ checkAnaGeoDependencies function not available');
+                  }
+                };
+                debugPanel.appendChild(depButton);
+
+                // Add Ana_Geo test button
+                const anaGeoButton = document.createElement('button');
+                anaGeoButton.textContent = '🚀 Test Ana_Geo System';
+                anaGeoButton.style.cssText = 'margin: 10px; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;';
+                anaGeoButton.onclick = () => {
+                  if (window.testAnaGeoSystem) {
+                    window.testAnaGeoSystem();
+                  } else {
+                    console.error('❌ testAnaGeoSystem function not available');
+                  }
+                };
+                debugPanel.appendChild(anaGeoButton);
+              } else {
+                addDebugLog("❌ Built-in test method not available", "error");
+              }
+
+            } catch (error) {
+              addDebugLog(`❌ Error testing Ana_Geo: ${error.message}`, "error");
+              console.error("Ana_Geo test error:", error);
+            }
+          });
+
+        // Test Race Condition Fix
+        document
+          .getElementById("test-race-condition")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("🏁 Testing race condition fix...", "info");
+
+              if (typeof window.testRaceConditionFix === 'function') {
+                window.testRaceConditionFix();
+                addDebugLog("✅ Race condition test initiated - check console for results", "success");
+              } else {
+                addDebugLog("❌ testRaceConditionFix function not available", "error");
+              }
+            } catch (error) {
+              addDebugLog(`❌ Error testing race condition: ${error.message}`, "error");
+              console.error("Race condition test error:", error);
+            }
+          });
+
+        // Test High-Polygon Detection
+        document
+          .getElementById("test-high-polygon")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("🔺 Testing high-polygon geometry detection...", "info");
+
+              if (typeof window.testHighPolygonDetection === 'function') {
+                const results = window.testHighPolygonDetection();
+                addDebugLog("✅ High-polygon detection test completed - check console for detailed results", "success");
+
+                if (results) {
+                  addDebugLog(`Hole: ${results.cylindrical?.type || 'unknown'}`, "info");
+                  addDebugLog(`Curved: ${results.curved?.type || 'unknown'}`, "info");
+                  addDebugLog(`Medium: ${results.medium?.type || 'unknown'}`, "info");
+                }
+              } else {
+                addDebugLog("❌ testHighPolygonDetection function not available", "error");
+              }
+            } catch (error) {
+              addDebugLog(`❌ Error testing high-polygon detection: ${error.message}`, "error");
+              console.error("High-polygon test error:", error);
+            }
+          });
+
+        // Quick Dependency Check
+        document
+          .getElementById("quick-dependency-check")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("🔍 Running quick dependency check...", "info");
+
+              if (typeof window.quickDependencyCheck === 'function') {
+                const allLoaded = window.quickDependencyCheck();
+                if (allLoaded) {
+                  addDebugLog("✅ All dependencies loaded successfully", "success");
+                } else {
+                  addDebugLog("❌ Some dependencies are missing", "error");
+                }
+              } else {
+                addDebugLog("❌ quickDependencyCheck function not available", "error");
+              }
+            } catch (error) {
+              addDebugLog(`❌ Error checking dependencies: ${error.message}`, "error");
+              console.error("Dependency check error:", error);
+            }
+          });
+
+        // Test Tooltip System
+        document
+          .getElementById("test-tooltip")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("🎯 Testing tooltip system...", "info");
+
+              // Check if Ana_Geo is available
+              if (typeof window.anaGeo === 'undefined') {
+                addDebugLog("❌ Ana_Geo system not available for tooltip test", "error");
+                return;
+              }
+
+              // Create a realistic analysis result for testing
+              const testAnalysisResult = {
+                success: true,
+                basicInfo: {
+                  groupName: "test_cylinder_face_01",
+                  triangles: 24,
+                  vertices: 48,
+                  clickPoint: { x: "0.00", y: "0.00", z: "0.00" },
+                  boundingBox: {
+                    size: { x: 50.8, y: 50.8, z: 25.4 },
+                    center: { x: 0, y: 0, z: 0 }
+                  }
+                },
+                shapeType: "cylinder",
+                detailedAnalysis: {
+                  available: true,
+                  radius: 25.4,
+                  height: 50.8,
+                  volume: 51473.2,
+                  surfaceArea: 12158.4,
+                  quality: {
+                    score: 85,
+                    level: "good"
+                  }
+                },
+                timestamp: new Date().toISOString()
+              };
+
+              // Simulate mouse position
+              const mousePosition = {
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2
+              };
+
+              addDebugLog(`Creating analysis tooltip at (${mousePosition.x}, ${mousePosition.y})`, "info");
+
+              // Show the analysis tooltip
+              window.anaGeo.showTooltip(testAnalysisResult, mousePosition);
+              addDebugLog("✅ Analysis tooltip displayed successfully", "success");
+
+              // Auto-hide after 5 seconds
+              setTimeout(() => {
+                window.anaGeo.hideTooltip();
+                addDebugLog("Analysis tooltip hidden", "info");
+              }, 5000);
+
+            } catch (error) {
+              addDebugLog(`❌ Error testing tooltip: ${error.message}`, "error");
+              console.error("Tooltip test error:", error);
+            }
+          });
+
+        // Test 3D Viewer Integration
+        document
+          .getElementById("test-3d-integration")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("🔗 Testing 3D viewer integration...", "info");
+
+              // Check if Ana_Geo is available
+              if (typeof window.anaGeo === 'undefined') {
+                addDebugLog("❌ Ana_Geo system not available", "error");
+                return;
+              }
+
+              // Test 3D viewer integration
+              if (window.anaGeo.test3DViewerIntegration && typeof window.anaGeo.test3DViewerIntegration === 'function') {
+                const integrationResult = window.anaGeo.test3DViewerIntegration();
+                if (integrationResult) {
+                  addDebugLog("✅ 3D viewer integration test passed", "success");
+                } else {
+                  addDebugLog("❌ 3D viewer integration test failed", "error");
+                }
+              } else {
+                addDebugLog("❌ 3D integration test method not available", "error");
+              }
+
+              // Additional checks
+              addDebugLog(`ModelViewer available: ${typeof window.modelViewer !== 'undefined' ? '✅' : '❌'}`,
+                typeof window.modelViewer !== 'undefined' ? "success" : "error");
+
+              if (window.modelViewer) {
+                addDebugLog(`Renderer available: ${window.modelViewer.renderer ? '✅' : '❌'}`,
+                  window.modelViewer.renderer ? "success" : "error");
+                addDebugLog(`Scene available: ${window.modelViewer.scene ? '✅' : '❌'}`,
+                  window.modelViewer.scene ? "success" : "error");
+              }
+
+            } catch (error) {
+              addDebugLog(`❌ Error testing 3D integration: ${error.message}`, "error");
+              console.error("3D integration test error:", error);
+            }
+          });
+
+        // Simulate Mesh Click
+        document
+          .getElementById("simulate-mesh-click")
+          ?.addEventListener("click", () => {
+            try {
+              addDebugLog("🎯 Simulating mesh click...", "info");
+
+              // Check if Ana_Geo is available
+              if (typeof window.anaGeo === 'undefined') {
+                addDebugLog("❌ Ana_Geo system not available", "error");
+                return;
+              }
+
+              // Check if simulation method exists
+              if (window.anaGeo.simulateMeshClick && typeof window.anaGeo.simulateMeshClick === 'function') {
+                window.anaGeo.simulateMeshClick();
+                addDebugLog("✅ Mesh click simulation triggered", "success");
+                addDebugLog("👀 Check for tooltip appearing on screen", "info");
+              } else {
+                addDebugLog("❌ Simulation method not available", "error");
+              }
+
+            } catch (error) {
+              addDebugLog(`❌ Error simulating mesh click: ${error.message}`, "error");
+              console.error("Mesh click simulation error:", error);
+            }
+          });
+      });
+    </script>
+
+    <!-- Face Selection Manager -->
+    <script src="/static/js/face-selection-manager.js"></script>
+
+    <!-- JSON 3D Viewer JavaScript -->
+    <script src="/static/js/geometric_analysis_JSON/face_analyzer.js"></script>
+    <script src="/static/js/json_viewer.js?v=20260223_debug"></script>
+    <script src="/static/js/viewer_manager.js"></script>
+
+
+    <!-- Progressive Info Panel -->
+    <div id="progressive-info-panel" class="progressive-info-panel hidden">
+      <!-- Panel content will be dynamically generated by ProgressiveInfoPanel.js -->
+    </div>
+
+    <script>
+      // ===== MATERIAL SELECTOR MANAGEMENT =====
+      // Global function to get selected material - used by API calls
+      window.getSelectedMaterial = function () {
+        const selector = document.getElementById('material-selector');
+        return selector ? selector.value : 'STEEL';
+      };
+
+      // Initialize material selector on DOM ready
+      document.addEventListener('DOMContentLoaded', function () {
+        const materialSelector = document.getElementById('material-selector');
+        const materialInfo = document.getElementById('material-info');
+
+        if (materialSelector) {
+          // Set initial data-material attribute for CSS styling
+          materialSelector.setAttribute('data-material', materialSelector.value);
+
+          // Handle material change
+          materialSelector.addEventListener('change', function (e) {
+            const selectedMaterial = e.target.value;
+
+            // Update data-material for CSS styling
+            this.setAttribute('data-material', selectedMaterial);
+
+            // Update info text based on material
+            const infoMessages = {
+              'STEEL': '<i class="fas fa-info-circle mr-1"></i>Standard thickness: 0.5 - 200mm',
+              'INOX': '<i class="fas fa-info-circle mr-1"></i>Stainless steel: 0.4 - 100mm',
+              'ALUMINUM': '<i class="fas fa-info-circle mr-1"></i>Lightweight: 0.3 - 150mm'
+            };
+
+            if (materialInfo) {
+              materialInfo.innerHTML = infoMessages[selectedMaterial] || infoMessages['STEEL'];
+
+              // Flash animation for feedback
+              materialInfo.style.opacity = '0';
+              setTimeout(() => {
+                materialInfo.style.opacity = '1';
+              }, 100);
+            }
+
+            console.log('[MATERIAL] Selected:', selectedMaterial);
+          });
+        }
+      });
+
+      // Helper function to get authentication headers
+      function getAuthHeaders() {
+        const token = localStorage.getItem('api-token');
+        if (token) {
+          return {
+            'Authorization': `Bearer ${token}`,
+          };
+        }
+        return {};
+      }
+
+      // Wrapper for fetch to include auth headers
+      async function authenticatedFetch(url, options = {}) {
+        const defaultHeaders = getAuthHeaders();
+        const mergedOptions = {
+          ...options,
+          headers: {
+            ...defaultHeaders,
+            ...options.headers,
+          },
+        };
+        // Ensure Content-Type is set for POST requests with a body
+        if (mergedOptions.body && !mergedOptions.headers['Content-Type']) {
+          mergedOptions.headers['Content-Type'] = 'application/json';
+        }
+        return fetch(url, mergedOptions);
+      }
+
+      // Token Authentication Panel Management
+      document.addEventListener('DOMContentLoaded', function () {
+        const tokenPanel = document.getElementById('token-panel');
+        const toggleBtn = document.getElementById('token-panel-toggle');
+        const tokenInput = document.getElementById('api-token-input');
+        const saveBtn = document.getElementById('save-token-btn');
+        const clearBtn = document.getElementById('clear-token-btn');
+        const statusDiv = document.getElementById('token-status');
+
+        // Load saved token
+        const savedToken = localStorage.getItem('api-token');
+        if (savedToken) {
+          tokenInput.value = savedToken;
+          window.apiToken = savedToken;
+          updateStatus('Token loaded from storage', 'success');
+        } else {
+          // No default token - user must enter manually
+          updateStatus('Ready - Enter your API token', 'info');
+        }
+
+        // Toggle panel collapse/expand
+        toggleBtn.addEventListener('click', function () {
+          tokenPanel.classList.toggle('collapsed');
+          const icon = toggleBtn.querySelector('i');
+          icon.className = tokenPanel.classList.contains('collapsed')
+            ? 'fas fa-chevron-down'
+            : 'fas fa-chevron-up';
+        });
+
+        // Save token
+        let validatedToken = localStorage.getItem('api-token') || null;
+
+        saveBtn.addEventListener('click', async function () {
+          const token = tokenInput.value.trim();
+          if (!token) {
+            updateStatus('❌ Please enter a token', 'error');
+            return;
+          }
+
+          // If the token is the same as the already validated one, do nothing.
+          if (token === validatedToken) {
+            updateStatus('✅ Token is already validated', 'success');
+            console.log('✅ Token is unchanged and already validated.');
+            return;
+          }
+
+          // Client-side format validation for JWT token
+          const jwtPattern = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+          if (jwtPattern.test(token)) {
+            localStorage.setItem('api-token', token);
+            window.apiToken = token;
+            validatedToken = token; // Update the validated token cache
+            updateStatus('✅ JWT token saved and validated', 'success');
+            console.log('✅ New JWT token saved and validated.');
+
+          } else {
+            updateStatus('❌ Invalid JWT token format', 'error');
+            localStorage.removeItem('api-token');
+            window.apiToken = null;
+            validatedToken = null;
+          }
+        });
+
+        // Clear token
+        clearBtn.addEventListener('click', function () {
+          tokenInput.value = '';
+          localStorage.removeItem('api-token');
+          window.apiToken = null;
+          validatedToken = null; // Clear the cached token
+          updateStatus('Token cleared', 'info');
+        });
+
+        // ===== API Version Display =====
+        (async function fetchApiVersion() {
+          try {
+            const apiVersionEl = document.getElementById('api-version');
+            if (!apiVersionEl) return;
+
+            const baseUrl = window.location.origin;
+            const url = `${baseUrl}/api-production/version`;
+
+            const response = await fetch(url, { method: 'GET' });
+            if (!response.ok) {
+              console.error('Failed to fetch API version:', response.status);
+              apiVersionEl.textContent = 'N/A';
+              return;
+            }
+
+            const data = await response.json();
+            if (data && data.version) {
+              apiVersionEl.textContent = data.version;
+            } else {
+              apiVersionEl.textContent = 'N/A';
+            }
+          } catch (error) {
+            console.error('Error fetching API version:', error);
+            const apiVersionEl = document.getElementById('api-version');
+            if (apiVersionEl) apiVersionEl.textContent = 'N/A';
+          }
+        })();
+
+        // Update status display
+        function updateStatus(message, type) {
+          statusDiv.textContent = message;
+          statusDiv.className = `token-status ${type}`;
+        }
+      });
+    </script>
+</body>
+
+</html>
+
+
+<!-- DualViewerManager is now handled by the separate JavaScript files -->

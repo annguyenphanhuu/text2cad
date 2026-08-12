@@ -1,0 +1,175 @@
+# Example a box measuring 300 mm in length, 404 mm in width, and 200 mm in height, with a thickness of 2 mm.
+# The box should be closed with bends on the top and bottom.
+# Add holes on the base as follows:
+# 4 × Ø8.5 holes in the corners, 25 mm from the edges.
+# 3 rows of 5 holes Ø5 mm each: the first hole should be 60 mm from the left side and 100 mm from the top. Then make a row of 5 holes with a 25 mm center-to-center spacing, and repeat this row downward with 30 mm spacing between rows.
+# Shape type: capot
+# -*- coding: utf-8 -*-
+"""
+Box Shape with Additional Bends - FreeCAD Script
+Creates a tub shape with additional bends, fusing, and filleting operations.
+"""
+
+import sys
+import os
+import FreeCAD as App
+import Import
+import Mesh
+import MeshPart
+try:
+    from sheetmetal import SheetMetalCmd
+except ImportError:
+    App.Console.PrintError("SheetMetal workbench is not installed. Please install it from the Addon Manager.\n")
+
+
+# FreeCadUtil import (mandatory for all scripts)
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+doc = App.newDocument("Box_Shape_With_Additional_Bend")
+
+thickness = 2.0
+bend_radius = thickness # Default inner bend radius
+length = 300.0  # X-dimension
+width = 404.0   # Y-dimension
+height = 200.0
+
+
+tub_obj = Part.makeTub(
+    thickness=thickness,
+    bend_radius=bend_radius,
+    dim_y=width,
+    dim_x=length,
+    height=height,
+    type="closed"
+)
+
+doc.recompute()
+
+# Add holes to the base
+# Create holes list
+holes_to_cut = []
+
+# 1. Corner holes: 4 × Ø8.5 holes, 25 mm from edges
+corner_hole_diameter = 8.5
+corner_offset = 25.0
+
+x_pos = length / 2 - corner_offset
+y_pos = width / 2 - corner_offset
+corner_positions = [
+    (-x_pos, -y_pos),  # Bottom-left
+    (x_pos, -y_pos),   # Bottom-right
+    (-x_pos, y_pos),   # Top-left
+    (x_pos, y_pos)     # Top-right
+]
+
+for i, (x, y) in enumerate(corner_positions):
+    corner_hole = Part.makeCylinder(
+        corner_hole_diameter/2,
+        thickness + 1,
+        App.Vector(x, y, -0.5)
+    )
+    corner_hole_obj = doc.addObject("Part::Feature", f"CornerHole_{i+1}")
+    corner_hole_obj.Shape = corner_hole
+    holes_to_cut.append(corner_hole_obj)
+
+# 2. Grid holes: 3 rows of 5 holes Ø5 mm each
+grid_hole_diameter = 5.0
+# Convert from edge-based to center-based coordinates
+first_hole_x = -length/2 + 60.0  # 60 mm from left edge
+first_hole_y = width/2 - 100.0   # 100 mm from top edge
+hole_spacing_x = 25.0  # 25 mm spacing between centers
+row_spacing_y = 30.0  # 30 mm spacing between rows
+
+for row in range(3):  # 3 rows
+    for col in range(5):  # 5 holes per row
+        x = first_hole_x + col * hole_spacing_x
+        y = first_hole_y - row * row_spacing_y  # Subtract because Y decreases downward
+
+        grid_hole = Part.makeCylinder(
+            grid_hole_diameter/2,
+            thickness + 1,
+            App.Vector(x, y, -0.5)
+        )
+        grid_hole_obj = doc.addObject("Part::Feature", f"GridHole_R{row+1}_C{col+1}")
+        grid_hole_obj.Shape = grid_hole
+        holes_to_cut.append(grid_hole_obj)
+
+doc.recompute()
+
+# Cut all holes from the tub using shape.cut() method
+if holes_to_cut:
+    # Create compound of all holes
+    all_holes = holes_to_cut[0].Shape
+    for hole_obj in holes_to_cut[1:]:
+        all_holes = all_holes.fuse(hole_obj.Shape)
+
+    # Cut holes from the tub object
+    cut_shape = tub_obj.Shape.cut(all_holes)
+    final_obj = doc.addObject("Part::Feature", "Tub_With_Holes")
+    final_obj.Shape = cut_shape
+else:
+    final_obj = tub_obj
+
+doc.recompute()
+
+# Export directory handling
+sanitized_title = "Box_shape_with_additional_bend"
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_obj], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(corner_hole, material="{mapped_material}")
+
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    corner_hole,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+
+# Final recompute (optional)
+doc.recompute()

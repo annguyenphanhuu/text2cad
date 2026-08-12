@@ -1,0 +1,678 @@
+/**
+ * JSON 3D Viewer Styles
+ * Specific styles for the JSON viewer component
+ */
+
+/* JSON Viewer specific styles */
+#json-viewer-3d {
+  background: linear-gradient(135deg, #f97316 0%, #dc2626 100%);
+}
+
+/* JSON Viewer controls styling */
+#json-viewer-controls .viewer-control-btn {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+#json-viewer-controls .viewer-control-btn:hover {
+  background: white;
+  border-color: #f97316;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.2);
+}
+
+/* JSON Viewer loading indicator */
+#json-viewer-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  text-align: center;
+  z-index: 200;
+}
+
+#json-viewer-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  animation: json-spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes json-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* JSON Viewer info panel */
+#json-viewer-info {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 100;
+  max-width: 250px;
+  width: auto;
+}
+
+/* JSON Face Tooltip - orange theme to match JSON viewer */
+#json-face-tooltip {
+  position: absolute;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.95), rgba(220, 38, 38, 0.95));
+  color: white;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 1000;
+  min-width: 200px;
+  box-shadow: 0 4px 20px rgba(249, 115, 22, 0.3);
+  border: 1px solid rgba(255, 154, 0, 0.3);
+  opacity: 0;
+  transform: scale(0.9);
+  transition: all 0.2s ease;
+  pointer-events: auto;
+}
+
+#json-face-tooltip.show {
+  opacity: 1;
+  transform: scale(1);
+}
+
+#json-face-tooltip .tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#json-face-tooltip .face-id {
+  font-weight: bold;
+  color: #ffb347;
+}
+
+#json-face-tooltip .tooltip-close {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+}
+
+#json-face-tooltip .tooltip-close:hover {
+  color: white;
+}
+
+#json-face-tooltip .tooltip-body div {
+  margin: 4px 0;
+  display: flex;
+  justify-content: space-between;
+}
+
+#json-face-tooltip .tooltip-body span {
+  font-weight: bold;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+}
+
+
+#json-viewer-3d-container {
+  position: relative;
+}
+
+#json-viewer-3d-container .viewer-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: white;
+  text-align: center;
+}
+
+#json-viewer-3d-container .viewer-placeholder i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.7;
+}
+
+/* Fullscreen styles for JSON viewer - match OBJ viewer approach */
+:fullscreen #json-viewer-3d,
+:-webkit-full-screen #json-viewer-3d,
+:-moz-full-screen #json-viewer-3d {
+  height: 100vh !important;
+  width: 100vw !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  z-index: 9999 !important;
+}
+
+/* JSON Model info panel styling */
+.json-model-info-panel {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.json-model-info-panel h4 {
+  color: #374151;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.json-model-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.json-model-info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.json-model-info-label {
+  color: #6b7280;
+}
+
+.json-model-info-value {
+  font-weight: 500;
+  color: #111827;
+  margin-left: 8px;
+}
+
+.json-selected-face-info {
+  margin-top: 12px;
+  padding: 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* JSON Viewer header styling */
+.json-viewer-header {
+  background: linear-gradient(135deg, #f97316 0%, #dc2626 100%);
+}
+
+.json-viewer-header .text-orange-100 {
+  color: rgba(255, 237, 213, 0.8);
+}
+
+/* Responsive adjustments for JSON viewer */
+@media (max-width: 768px) {
+  #json-viewer-3d-container {
+    height: 240px;
+  }
+
+  #json-face-tooltip {
+    min-width: 180px;
+    font-size: 11px;
+  }
+
+  .json-model-info-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/* Animation for JSON viewer controls */
+#json-viewer-controls {
+  animation: json-controls-fade-in 0.3s ease-out;
+}
+
+@keyframes json-controls-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Toggle active states for control buttons */
+#json-viewer-controls .viewer-control-btn.btn-active {
+  background: rgba(59, 130, 246, 0.9) !important;
+  color: white !important;
+  border-color: rgba(59, 130, 246, 0.6) !important;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+}
+
+#json-viewer-controls .viewer-control-btn.btn-danger-active {
+  background: rgba(239, 68, 68, 0.85) !important;
+  color: white !important;
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+/* JSON viewer button hover effects */
+#load-json-btn:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+#fullscreen-json-viewer-btn:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+/* Right-click context menu for face selection */
+.json-face-context-menu {
+  position: absolute;
+  background: linear-gradient(135deg, rgba(30, 30, 30, 0.95), rgba(50, 50, 50, 0.95));
+  color: white;
+  border: 1px solid #f97316;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(249, 115, 22, 0.2);
+  z-index: 2000;
+  min-width: 220px;
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: scale(0.9) translateY(-10px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.json-face-context-menu.show {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
+
+.json-face-context-menu-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(249, 115, 22, 0.3);
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(220, 38, 38, 0.2));
+}
+
+.json-face-context-menu-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #ffb347;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.json-face-context-menu-title i {
+  font-size: 14px;
+}
+
+.json-face-context-menu-body {
+  padding: 8px 0;
+}
+
+.json-face-context-menu-item {
+  padding: 8px 16px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.json-face-context-menu-item:last-child {
+  border-bottom: none;
+}
+
+.json-face-context-menu-label {
+  color: #d1d5db;
+  font-weight: 500;
+}
+
+.json-face-context-menu-value {
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  background: rgba(249, 115, 22, 0.2);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.json-face-context-menu-actions {
+  padding: 8px;
+  border-top: 1px solid rgba(249, 115, 22, 0.3);
+  display: flex;
+  gap: 6px;
+}
+
+.json-face-context-menu-btn {
+  flex: 1;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #f97316, #dc2626);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.json-face-context-menu-btn:hover {
+  background: linear-gradient(135deg, #ea580c, #b91c1c);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+}
+
+.json-face-context-menu-btn.secondary {
+  background: rgba(107, 114, 128, 0.8);
+  border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+.json-face-context-menu-btn.secondary:hover {
+  background: rgba(75, 85, 99, 0.9);
+  border-color: rgba(156, 163, 175, 0.5);
+}
+
+
+
+/* Styling for the JSON Analysis Panel */
+.json-analysis-panel {
+    position: absolute;
+    background-color: #2c2c2e;
+    color: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #444;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    width: 280px;
+    z-index: 1001;
+    opacity: 0;
+    transform: scale(0.95);
+    transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+    pointer-events: auto;
+}
+
+/* Enhanced fullscreen support for analysis panel */
+:fullscreen .json-analysis-panel,
+:-webkit-full-screen .json-analysis-panel,
+:-moz-full-screen .json-analysis-panel {
+    position: fixed !important;
+    z-index: 10000 !important;
+}
+
+/* Ensure panel is visible in fullscreen mode */
+:fullscreen .json-analysis-panel.show,
+:-webkit-full-screen .json-analysis-panel.show,
+:-moz-full-screen .json-analysis-panel.show {
+    opacity: 1 !important;
+    transform: scale(1) !important;
+}
+
+.json-analysis-panel.show {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.json-analysis-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    border-bottom: 1px solid #444;
+}
+
+.json-analysis-panel-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.json-analysis-panel-title .fa-ruler-combined {
+    margin-right: 8px;
+    color: #3498db;
+}
+
+.json-analysis-panel-close {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.json-analysis-panel-close:hover {
+    color: #fff;
+}
+
+.json-analysis-panel-body {
+    padding: 15px;
+}
+
+.json-analysis-panel-subtitle {
+    font-size: 11px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    margin-top: 15px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #444;
+    padding-bottom: 4px;
+}
+
+.json-analysis-panel-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    padding: 5px 0;
+}
+
+.json-analysis-panel-label {
+    color: #aaa;
+}
+
+.json-analysis-panel-value {
+    font-weight: 500;
+    background-color: #3a3a3c;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.json-analysis-panel-item.error {
+    color: #ff6b6b;
+}
+
+/* Face Orientation color coding - matches ViewCube axes */
+.face-orientation-top {
+    color: #5b9aff !important;  /* Blue for Z-axis (TOP) */
+    font-weight: bold !important;
+}
+
+.face-orientation-bottom {
+    color: #5b9aff !important;  /* Blue for Z-axis (BOTTOM) */
+    font-weight: bold !important;
+}
+
+.face-orientation-front {
+    color: #5bff5b !important;  /* Green for Y-axis (FRONT) */
+    font-weight: bold !important;
+}
+
+.face-orientation-rear {
+    color: #5bff5b !important;  /* Green for Y-axis (REAR) */
+    font-weight: bold !important;
+}
+
+.face-orientation-left {
+    color: #ff5b5b !important;  /* Red for X-axis (LEFT) */
+    font-weight: bold !important;
+}
+
+.face-orientation-right {
+    color: #ff5b5b !important;  /* Red for X-axis (RIGHT) */
+    font-weight: bold !important;
+}
+
+.face-orientation-unknown {
+    color: #999 !important;
+    font-style: italic !important;
+}
+
+
+.json-analysis-panel-actions {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid #444;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Select Face for Chat Button Styling */
+.json-select-face-btn {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.json-select-face-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.json-select-face-btn:hover::before {
+    left: 100%;
+}
+
+.json-select-face-btn:hover {
+    background: linear-gradient(135deg, #059669, #047857);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.json-select-face-btn:active {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+}
+
+/* Select Edge for Chat Button Styling */
+.json-select-edge-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.json-select-edge-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.json-select-edge-btn:hover::before {
+    left: 100%;
+}
+
+.json-select-edge-btn:hover {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.json-select-edge-btn:active {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+}
+
+/* Icon styling in select buttons */
+.json-select-face-btn i,
+.json-select-edge-btn i {
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+/* Edge Analysis Panel specific styling */
+#json-edge-analysis-panel {
+    border-color: #ff4444;
+    box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3);
+}
+
+#json-edge-analysis-panel .json-analysis-panel-title {
+    color: #ff6b6b;
+}
+
+#json-edge-analysis-panel .json-analysis-panel-title i {
+    color: #ff4444;
+}
+
+/* Responsive adjustments for buttons */
+@media (max-width: 768px) {
+    .json-copy-edge-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    .json-analysis-panel-actions {
+        gap: 6px;
+    }
+}

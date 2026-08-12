@@ -1,0 +1,36 @@
+{
+  "class_name": "Stamping",
+  "parent_category": "Forming",
+  "rules": [
+    {
+      "id": "ST_01",
+      "category": "bridge_geometry",
+      "title": "Bridge Stamping Curved Profile Requirement",
+      "description": "When creating bridge stamping, must use curved/arched profile for proper forming",
+      "rule": "Bridge stamping must create curved connecting profile using arc geometry",
+      "severity": "error",
+      "validation_code": "bridge_type == 'stamping' && has_curved_profile == true",
+      "error_message": "ERROR: Bridge stamping must create curved connecting profile (hình cong nối). Use arched profile with ArcOfCircle geometry.",
+      "parameters": [
+        "bridge_type",
+        "has_curved_profile"
+      ],
+      "implementation_requirements": {
+        "geometry_type": "ArcOfCircle",
+        "profile_description": "Create arched profile using three points: start, middle (depth), end",
+        "extrusion_method": "Extrude profile along bridge width",
+        "forming_method": "SheetMetal forming operation"
+      },
+      "example_fail": [
+        {
+          "description": "Bridge stamping with flat rectangular profile",
+          "parameters": {
+            "bridge_type": "stamping",
+            "has_curved_profile": false,
+            "profile_type": "rectangular"
+          }
+        }
+      ]
+    }
+  ]
+}

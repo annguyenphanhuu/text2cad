@@ -1,0 +1,555 @@
+/**
+ * Face Selection Chips CSS
+ * ChatGPT-like compact face selection interface
+ */
+
+/* Container for face selection chips */
+.face-selection-chips-container {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e1e5e9;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.face-selection-chips-container:empty {
+    display: none !important;
+}
+
+/* Individual face selection chip */
+.face-selection-chip {
+    display: inline-flex;
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 20px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #374151;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
+    max-width: 250px;
+}
+
+.face-selection-chip:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Chip icon */
+.face-selection-chip .fas.fa-cube {
+    color: #6366f1;
+    margin-right: 6px;
+    font-size: 12px;
+}
+
+/* Edge chip specific styling */
+.face-selection-chip.edge-selection-chip {
+    border-color: #10b981;
+    background: #f0fdf4;
+}
+
+.face-selection-chip.edge-selection-chip:hover {
+    background: #ecfdf5;
+    border-color: #059669;
+}
+
+.face-selection-chip.edge-selection-chip .fas.fa-minus {
+    color: #10b981;
+    margin-right: 6px;
+    font-size: 12px;
+}
+
+/* Chip text */
+.face-selection-chip .chip-text {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Context info icon */
+.face-selection-chip .context-info-icon {
+    color: #6b7280;
+    font-size: 11px;
+    margin-right: 6px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease, color 0.2s ease;
+    cursor: pointer;
+}
+
+.face-selection-chip:hover .context-info-icon {
+    opacity: 1;
+    color: #374151;
+}
+
+.face-selection-chip.edge-selection-chip:hover .context-info-icon {
+    color: #047857;
+}
+
+/* Remove button */
+.face-selection-chip .remove-chip {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 2px;
+    margin-left: 6px;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    font-size: 10px;
+}
+
+.face-selection-chip .remove-chip:hover {
+    background: #ef4444;
+    color: white;
+}
+
+.face-selection-chip .remove-chip:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+}
+
+/* Animation for chip addition */
+@keyframes chipSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.face-selection-chip {
+    animation: chipSlideIn 0.2s ease-out;
+}
+
+/* Animation for chip removal */
+@keyframes chipSlideOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+.face-selection-chip.removing {
+    animation: chipSlideOut 0.15s ease-in forwards;
+}
+
+/* Container animation */
+@keyframes containerSlideIn {
+    from {
+        opacity: 0;
+        max-height: 0;
+        margin-bottom: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 100px;
+        margin-bottom: 8px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+}
+
+.face-selection-chips-container[style*="block"] {
+    animation: containerSlideIn 0.3s ease-out;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .face-selection-chips-container {
+        padding: 6px 8px;
+        margin-bottom: 6px;
+    }
+    
+    .face-selection-chip {
+        padding: 4px 8px;
+        font-size: 12px;
+        max-width: 200px;
+    }
+    
+    .face-selection-chip .fas.fa-cube {
+        font-size: 11px;
+        margin-right: 4px;
+    }
+    
+    .face-selection-chip .remove-chip {
+        width: 16px;
+        height: 16px;
+        font-size: 9px;
+        margin-left: 4px;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .face-selection-chips-container {
+        background: #1f2937;
+        border-color: #374151;
+    }
+    
+    .face-selection-chip {
+        background: #374151;
+        border-color: #4b5563;
+        color: #f9fafb;
+    }
+    
+    .face-selection-chip:hover {
+        background: #4b5563;
+        border-color: #6b7280;
+    }
+    
+    .face-selection-chip .fas.fa-cube {
+        color: #818cf8;
+    }
+
+    .face-selection-chip.edge-selection-chip {
+        background: #064e3b;
+        border-color: #065f46;
+    }
+
+    .face-selection-chip.edge-selection-chip:hover {
+        background: #065f46;
+        border-color: #047857;
+    }
+
+    .face-selection-chip.edge-selection-chip .fas.fa-minus {
+        color: #34d399;
+    }
+    
+    .face-selection-chip .remove-chip {
+        color: #9ca3af;
+    }
+    
+    .face-selection-chip .remove-chip:hover {
+        background: #ef4444;
+        color: white;
+    }
+}
+
+/* Integration with existing chat styles */
+.chat-input-container .face-selection-chips-container {
+    margin: 0 0 8px 0;
+}
+
+/* Ensure proper spacing with chat form */
+#chat-form .face-selection-chips-container {
+    order: -1; /* Place before input */
+}
+
+/* Loading state for chips */
+.face-selection-chip.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.face-selection-chip.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #e5e7eb;
+    border-top: 2px solid #6366f1;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    transform: translateY(-50%);
+}
+
+@keyframes spin {
+    0% { transform: translateY(-50%) rotate(0deg); }
+    100% { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* Success state */
+.face-selection-chip.success {
+    border-color: #10b981;
+    background: #f0fdf4;
+}
+
+.face-selection-chip.success .fas.fa-cube {
+    color: #10b981;
+}
+
+/* Error state */
+.face-selection-chip.error {
+    border-color: #ef4444;
+    background: #fef2f2;
+}
+
+.face-selection-chip.error .fas.fa-cube {
+    color: #ef4444;
+}
+
+/* Accessibility improvements */
+.face-selection-chip:focus-within {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.face-selection-chip .remove-chip:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+    .face-selection-chip {
+        border-width: 2px;
+        font-weight: 600;
+    }
+
+    .face-selection-chip .remove-chip {
+        border: 1px solid currentColor;
+    }
+}
+
+/* Context Modal Styles */
+.context-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+}
+
+.context-modal-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.context-modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.context-modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.context-modal-close {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    font-size: 16px;
+}
+
+.context-modal-close:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.context-modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.context-summary {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border-left: 4px solid #3b82f6;
+}
+
+.context-summary h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e40af;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.summary-text {
+    margin: 0;
+    font-size: 14px;
+    color: #374151;
+    font-weight: 500;
+}
+
+.context-details {
+    padding: 16px;
+    background: #f9fafb;
+    border-radius: 8px;
+    border-left: 4px solid #6b7280;
+}
+
+.context-details h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.technical-content {
+    margin: 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #1f2937;
+    background: white;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.context-modal-footer {
+    padding: 16px 24px 20px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+
+.context-note {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.context-note i {
+    color: #3b82f6;
+}
+
+/* Clear confirmation notification */
+.clear-confirmation {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #10b981;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 10001;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+.clear-confirmation i {
+    font-size: 16px;
+}
+
+/* Dark mode support for modal */
+@media (prefers-color-scheme: dark) {
+    .context-modal-content {
+        background: #1f2937;
+        color: #f9fafb;
+    }
+
+    .context-modal-header {
+        border-bottom-color: #374151;
+    }
+
+    .context-modal-header h3 {
+        color: #f9fafb;
+    }
+
+    .context-modal-close {
+        color: #9ca3af;
+    }
+
+    .context-modal-close:hover {
+        background: #374151;
+        color: #f3f4f6;
+    }
+
+    .context-summary {
+        background: #374151;
+        border-left-color: #60a5fa;
+    }
+
+    .context-summary h4 {
+        color: #60a5fa;
+    }
+
+    .summary-text {
+        color: #e5e7eb;
+    }
+
+    .context-details {
+        background: #374151;
+        border-left-color: #9ca3af;
+    }
+
+    .context-details h4 {
+        color: #e5e7eb;
+    }
+
+    .technical-content {
+        background: #111827;
+        color: #f3f4f6;
+        border-color: #4b5563;
+    }
+
+    .context-modal-footer {
+        background: #374151;
+        border-top-color: #4b5563;
+    }
+
+    .context-note {
+        color: #9ca3af;
+    }
+}

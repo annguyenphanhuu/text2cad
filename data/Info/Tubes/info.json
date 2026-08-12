@@ -1,0 +1,56 @@
+{
+    "class_name": "Tubes",
+    "parent_category": "Tube",
+    "info_entries": [
+        {
+            "id": "TB_TAB_01",
+            "title": "Tab/Tenon Length Calculation for Tubes",
+            "description": [
+                "SYNONYMS: 'tenon', 'tab', 'extension' are IDENTICAL terms.",
+                "DIMENSION FORMAT: 'AxB tenons' → tab_length=A, tab_width=B (e.g. '40x3' → tab_length=40, tab_width=3).",
+                "LENGTH CALCULATION: tube_length = total_length - (2 * tab_width). NEVER use total_length directly as tube length.",
+                "EXAMPLES: '1106mm with 40x3 tenons' → tube_length=1106-(2*3)=1100. '500mm with 20x2 tabs' → tube_length=500-(2*2)=496.",
+                "PYTHON EXAMPLE: # '40x3 tenons, total 1106mm' → tab_length=40; tab_width=3; tube_length=1106-(2*3)  # =1100; tube=Part.makeSquareTube(tube_length,...); result=create_rectangular_tab(tube, tab_length, tab_width, tube_length, ...)"
+            ],
+            "rule": "When user mentions total length with tabs/tenons, always subtract 2*tab_width to get actual tube_length.",
+            "severity": "info"
+        },
+        {
+            "id": "TB_CUT_01",
+            "title": "CRITICAL RULES for cutting tube",
+            "description": [
+                "SQUARE/RECTANGULAR TUBE CUT: MUST use create_square_tube_angled_cuts(tube_shape, length, outer_width, outer_height, left_cut_angle, right_cut_angle). Cut direction is along Z-axis.",
+                "RECTANGULAR TUBE CRITICAL: When user specifies cut on a specific side (e.g. 'cut at 80° on the 60mm side'), that dimension MUST be outer_height in Part.makeRectangularTube(), because cut defaults to Z direction.",
+                "EXAMPLE: 'Tube cut at 80° on 60mm side' → Part.makeRectangularTube(length, outer_width, 60, thickness, ...) where 60 is outer_height.",
+                "CIRCULAR TUBE CUT: MUST use create_circular_tube_angled_cuts(tube_shape, length, outer_diameter, cut_angle_1_deg, cut_angle_2_deg)."
+            ],
+            "rule": "Use create_square_tube_angled_cuts for square/rectangular tubes, create_circular_tube_angled_cuts for circular tubes. Cut direction is always along Z-axis.",
+            "severity": "info"
+        },
+        {
+            "id": "TB_CUT_02",
+            "title": "CRITICAL RULES for tube cut angle orientation",
+            "description": [
+                "SHAPE AFTER CUT: TOP FACE (Z-max) = shorter face. BOTTOM FACE (Z-min) = longer face.",
+                "CUT DEPTH: depth of cut solid MUST be thickness + 2.0 to ensure complete cut through face only.",
+                "HOLE POSITIONING: holes on longer/shorter side MUST drill along Z axis.",
+                "AMBIGUITY RULE (Square Tubes, width=height): 'Largest/Longest side/Grand côté' = Bottom Face (Z-min). 'Shortest side/Petit côté' = Top Face (Z-max). NEVER place on Y-axis faces unless explicitly named 'vertical face/left side/right side'."
+            ],
+            "rule": "After angled cut: Z-max=shorter face, Z-min=longer face. Holes on these faces drill along Z. Square tubes: largest=bottom, shortest=top.",
+            "severity": "info"
+        },
+        {
+            "id": "TB_TAB_02",
+            "title": "CRITICAL RULES for tab/tenon function call and constraints",
+            "description": [
+                "MANDATORY: For ANY tube with extensions/tabs/tenons, MUST call create_rectangular_tab(tube_shape, tab_length, tab_width, length, outer_width, outer_height, thickness, add_start_tab=True, add_end_tab=True). NO OTHER METHOD ALLOWED.",
+                "LENGTH PARAM: Use calculated tube_length (not total_length) for the 'length' parameter. tube_length = total_length - (2 * tab_width).",
+                "EXAMPLES: 'total length 1106mm with 40x3 tenons' → tube_length=1106-(2*3)=1100. 'total length 500mm with 20x2 tabs' → tube_length=500-(2*2)=496.",
+                "CUT END CONSTRAINT: If an end is cut (angled/bevel/any cut), tabs/tenons CANNOT be added to that cut end. Set add_start_tab=False or add_end_tab=False accordingly.",
+                "PYTHON EXAMPLE: tube_length=total_length-(2*tab_width); tube=Part.makeSquareTube(tube_length,...); result=create_rectangular_tab(tube, tab_length, tab_width, tube_length, outer_width, outer_height, thickness, add_start_tab=False, add_end_tab=True)"
+            ],
+            "rule": "Always use create_rectangular_tab() for tube tabs. Never add tabs to cut ends.",
+            "severity": "info"
+        }
+    ]
+}

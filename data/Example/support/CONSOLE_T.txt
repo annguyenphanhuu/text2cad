@@ -1,0 +1,121 @@
+#Example T-Shaped structural bracket made of S235 steel sheet.
+# Dimensions:
+#   dim_x (flange width)  : 200 mm
+#   dim_y (length)        : 400 mm
+#   thickness             :   4 mm
+#   height (web)          : 100 mm  (web rises above flange top)
+#   bend_radius           :   4 mm  (inner arc at web-flange junction)
+# Shape type: T-Shaped
+
+
+# Part.makeTShape() coordinate system:
+#   X : 0 → dim_x = 200          (flange full width)
+#   Y : 0 → dim_y = 400          (length)
+#   Z : 0 → thickness = 4        (flange)
+#       thickness → thickness + height = 4 → 104   (web above flange)
+#
+# Key face positions:
+#   Flange bottom face   : Z = 0
+#   Flange top face      : Z = 4
+#   Web left outer face  : X = (200 - 4) / 2 = 98
+#   Web right outer face : X = (200 + 4) / 2 = 102
+#   Web tip (top face)   : Z = 4 + 100 = 104
+#   Bend arc at junction : Z = 4, r = 4 mm (2 concave edges)
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+
+# Define the sanitized_title variable
+sanitized_title = "Console_T_S235_400x200x100x4"   # DO NOT CHANGE THIS VALUE
+
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# ── Parameters (mm) ───────────────────────────────────────────────────────────
+dim_x       = 200.0   # Flange total width (X direction)
+dim_y       = 400.0   # Extrusion / length direction (Y)
+thickness   =   4.0   # Sheet thickness — same for flange and web
+height      = 100.0   # Web height above the flange top face
+bend_radius = thickness  # Inner bend radius at web-flange junction (standard = t)
+
+# ── 1. Create T-shaped console ────────────────────────────────────────────────
+# Construction: 2 Part.makeBox solids (flange + web) fused directly.
+# The web is centred on the flange at X = (dim_x - thickness) / 2 = 98 mm.
+#
+# Part.makeTShape() return:
+#   Flange : X ∈ [0 … 200], Z ∈ [0 … 4]
+#   Web    : X ∈ [98 … 102], Z ∈ [4 … 104]
+#   Y      : [0 … 400]
+#   Bend arc at Z = 4, r = 4 mm
+t_shape = Part.makeTShape(
+    dim_x=dim_x,
+    dim_y=dim_y,
+    thickness=thickness,
+    height=height,
+    bend_radius=bend_radius,
+)
+
+# ── 2. Register final object ───────────────────────────────────────────────────
+final_obj = doc.addObject("Part::Feature", "Console_T_Final")
+final_obj.Label = sanitized_title
+final_obj.Shape = t_shape
+doc.recompute()
+
+# ── 3. Export directory ────────────────────────────────────────────────────────
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_obj], step_path)
+
+# ── 4. GEOMETRY ANALYSIS ───────────────────────────────────────────────────────
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+geometry_result = analyze_geometry(t_shape, material="{mapped_material}")
+
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    t_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={"part_name": sanitized_title},
+)
+
+# ── 5. OBJ export (separate mesh per face — MANDATORY PATTERN) ────────────────
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_obj]:
+    shape     = part.Shape
+    part_name = part.Label
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face, LinearDeflection=0.1, AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()

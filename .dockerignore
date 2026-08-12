@@ -1,0 +1,108 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+venv/
+env/
+ENV/
+.venv/
+
+# Logs
+*.log
+logs/
+error.log
+api.log
+server.log
+start.log
+logger.log
+
+# Output directories (generated files)
+outputs/
+temp_uploads/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.sublime-*
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Documentation
+*.md
+!README.md
+docs/
+API_DOCUMENTATION.md
+
+# Testing
+tests/
+test_*.py
+*_test.py
+tools/
+
+# Database
+*.sqlite3
+*.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Chat history (runtime data)
+data/chat_history.json
+
+# FreeCAD Scripts Test
+FreeCAD_Scripts/
+
+# Node modules (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Conda
+.conda/
+

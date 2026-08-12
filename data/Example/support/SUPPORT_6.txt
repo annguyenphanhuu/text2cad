@@ -1,0 +1,318 @@
+#Example Create an L-shaped angle bracket at 90° with a cross-section of 30x20x1.5 mm and a length of 103 mm, featuring an inner bend radius of 1.5 mm and an outer bend radius of 3 mm.
+# Add two Ø3.2 mm holes with Ø6 mm 90° countersinks, spaced 82 mm apart, on the 20 mm flange, centered in the 103 mm length and located 12 mm from the edge opposite the bend. Hole 1: countersink on the inner (interior) side. Hole 2: countersink on the outer (exterior) side.
+# Also, add two Ø6.6 mm holes on the 30 mm flange, spaced 60.5 mm apart, and positioned 10 mm from the edge opposite the bend.
+# Also, add two Ø5 mm holes with Ø9 mm 90° countersinks on the 30 mm flange, spaced 50 mm apart, centered in the 103 mm length and located 13 mm from the bend side. Hole 1: countersink on the interior (top) side. Hole 2: countersink on the exterior (bottom) side.
+# Shape type: L-bracket
+# Operation family: base LINEAR SPACING hole pattern (spacing E from edge distance D) —
+#   → ALWAYS Part.resolveLBracketCrossBendHoles. This is the reference L-bracket example that
+#     OWNS the linear spacing pattern (see the cross-bend demo section below).
+#
+# ═══ REFERENCE NOTE — L-BRACKET BASE LINEAR HOLE PATTERN (append-style; does NOT replace the
+#     holes above). Applies when the base holes are given as spacing E + one edge distance D. ═══
+#
+# Reason step by step, using the REQUEST's own values (E, D and the leg lengths are placeholders
+# here — never copy a number from this example):
+#
+#   STEP 1 — reference_edge?
+#       D measured from the base's free edge (opposite the bend) -> reference_edge="far_edge"
+#       D measured from the fold line itself                     -> reference_edge="bend_edge"
+#
+#   STEP 2 — did the user write a STOP phrase ("only on the base"/"uniquement sur la base",
+#            "stop at X", "up to the bend", "in the middle")?
+#       NO  stop phrase AND reference_edge=="far_edge" AND no explicit total count
+#           -> OUTCOME A (CROSS-BEND): cross_bend=True, stop_position=None, hole_count=None.
+#              The pattern fills the base and CONTINUES across the fold onto the vertical wall.
+#              Silence about the wall is NOT a reason to keep the holes on the base.
+#       YES stop phrase, OR reference_edge=="bend_edge", OR an explicit count N
+#           -> OUTCOME B (BASE ONLY): cross_bend=False (REQUIRED — this is what keeps the holes
+#              off the wall; stop_position alone does NOT stop the crossing).
+#
+#   STEP 3 — ALWAYS call Part.resolveLBracketCrossBendHoles(...). NEVER hand-write a
+#            `for i in range(n)` loop for this pattern: the helper applies the DFM bend clearance,
+#            keeps the spacing continuous around the fold (it adds the inner bend_radius as the
+#            arc length), and skips any hole that would land on the bend itself.
+#
+#   STEP 4 — cut what it returns: row["base_positions"] directly (dir=(0,0,1));
+#            row["vertical_positions"] ONLY via map_and_cut_leg2_batch (never cut directly — the
+#            bend angle may not be 90°). For OUTCOME B vertical_positions is always empty.
+#
+# See the demonstration in section 5 near the end of this script.
+# -*- coding: utf-8 -*-
+import sys
+import os
+import FreeCAD as App
+import Import
+import Part
+import Mesh
+import MeshPart
+import math
+
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+sanitized_title = "SUPPORT_6"
+# 1. Create the L-shaped bracket
+dim_x = 30.0  # Base X-dimension
+dim_y = 103.0  # Base Y-dimension
+thickness = 1.5
+flange_height = 20.0   # Flange / wing height
+bend_angle_deg = 120.0  
+bend_radius = thickness      # Default inner bend radius
+
+# Horizontal part: 30mm x 103mm
+# Vertical part: 20mm x 103mm
+bracket_shape = Part.makeLShape(
+    dim_x=dim_x,    # Base dimension X
+    dim_y=dim_y,    # Base dimension Y / Flange dimension Y 
+    thickness=thickness,
+    flange_height=flange_height,    # Flange height / Flange dimension Z
+    bend_angle_deg=bend_angle_deg,
+    bend_radius=bend_radius
+)
+doc = App.ActiveDocument
+
+# 2. Add two Ø3.2 mm holes with Ø6 mm 90° countersinks on the 20 mm flange (vertical wall):
+# Spaced 82 mm apart, centered in the 103 mm length
+# Located 12 mm from the edge opposite the bend
+hole_radius = 3.2 / 2.0  # Ø3.2mm -> R1 = 1.6mm (SMALLER radius - drill hole)
+cs_radius = 6.0 / 2.0    # Ø6mm -> R2 = 3.0mm (LARGER radius - countersink)
+cs_angle = 90.0          # 90° countersink
+
+# 2.1 Spaced 82 mm apart, centered in the 103 mm length
+center_to_center_distance = 82.0  # Distance between holes on vertical wall (20mm flange)
+hole1_y = (dim_y - center_to_center_distance) / 2.0
+hole2_y = hole1_y + center_to_center_distance
+
+# 2.2 Located 12 mm from the edge opposite the bend
+edge_distance = 12.0     # Distance from edge opposite the bend
+hole_z = flange_height - edge_distance 
+
+# Create countersink tools in the 90° canonical frame:
+#   pnt = (0, cy, cz): outer face of the vertical wall at X=0
+#   dir = (1, 0, 0):   drill feeds inward (+X)
+#   tool1 cs_side="end":   countersink opens on the INNER face (interior side of bend)
+#   tool2 cs_side="start": countersink opens on the OUTER face (exterior side of bend)
+leg2_tool1 = Part.makeCountersink(
+    hole_radius=hole_radius,
+    cs_radius=cs_radius,
+    cs_angle_deg=cs_angle,
+    thickness=thickness,
+    pnt=App.Vector(0, hole1_y, hole_z),
+    dir=App.Vector(1, 0, 0),
+    cs_side="end",
+)
+leg2_tool2 = Part.makeCountersink(
+    hole_radius=hole_radius,
+    cs_radius=cs_radius,
+    cs_angle_deg=cs_angle,
+    thickness=thickness,
+    pnt=App.Vector(0, hole2_y, hole_z),
+    dir=App.Vector(1, 0, 0),
+    cs_side="start",
+)
+
+# Batch format tools dictionary
+leg2_tools = [
+    {"tool_shape": leg2_tool1, "hole_center_y": hole1_y, "hole_center_z": hole_z},
+    {"tool_shape": leg2_tool2, "hole_center_y": hole2_y, "hole_center_z": hole_z}
+]
+
+# Apply batch cut
+bracket_shape = map_and_cut_leg2_batch(
+    bracket_shape=bracket_shape,
+    tools=leg2_tools,
+    angle_deg=bend_angle_deg,
+    dim_y=dim_y,
+    thickness=thickness,
+    flange_height=flange_height,
+    bend_radius=bend_radius
+)
+
+# 3. Add two Ø6.6 mm holes on the 30 mm flange (base):
+# Spaced 60.5 mm apart
+# Positioned 10 mm from the edge opposite the bend
+leg1_hole_radius = 3.3   # radius 3.3mm (for base flange)
+
+# 3.1 Positioned 10 mm from the edge opposite the bend
+leg1_hole_x = dim_x - 10.0  # ALWAYS USE dim_x - 10.0 instead of just 10.0
+
+# 3.2 Spaced 60.5 mm apart
+leg1_center_to_center_distance = 60.5  # Distance between Ø6.6mm holes on base (30mm flange)
+leg1_hole1_y = (dim_y - leg1_center_to_center_distance) / 2.0
+leg1_hole2_y = leg1_hole1_y + leg1_center_to_center_distance
+
+# Hole 1 on base — cylinder cut upward through the base (dir=(0,0,1), pnt.z=0.0)
+leg1_hole_cut_depth = thickness + 2.0
+leg1_hole1_tool = Part.makeCylinder(
+    leg1_hole_radius,
+    leg1_hole_cut_depth,
+    App.Vector(leg1_hole_x, leg1_hole1_y, 0.0),
+    App.Vector(0, 0, 1)
+)
+bracket_shape = bracket_shape.cut(leg1_hole1_tool)
+
+# Hole 2 on base
+leg1_hole2_tool = Part.makeCylinder(
+    leg1_hole_radius,
+    leg1_hole_cut_depth,
+    App.Vector(leg1_hole_x, leg1_hole2_y, 0.0),
+    App.Vector(0, 0, 1)
+)
+bracket_shape = bracket_shape.cut(leg1_hole2_tool)
+
+# 4. Add two Ø5 mm holes with Ø9 mm 90° countersinks on the 30 mm flange (base):
+# Spaced 50 mm apart, centered in the 103 mm length (dim_y)
+# Positioned 13 mm from the bend side (NOT from the edge opposite the bend)
+# Countersink on the interior side (top face of base)
+leg1_cs_hole_radius = 5.0 / 2.0   # Ø5mm -> R = 2.5mm (drill hole radius)
+leg1_cs_radius = 9.0 / 2.0        # Ø9mm -> R = 4.5mm (countersink radius)
+leg1_cs_angle = 90.0              # 90° countersink
+
+# 4.1 Spaced 50 mm apart, centered in dim_y
+leg1_cs_center_to_center_distance = 50.0  # Center-to-center distance between holes on base
+leg1_cs_hole1_y = (dim_y - leg1_cs_center_to_center_distance) / 2.0
+leg1_cs_hole2_y = leg1_cs_hole1_y + leg1_cs_center_to_center_distance
+
+# 4.2 Positioned 13 mm from the bend side (NOT from the edge opposite the bend)
+# On base, the bend is at x=0; x=13.0 means 13mm away from the bend (bend-side origin)
+# CONTRAST: Section 3 uses dim_x - 10.0 (from OPPOSITE/far edge). Here x=13.0 (from NEAR/bend edge).
+leg1_cs_hole_x = 13.0  # 13mm from the bend (x=0 side)
+
+# 4.3 Countersink 1 on base (interior side = top face, cone opens at top)
+# pnt = hole centre on the BOTTOM (outer/drill-entry) face, z=0
+# dir = (0, 0, 1): drill feeds upward through the base
+# cs_side = "end": countersink opens on the TOP (interior/exit) face
+leg1_cs_cut1 = Part.makeCountersink(
+    hole_radius=leg1_cs_hole_radius,   # Ø5mm → R = 2.5mm
+    cs_radius=leg1_cs_radius,          # Ø9mm → R = 4.5mm
+    cs_angle_deg=leg1_cs_angle,        # 90°
+    thickness=thickness,
+    pnt=App.Vector(leg1_cs_hole_x, leg1_cs_hole1_y, 0.0),
+    dir=App.Vector(0, 0, 1),
+    cs_side="end",  # cone opens on top (interior) face
+)
+bracket_shape = bracket_shape.cut(leg1_cs_cut1)
+
+# 4.4 Countersink 2 on base (exterior side = bottom face, cone opens at bottom)
+# pnt = hole centre on the BOTTOM (outer/drill-entry) face, z=0
+# dir = (0, 0, 1): drill feeds upward through the base
+# cs_side = "start": countersink opens on the BOTTOM (exterior/entry) face
+leg1_cs_cut2 = Part.makeCountersink(
+    hole_radius=leg1_cs_hole_radius,
+    cs_radius=leg1_cs_radius,
+    cs_angle_deg=leg1_cs_angle,
+    thickness=thickness,
+    pnt=App.Vector(leg1_cs_hole_x, leg1_cs_hole2_y, 0.0),
+    dir=App.Vector(0, 0, 1),
+    cs_side="start",
+)
+bracket_shape = bracket_shape.cut(leg1_cs_cut2)
+
+# 5. ADDITIONAL DEMONSTRATION — base linear pattern via the resolver (reference only; this does
+#    NOT replace sections 2-4 above). This shows OUTCOME A (cross-bend): the request gave only a
+#    spacing + a distance from the edge opposite the bend, with NO stop phrase, so the pattern
+#    fills the base and continues onto the vertical wall.
+#    For OUTCOME B (the request DID say "only on the base"/"uniquement sur la base", or measured
+#    from the bend, or gave an explicit count) the ONLY change is cross_bend=False — then
+#    row["vertical_positions"] comes back empty and the leg2 block below simply does nothing.
+cross_bend_hole_diameter = 4.0
+cross_bend_pattern = Part.resolveLBracketCrossBendHoles(
+    base_length=dim_x, flange_height=flange_height, bend_radius=bend_radius,
+    thickness=thickness, reference_edge="far_edge", edge_distance=10.0,
+    spacing=15.0, min_edge_distance=thickness, row_positions=[45.0],
+    hole_count=None, stop_position=None,
+    cross_bend=True,   # OUTCOME A. Use cross_bend=False for a base-only request.
+    # hole_radius is REQUIRED — every clearance is measured to the hole EDGE, not its centre.
+    # Omit it and the last hole of a row overhangs the free edge and comes out clipped.
+    # min_edge_distance stays the FREE-edge clearance (thickness, per LC_02); the larger
+    # bend-edge clearance (bend_radius + 2*thickness, per B_05_L) is derived inside.
+    hole_radius=cross_bend_hole_diameter / 2.0,
+)
+cross_bend_leg2_tools = []
+for row in cross_bend_pattern["rows"]:
+    row_y = row["y"]
+    # Base holes (leg1): cut directly, same convention as sections 2-4 above.
+    for hx in row["base_positions"]:
+        base_tool = Part.makeCylinder(
+            cross_bend_hole_diameter / 2.0, thickness + 2.0,
+            App.Vector(hx, row_y, 0.0), App.Vector(0, 0, 1)
+        )
+        bracket_shape = bracket_shape.cut(base_tool)
+    # Vertical-wall holes (leg2): build in the 90° canonical frame and batch-cut via
+    # map_and_cut_leg2_batch — NEVER cut these directly, the bend angle may not be 90°.
+    for hz in row["vertical_positions"]:
+        vertical_tool = Part.makeCylinder(
+            cross_bend_hole_diameter / 2.0, thickness + 2.0,
+            App.Vector(0, row_y, hz), App.Vector(1, 0, 0)
+        )
+        cross_bend_leg2_tools.append({
+            "tool_shape": vertical_tool, "hole_center_y": row_y, "hole_center_z": hz
+        })
+
+if cross_bend_leg2_tools:
+    bracket_shape = map_and_cut_leg2_batch(
+        bracket_shape=bracket_shape,
+        tools=cross_bend_leg2_tools,
+        angle_deg=bend_angle_deg,
+        dim_y=dim_y,
+        thickness=thickness,
+        flange_height=flange_height,
+        bend_radius=bend_radius,
+    )
+
+# Create final bracket object with holes on both legs and countersinks
+final_bracket_obj = doc.addObject("Part::Feature", "FinalBracket")
+final_bracket_obj.Shape = bracket_shape
+final_bracket_obj.Label = "L-Bracket 90° with Holes and Countersinks on Base and Vertical Wall"
+doc.recompute()
+
+# Export files
+output_dir =  f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir, exist_ok=True)
+
+step_path = os.path.join(output_dir, f"{sanitized_title}.step")
+Import.export([final_bracket_obj], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(bracket_shape, material="{mapped_material}")
+
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    bracket_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# Export OBJ with separate meshes
+obj_path = os.path.join(output_dir, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_bracket_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(Shape=face, LinearDeflection=0.1, AngularDeflection=0.523599)
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)

@@ -1,0 +1,152 @@
+{
+    "class_name": "Laser_Cutting",
+    "rules": [
+        {
+            "id": "LC_01",
+            "description": "Minimum hole diameter constraint for laser cutting",
+            "rule": "Minimum hole diameter: >= 0.7 x material thickness (Auto calculate if request have radius instead of diameter)",
+            "severity": "error",
+            "error_message": "**Suggestion:** Minimum drilling/laser cutting diameter ≥ {{min_diameter}}mm (0.7 x material thickness). This ensures cutting quality, but the file can still be produced. Do you want to continue or modify?"
+        },
+        {
+            "id": "LC_02",
+            "description": "Cutout-to-Free-Edge Minimum Distance (Holes, Rectangles, Oblongs, ... any cutout shape)",
+            "position_resolution": [
+                "MANDATORY — Resolve cutout/hole center coordinates BEFORE applying the formula below.",
+                "Apply the FIRST matching pattern:",
+                "  Pattern A — 'hole/cutout at X from edge/corner/side':  center = X  (X is center, not edge)",
+                "  Pattern B — 'hole/cutout centered / in the center of [face]':  center = face_dim / 2",
+                "  Pattern C — 'N holes, D mm apart / distance D / spaced D / center-to-center D [on/along axis]':",
+                "               each_center = (face_dim_along_that_axis - D) / 2  (symmetric placement)",
+                "  Pattern D — 'hole/cutout at X from one end, Y from other end':  centers at X and (face_dim - Y)",
+                "  Pattern E — 'edge-to-edge gap G between holes':  treat as C-to-C = G + diameter, then Pattern C",
+                "",
+                "KEY DISAMBIGUATION — 'distance' alone vs 'from edge':",
+                "  'each hole/cutout distance D on [axis]' (no 'from edge')  →  Pattern C: C-to-C = D",
+                "  'hole/cutout [at/from] D from edge/corner'               →  Pattern A: center = D",
+                "  When genuinely ambiguous: prefer Pattern C (C-to-C), as it is geometrically symmetric.",
+                "",
+                "After resolving: always verify center_near + center_far + 2R <= face_dim (geometry consistency)."
+            ],
+            "rule": [
+                "SCOPE — check FREE EDGES only; skip BEND EDGES (those are handled by B_05_L/U/Z/TUBE/CAPOT).",
+                "Shape              | Face   | Free edges to check (LC_02)  | Bend edges (skip -> B_05)",
+                "Sheet              | all    | all 4                         | none",
+                "L-Bracket          | base   | 3 (exclude bend toward wall)  | 1 bend",
+                "L-Bracket          | wall   | 3 (exclude bend toward base)  | 1 bend",
+                "U-Bracket          | base   | 2 (dim_y front/back)          | 2 bends (dim_x left+right)",
+                "U-Bracket          | flange | 3 (top + 2 lateral)           | 1 bend (bottom)",
+                "Z-Bracket          | top_flange | 3 (top + 2 lateral)       | 1 bend (bottom, toward web)",
+                "Z-Bracket          | web    | 2 (lateral length-dir ends)   | 2 bends (top toward top_flange + bottom toward bot_flange)",
+                "Z-Bracket          | bot_flange | 3 (bottom + 2 lateral)    | 1 bend (top, toward web)",
+                "CAPOT              | base   | NONE — skip LC_02 entirely    | 4 bends (all edges)",
+                "CAPOT              | wall   | 3 (top + 2 lateral)           | 1 bend (bottom)",
+                "Tube-Rect (bent)   | face   | 2 (length-dir tube ends)      | 2 bends (width-dir corners)",
+                "Tube-Rect (welded) | face   | all 4                         | none",
+                "",
+                "FACE_DIM_NOTE — assign face_length and face_width BEFORE applying any formula below:",
+                "  Definitions:",
+                "    bend_along_side = the length of the FOLD LINE itself (stated as the folded 'grand côté', e.g. 250mm)",
+                "    base_length     = the face dimension PERPENDICULAR to the fold line (the remaining dimension, e.g. 120mm)",
+                "  Axis mapping:",
+                "    face_length (left↔right, C_x axis) = base_length    (⊥ to fold line)",
+                "    face_width  (front↔back, C_y axis) = bend_along_side (∥ to fold line)",
+                "  L-bracket WALL: face_length = bend_along_side, face_width = flange_height",
+                "  U-bracket BASE: face_length = dim_x (between flanges), face_width = bend_along_side",
+                "  Sheet (flat)  : face_length = dim_x, face_width = dim_y",
+                "",
+                "  ⚠️ ORIENTATION AMBIGUITY — CONSERVATIVE CHECK (L-bracket BASE):",
+                "  When the user does NOT specify which physical edge (left/right vs front/back) is the fold edge:",
+                "  → The fold edge is ambiguous. The AI MUST NOT choose the orientation that avoids a violation.",
+                "  → Apply CONSERVATIVE RULE: check C_x against min(dim1, dim2) = base_length.",
+                "     If C_x > base_length: this is a BOUNDARY VIOLATION regardless of orientation.",
+                "     Reason: at least one valid physical orientation of the part has C_x outside the face.",
+                "  → If C_x <= base_length: no boundary issue, continue with normal checks.",
+                "",
+                "  ⚠️ DO NOT OVERRIDE A CORRECT face_x ASSIGNMENT:",
+                "  If face_x = base_length is correctly assigned but C_x > face_x:",
+                "  → Do NOT re-assign face_x = bend_along_side to make C_x fit.",
+                "  → This is a BOUNDARY VIOLATION. Report it immediately.",
+                "",
+
+                "FORMULAS — apply to each FREE edge independently (skip BEND edges per SCOPE table):",
+                "1. For HOLES (Circular Cutouts):",
+                "   R = diameter / 2",
+                "   dist = center_from_that_edge - R",
+                "   VIOLATION if dist < thickness",
+                "",
+                "2. For RECTANGLE Cutouts:",
+                "   Variables: rect_length, rect_height, C_x=center from left, C_y=center from bottom",
+                "     dist_left   = C_x - rect_length/2",
+                "     dist_right  = face_length - C_x - rect_length/2",
+                "     dist_bottom = C_y - rect_height/2",
+                "     dist_top    = face_width  - C_y - rect_height/2",
+                "   Skip bend-edge directions per SCOPE table.",
+                "   VIOLATION if min(remaining_dists) < thickness",
+                "",
+                "3. For OBLONG (Oval) Cutouts:",
+                "   Variables: L_ob=total oblong length, W_ob=total oblong width (W_ob < L_ob)",
+                "     R_ob = W_ob / 2",
+                "     offset = (L_ob - W_ob) / 2  (semicircle center offset from geometric center)",
+                "     HORIZONTAL orientation (long axis along face_length):",
+                "       left_sc  = C_x - offset,  right_sc = C_x + offset",
+                "       dist_left   = left_sc - R_ob",
+                "       dist_right  = face_length - right_sc - R_ob",
+                "       dist_bottom = C_y - R_ob",
+                "       dist_top    = face_width - C_y - R_ob",
+                "   Skip bend-edge directions per SCOPE table.",
+                "   VIOLATION if min(remaining_dists) < thickness"
+            ],
+            "severity": "error",
+            "error_message": "**Suggestion:** We recommend a minimum cutout (hole, rectangle, oblong) - edge distance >= {{min_edge_distance}}mm (1 x thickness). Do you want to continue or modify?"
+        },
+        {
+            "id": "LC_03",
+            "description": "Minimum slot width constraint for laser cutting",
+            "rule": "Minimum slot width: >= 0.7 x material thickness",
+            "severity": "error",
+            "error_message": "**Suggestion:** Slot width must be at least {{min_slot_width}}mm (0.7 x material thickness) for laser cutting. Do you want to continue or modify?"
+        },
+        {
+            "id": "LC_04",
+            "description": "User input required for blind hole depth specification",
+            "rule": "For non-through/blind holes, user must specify hole depth",
+            "severity": "warning",
+            "error_message": "Please specify the hole depth for this blind hole.",
+            "user_prompt": "What is the depth of this blind hole?"
+        },
+        {
+            "id": "LC_05",
+            "description": "Thickness constraints for steel in laser cutting (ONLY asked when steel is selected)",
+            "rule": "Steel thickness: 0.5 mm to 25 mm for laser cutting.",
+            "severity": "error",
+            "error_message": "Steel thickness must be between 0.5 mm and 25 mm for laser cutting.",
+            "parameters": [
+                "thickness",
+                "material_type"
+            ]
+        },
+        {
+            "id": "LC_06",
+            "description": "Thickness constraints for stainless steel in laser cutting (ONLY asked when stainless steel is selected)",
+            "rule": "Stainless steel thickness: 0.5 mm to 20 mm for laser cutting.",
+            "severity": "error",
+            "error_message": "Stainless Steel thickness must be between 0.5 mm and 20 mm for laser cutting.",
+            "parameters": [
+                "thickness",
+                "material_type"
+            ]
+        },
+        {
+            "id": "LC_07",
+            "description": "Thickness constraints for aluminum in laser cutting (ONLY asked when aluminum is selected)",
+            "rule": "Aluminum thickness: 0.5 mm to 20 mm for laser cutting.",
+            "severity": "error",
+            "error_message": "Aluminum thickness must be between 0.5 mm and 20 mm for laser cutting.",
+            "parameters": [
+                "thickness",
+                "material_type"
+            ]
+        }
+    ]
+}

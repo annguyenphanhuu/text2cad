@@ -1,0 +1,104 @@
+# ============================================================
+# Secrets / environment
+# ============================================================
+.env
+.env.*
+!env.example
+*.pem
+*.key
+id_rsa*
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+venv/
+.venv/
+env/
+ENV/
+.conda/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.ipynb_checkpoints/
+
+# ============================================================
+# Logs
+# ============================================================
+*.log
+logs/
+error.log
+api.log
+server.log
+start.log
+logger.log
+
+# ============================================================
+# Runtime / generated output (never commit)
+# ============================================================
+outputs/
+outputs
+temp_uploads/
+temp/
+tmp/
+storage/
+app/
+dist/
+build/
+
+# Generated FreeCAD/CAD artifacts left at repo root
+*.FCStd
+*.FCStd1
+probe_out/
+
+# ============================================================
+# Databases (local fallback / sqlite)
+# ============================================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================================
+# RAG index (rebuild with: python src/rag/build_main_index.py)
+# ============================================================
+data/index/
+data/chat_history.json
+
+# ============================================================
+# FreeCAD scratch scripts
+# ============================================================
+FreeCAD_Scripts/
+
+# ============================================================
+# OS / editor
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+.*.swp
+*.swo
+.idea/
+.vscode/
+*.sublime-*
+
+# ============================================================
+# Docker
+# ============================================================
+.docker/
+
+# ============================================================
+# Node (static assets tooling, if any)
+# ============================================================
+node_modules/
+npm-debug.log
+yarn-error.log

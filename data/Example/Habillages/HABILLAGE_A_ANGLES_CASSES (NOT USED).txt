@@ -1,0 +1,185 @@
+# Example I want to model a folded sheet-metal cover with a 120° broken angle to cover the top of a vertical duct.
+# Length of the part: 1500 mm.
+# The horizontal flange will be 250 mm, and the inclined flanges 200 mm.
+# Material: 2 mm aluminum sheet, natural anodized finish.
+# Add Ø5 mm holes in each corner, 20 mm from the edges
+# Shape type: U-shaped
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+import Draft
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# Document setup
+title = "HABILLAGE_À_ANGLES_CASSÉS"
+sanitized_title = title.replace(" ", "_").replace("'", "").replace('"', '')
+doc = App.newDocument(sanitized_title)
+
+# Parameters (mm)
+length = 1500.0              # Longueur de la pièce
+horizontal_wing = 250.0      # Aile horizontale (cánh ngang)
+inclined_wing = 200.0        # Ailes inclinées (cánh nghiêng)
+thickness = 2.0              # Épaisseur tôle aluminium
+bend_radius = thickness      # Rayon de pliage = épaisseur
+bend_angle_deg = 120.0       # Angle cassé (góc giữa các cánh)
+
+# Hole parameters
+hole_diameter = 5.0          # Ø5
+hole_radius = hole_diameter / 2.0
+hole_offset = 20.0           # Distance from edges
+
+# Material
+material = "Aluminium 2mm - Anodisé naturel"
+
+# 1. Create U-shaped habillage using Part.makeUShape
+# Pour un angle cassé de 120°, l'angle de pliage est 180° - 120° = 60°
+# Les ailes inclinées forment un angle de 120° avec l'horizontale
+
+u_shaped = Part.makeUShape(
+    dim_x=horizontal_wing,                # Largeur de l'aile horizontale
+    dim_y=length,                         # Longueur de la pièce
+    thickness=thickness,                  # Épaisseur 2mm
+    flange_height_left=inclined_wing,     # Hauteur de l'aile inclinée gauche
+    flange_height_right=inclined_wing,    # Hauteur de l'aile inclinée droite
+    bend_angle_deg=bend_angle_deg,        # Angle cassé 120°
+    bend_radius=bend_radius               # Rayon de pliage
+)
+
+# 2. Add mounting holes (Ø5) in corners of flanges
+# hole_center_z: 20mm from tip of flange (inclined_wing - hole_offset)
+# Positions: Y = hole_offset and Y = length - hole_offset
+
+hole_center_z = inclined_wing - hole_offset  # = 200 - 20 = 180mm from bend origin
+
+# Left flange — hole at Y=hole_offset (front corner)
+shape1 = add_hole_leg2(
+    bracket_shape=u_shaped,
+    hole_radius=hole_radius,
+    hole_center_y=hole_offset,
+    hole_center_z=hole_center_z,
+    angle_deg=bend_angle_deg,
+    dim_y=length,
+    thickness=thickness,
+    leg2_length=inclined_wing,
+    bend_radius=bend_radius
+)
+
+# Left flange — hole at Y=length-hole_offset (back corner)
+shape2 = add_hole_leg2(
+    bracket_shape=shape1,
+    hole_radius=hole_radius,
+    hole_center_y=length - hole_offset,
+    hole_center_z=hole_center_z,
+    angle_deg=bend_angle_deg,
+    dim_y=length,
+    thickness=thickness,
+    leg2_length=inclined_wing,
+    bend_radius=bend_radius
+)
+
+# Right flange — hole at Y=hole_offset (front corner)
+shape3 = add_hole_right_flange(
+    bracket_shape=shape2,
+    hole_radius=hole_radius,
+    hole_center_y=hole_offset,
+    hole_center_z=hole_center_z,
+    angle_deg=bend_angle_deg,
+    dim_y=length,
+    thickness=thickness,
+    flange_length=inclined_wing,
+    bend_radius=bend_radius
+)
+
+# Right flange — hole at Y=length-hole_offset (back corner)
+habillage_with_holes = add_hole_right_flange(
+    bracket_shape=shape3,
+    hole_radius=hole_radius,
+    hole_center_y=length - hole_offset,
+    hole_center_z=hole_center_z,
+    angle_deg=bend_angle_deg,
+    dim_y=length,
+    thickness=thickness,
+    flange_length=inclined_wing,
+    bend_radius=bend_radius
+)
+
+# 3. Register final object
+final_obj = doc.addObject("Part::Feature", "Habillage_Angles_Casses")
+final_obj.Label = sanitized_title
+final_obj.Shape = habillage_with_holes
+doc.recompute()
+
+# Add material property
+final_obj.addProperty("App::PropertyString", "Material", "Properties", "Material specification")
+final_obj.Material = material
+
+
+# Export directory handling
+output_dir_abs = f"./app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_obj], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(habillage_with_holes, material="{mapped_material}")
+
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    habillage_with_holes,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape            = face,
+            LinearDeflection = 0.1,
+            AngularDeflection= 0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+
+# Final recompute
+doc.recompute()
+
+

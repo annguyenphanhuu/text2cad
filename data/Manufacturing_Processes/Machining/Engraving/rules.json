@@ -1,0 +1,20 @@
+{
+  "class_name": "Engraving",
+  "parent_category": "Machining",
+  "rules": [
+    {
+      "id": "ENG_01",
+      "category": "manufacturing_constraint",
+      "title": "Minimum Engraving Depth",
+      "rule": "Engraving depth >= 0.1mm",
+      "severity": "error",
+      "error_message": "ERROR: Engraving depth must be at least 0.1mm."
+    },
+    {
+      "id": "ENG_02",
+      "category": "Char height of engraving",
+      "rule": "If user doesn't specify char height. Ask user to specify char height.",
+      "severity": "error"
+    }
+  ]
+}

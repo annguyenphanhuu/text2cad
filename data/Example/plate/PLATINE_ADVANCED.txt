@@ -1,0 +1,567 @@
+#Example 1: Plaque with 2 chamfered corners and 2 filleted corners
+# Shape type: plate
+#
+# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Import
+import Mesh
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# 1) Metadata / document setup
+sanitized_title = "plaque_with_2_chamfered_and_2_filleted_corners"
+doc = App.newDocument("GeneratedModel")
+doc.Label = "Plaque with 2 chamfered and 2 filleted corners"
+
+# 2) Parameters
+length        = 100.0   # X dimension
+width         = 60.0    # Y dimension
+height        = 10.0    # Z dimension (Plaque thickness)
+chamfer_size  = 5.0     # Chamfer size
+fillet_radius = 5.0     # Fillet radius
+
+# 3) Create the base rectangular box
+base_box_shape = Part.makeBox(length, width, height, App.Vector(0.0, 0.0, 0.0))
+
+# 4) Identify corners for Chamfer and Fillet
+# Corners are the vertical edges of the box.
+target_chamfer_coords = [
+    (App.Vector(0.0, 0.0, 0.0), App.Vector(0.0, 0.0, height)),           # front-left corner
+    (App.Vector(length, width, 0.0), App.Vector(length, width, height)),  # back-right corner
+]
+
+target_fillet_coords = [
+    (App.Vector(length, 0.0, 0.0), App.Vector(length, 0.0, height)),     # front-right corner
+    (App.Vector(0.0, width, 0.0), App.Vector(0.0, width, height)),       # back-left corner
+]
+
+edge_tolerance = 1e-6
+
+# Find chamfer edges
+chamfer_edges = []
+for edge in base_box_shape.Edges:
+    if len(edge.Vertexes) < 2:
+        continue
+    start_point = edge.Vertexes[0].Point
+    end_point   = edge.Vertexes[1].Point
+    for c_start, c_end in target_chamfer_coords:
+        if ((start_point.distanceToPoint(c_start) < edge_tolerance and end_point.distanceToPoint(c_end) < edge_tolerance) or
+            (start_point.distanceToPoint(c_end) < edge_tolerance and end_point.distanceToPoint(c_start) < edge_tolerance)):
+            chamfer_edges.append(edge)
+
+# Apply chamfer
+if chamfer_edges:
+    try:
+        intermediate_shape = base_box_shape.makeChamfer(chamfer_size, chamfer_size, chamfer_edges)
+    except Exception:
+        intermediate_shape = base_box_shape
+else:
+    intermediate_shape = base_box_shape
+
+# Find fillet edges on intermediate shape
+fillet_edges = []
+for edge in intermediate_shape.Edges:
+    if len(edge.Vertexes) < 2:
+        continue
+    start_point = edge.Vertexes[0].Point
+    end_point   = edge.Vertexes[1].Point
+    for f_start, f_end in target_fillet_coords:
+        if ((start_point.distanceToPoint(f_start) < edge_tolerance and end_point.distanceToPoint(f_end) < edge_tolerance) or
+            (start_point.distanceToPoint(f_end) < edge_tolerance and end_point.distanceToPoint(f_start) < edge_tolerance)):
+            fillet_edges.append(edge)
+
+# Apply fillet
+if fillet_edges:
+    try:
+        final_shape = intermediate_shape.makeFillet(fillet_radius, fillet_edges)
+    except Exception:
+        final_shape = intermediate_shape
+else:
+    final_shape = intermediate_shape
+
+# Add final object to document
+result = doc.addObject("Part::Feature", "plaque_with_chamfer_and_fillet")
+result.Shape = final_shape
+result.Label = "Plaque with 2 chamfered and 2 filleted corners"
+
+# Final recompute
+doc.recompute()
+
+# 5) Export to STEP and OBJ
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([result], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [result]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape             = face,
+            LinearDeflection  = 0.1,
+            AngularDeflection = 0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+
+# Final recompute (optional)
+doc.recompute()
+
+
+# ============================================================
+#Example 2: Slotted plate with counterbore pockets around each slot
+# I would like a slotted plate to allow adjustment along its length.
+# The dimensions should be 200 × 100 × 10 mm with two oblong slots of 150 × 15 mm,
+# centered with a pitch of 30 mm.
+# A material removal of the counterbore type should be carried out all around the oblongs,
+# offsetting the edges by 4 mm, to a depth of 5 mm.
+# Shape type: plate
+# ============================================================
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# Define the sanitized_title variable
+sanitized_title = "Plate_200x100x10_2Slots_Pocket"   # DO NOT CHANGE THIS VALUE
+
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# 1. Create the base plate
+# Parameters (mm)
+plate_length    = 200.0   # X dimension
+plate_width     = 100.0   # Y dimension
+plate_thickness =  10.0   # Z dimension
+origin          = App.Vector(0.0, 0.0, 0.0)
+
+base_plate_shape = Part.makeBox(plate_length, plate_width, plate_thickness, origin)
+
+# 1b. Fillet each corner with its own radius (per-corner different radius pattern)
+# RULE: When corners have DIFFERENT radii, call makeFillet() separately for EACH corner.
+#       NEVER use Part.Arc for this — always use makeFillet() corner-by-corner.
+# Corner layout (viewed from top):
+#   (0,0)=front-left  R=5  | (plate_length,0)=front-right  R=10
+#   (0,width)=back-left R=8 | (plate_length,width)=back-right R=15
+_fillet_corners_ex2 = [
+    (0.0,          0.0,          5.0),    # front-left  corner: R=5
+    (plate_length, 0.0,          10.0),   # front-right corner: R=10
+    (0.0,          plate_width,  8.0),    # back-left   corner: R=8
+    (plate_length, plate_width,  15.0),   # back-right  corner: R=15
+]
+_etol_ex2 = 1e-6
+
+def _find_corner_edge_ex2(shape, cx, cy, h, tol):
+    for e in shape.Edges:
+        if len(e.Vertexes) < 2:
+            continue
+        sp = e.Vertexes[0].Point
+        ep = e.Vertexes[1].Point
+        pb = App.Vector(cx, cy, 0.0)
+        pt = App.Vector(cx, cy, h)
+        if ((sp.distanceToPoint(pb) < tol and ep.distanceToPoint(pt) < tol) or
+                (sp.distanceToPoint(pt) < tol and ep.distanceToPoint(pb) < tol)):
+            return e
+    return None
+
+for (_cx, _cy, _r) in _fillet_corners_ex2:
+    _edge = _find_corner_edge_ex2(base_plate_shape, _cx, _cy, plate_thickness, _etol_ex2)
+    if _edge is not None:
+        try:
+            base_plate_shape = base_plate_shape.makeFillet(_r, [_edge])
+        except Exception:
+            pass  # keep current shape if this fillet fails
+
+# 2. Create two oblong slot tools (NO LOOPS -- exactly 2)
+# Oblong slot parameters (horizontal orientation)
+slot_width        = 15.0                    # Diameter of circular ends
+slot_straight_len = 150.0                   # Straight section length
+slot_total_len    = slot_straight_len + slot_width
+slot_depth        = plate_thickness + 2.0   # Extra depth for through cut
+
+# Slot positioning
+slot_spacing_y  = 30.0                      # Center-to-center spacing along Y
+center_x        = plate_length / 2.0
+center_y_global = plate_width  / 2.0
+slot1_center_y  = center_y_global - slot_spacing_y / 2.0
+slot2_center_y  = center_y_global + slot_spacing_y / 2.0
+
+# Slot 1 -------------------------------------------------
+slot1_corner_x = center_x - slot_total_len / 2.0
+slot1_corner_y = slot1_center_y - slot_width / 2.0
+slot1_corner   = App.Vector(slot1_corner_x, slot1_corner_y, -1.0)
+slot1_tool = Part.makeOblong(
+    length = slot_total_len,
+    width  = slot_width,
+    height = slot_depth,
+    pnt    = slot1_corner,
+    dir    = App.Vector(0, 0, 1)    # Z-axis for height
+)
+
+# Slot 2 -------------------------------------------------
+slot2_corner_x = center_x - slot_total_len / 2.0
+slot2_corner_y = slot2_center_y - slot_width / 2.0
+slot2_corner   = App.Vector(slot2_corner_x, slot2_corner_y, -1.0)
+slot2_tool = Part.makeOblong(
+    length = slot_total_len,
+    width  = slot_width,
+    height = slot_depth,
+    pnt    = slot2_corner,
+    dir    = App.Vector(0, 0, 1)    # Z-axis for height
+)
+
+# Cut slots from plate (individual cuts)
+plate_after_slots = base_plate_shape.cut(slot1_tool)
+plate_after_slots = plate_after_slots.cut(slot2_tool)
+
+# 3. Create pocket tools for lamage (NO LOOPS -- exactly 2)
+# Pocket (lamage) parameters around each slot
+pocket_offset    = 4.0                       # Radial offset around slot
+pocket_width     = slot_width  + 2.0 * pocket_offset
+pocket_st_len    = slot_straight_len
+pocket_total_len = pocket_st_len + pocket_width
+pocket_depth     = 5.0                       # Pocket depth (downward)
+
+# Pocket 1 -------------------------------------------------
+pocket1_corner_x = center_x - pocket_total_len / 2.0
+pocket1_corner_y = slot1_center_y - pocket_width / 2.0
+pocket1_corner   = App.Vector(pocket1_corner_x,
+                              pocket1_corner_y,
+                              plate_thickness - pocket_depth)
+pocket1_tool = Part.makeOblong(
+    length = pocket_total_len,
+    width  = pocket_width,
+    height = pocket_depth + 1.0,    # Extrude slightly deeper for robust cut
+    pnt    = pocket1_corner,
+    dir    = App.Vector(0, 0, 1)    # Z-axis for height
+)
+
+# Pocket 2 -------------------------------------------------
+pocket2_corner_x = center_x - pocket_total_len / 2.0
+pocket2_corner_y = slot2_center_y - pocket_width / 2.0
+pocket2_corner   = App.Vector(pocket2_corner_x,
+                              pocket2_corner_y,
+                              plate_thickness - pocket_depth)
+pocket2_tool = Part.makeOblong(
+    length = pocket_total_len,
+    width  = pocket_width,
+    height = pocket_depth + 1.0,
+    pnt    = pocket2_corner,
+    dir    = App.Vector(0, 0, 1)    # Z-axis for height
+)
+
+# Cut pockets from plate (individual cuts)
+final_shape = plate_after_slots.cut(pocket1_tool)
+final_shape = final_shape.cut(pocket2_tool)
+
+# Register final object
+plate_obj = doc.addObject("Part::Feature", "PlateWithSlotsAndPockets")
+plate_obj.Label = sanitized_title
+plate_obj.Shape = final_shape
+doc.recompute()
+
+# Export directory handling
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([plate_obj], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [plate_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape             = face,
+            LinearDeflection  = 0.1,
+            AngularDeflection = 0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+
+# Final recompute (optional)
+doc.recompute()
+
+#Example 3: Plate with diagonal corner cuts (2 corners) toward the plate center
+# I want a plate 160 x 160 x 3 mm with a diagonal cut of 45mm from the front-left corner
+# and 45mm from the back-right corner, both 17mm wide, heading toward the center.
+# Shape type: plate
+# -*- coding: utf-8 -*-
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Import
+import Mesh
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+sanitized_title = "plate_160x160x3_diagonal_corner_cuts"
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+plate_length = 160.0
+plate_width = 160.0
+plate_thickness = 3.0
+
+base_plate = Part.makeBox(plate_length, plate_width, plate_thickness)
+
+# Diagonal cut tool per requested corner.
+# distance_from_corner defaults to 0 -> the cut reaches the corner and severs it.
+# cut_length is the long side AS MEASURED ON THE FINISHED PLATE; the helper
+# compensates for the material the plate's own corner removes, so do NOT adjust it.
+# direction defaults to the corner's 45 deg angle bisector -> symmetric on any plate.
+cut_front_left = Part.makeDiagonalCornerCut(
+    plate_length, plate_width, plate_thickness,
+    corner="front_left", cut_length=45.0, cut_width=17.0,
+    distance_from_corner=0.0,
+)
+cut_back_right = Part.makeDiagonalCornerCut(
+    plate_length, plate_width, plate_thickness,
+    corner="back_right", cut_length=45.0, cut_width=17.0,
+    distance_from_corner=0.0,
+)
+
+final_shape = base_plate.cut(cut_front_left).cut(cut_back_right)
+
+result = doc.addObject("Part::Feature", "plate_with_diagonal_corner_cuts")
+result.Shape = final_shape
+result.Label = sanitized_title
+doc.recompute()
+
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([result], step_path)
+
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+mesh_objects = []
+face_counter = 1
+for part in [result]:
+    shape = part.Shape
+    part_name = part.Label
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()
+
+#Example 4: Plate with a CLOSED rectangular hole set on the corner diagonal
+# I want a 200 x 200 x 2 mm plate with one rectangular cutout, 45 mm long and
+# 17 mm wide, oriented along the diagonal at the bottom-left corner, positioned
+# 30 mm from the corner measured along the diagonal.
+# Shape type: plate
+# -*- coding: utf-8 -*-
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Import
+import Mesh
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+sanitized_title = "plate_200x200x2_diagonal_rectangular_hole"
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+plate_length = 200.0
+plate_width = 200.0
+plate_thickness = 2.0
+
+base_plate = Part.makeBox(plate_length, plate_width, plate_thickness)
+
+# Same helper as Example 3 -- a diagonal hole is the SAME shape as a diagonal
+# corner cut, just pushed away from the corner by distance_from_corner.
+#   distance_from_corner = 0                -> open notch that severs the corner
+#   distance_from_corner >= cut_width / 2   -> closed hole, clear of both edges
+# The distance is measured ALONG THE DIAGONAL from the corner point to the hole's
+# nearest short edge. It is NOT an X/Y edge distance: edge_x = edge_y = 30 would
+# put the hole 42.4 mm along the diagonal, not 30 mm.
+#
+# NEVER build this as Part.makeBox(...).rotate(...): makeBox is anchored at a box
+# corner, so rotating it leaves the diagonal running along the rectangle's long
+# edge instead of through its centre, offsetting the hole by half its width.
+diagonal_hole = Part.makeDiagonalCornerCut(
+    plate_length, plate_width, plate_thickness,
+    corner="front_left", cut_length=45.0, cut_width=17.0,
+    distance_from_corner=30.0,
+)
+
+final_shape = base_plate.cut(diagonal_hole)
+
+result = doc.addObject("Part::Feature", "plate_with_diagonal_rectangular_hole")
+result.Shape = final_shape
+result.Label = sanitized_title
+doc.recompute()
+
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([result], step_path)
+
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+mesh_objects = []
+face_counter = 1
+for part in [result]:
+    shape = part.Shape
+    part_name = part.Label
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()

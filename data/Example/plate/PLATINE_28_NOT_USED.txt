@@ -1,0 +1,216 @@
+# Example Make a 100×100×10 plate with one Ø20 hole in the center. Add two Ø5 holes on each side face, located 20 mm from the ends, centered on the thickness, with a depth of 15 mm
+# Shape type: plate
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+import Draft
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+# Define the sanitized_title variable  
+sanitized_title = "Platine_100x100x10_Holes20_2x5Edges"   # DO NOT CHANGE THIS VALUE
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+# 1. Create the base plate
+# Parameters (mm)
+plate_length    = 100.0   # X dimension
+plate_width     = 100.0   # Y dimension
+plate_thickness =  10.0   # Z dimension
+origin          = App.Vector(0.0, 0.0, 0.0)
+
+base_plate_shape = Part.makeBox(plate_length, plate_width, plate_thickness, origin)
+
+# 1b. Fillet each corner with its own radius (per-corner different radius pattern)
+# RULE: When corners have DIFFERENT radii, call makeFillet() separately for EACH corner.
+#       NEVER use Part.Arc for this — always use makeFillet() corner-by-corner.
+# Corner layout (viewed from top):
+#   (0,0)=front-left  R=5   | (plate_length,0)=front-right  R=8
+#   (0,width)=back-left R=12| (plate_length,width)=back-right R=15
+fillet_r_fl = 5.0    # front-left  corner (X=0,       Y=0)
+fillet_r_fr = 8.0    # front-right corner (X=length,  Y=0)
+fillet_r_bl = 12.0   # back-left   corner (X=0,       Y=width)
+fillet_r_br = 15.0   # back-right  corner (X=length,  Y=width)
+
+_etol = 1e-6
+
+def _find_corner_edge(shape, cx, cy, thickness, tol):
+    """Return the single vertical edge at corner (cx, cy)."""
+    for e in shape.Edges:
+        if len(e.Vertexes) < 2:
+            continue
+        sp = e.Vertexes[0].Point
+        ep = e.Vertexes[1].Point
+        p_bottom = App.Vector(cx, cy, 0.0)
+        p_top    = App.Vector(cx, cy, thickness)
+        if ((sp.distanceToPoint(p_bottom) < tol and ep.distanceToPoint(p_top) < tol) or
+                (sp.distanceToPoint(p_top) < tol and ep.distanceToPoint(p_bottom) < tol)):
+            return e
+    return None
+
+# Apply one makeFillet() call per corner — each with its own radius
+_shape = base_plate_shape
+for (_cx, _cy, _r) in [
+    (0.0,          0.0,         fillet_r_fl),   # front-left
+    (plate_length, 0.0,         fillet_r_fr),   # front-right
+    (0.0,          plate_width, fillet_r_bl),   # back-left
+    (plate_length, plate_width, fillet_r_br),   # back-right
+]:
+    _edge = _find_corner_edge(_shape, _cx, _cy, plate_thickness, _etol)
+    if _edge is not None:
+        try:
+            _shape = _shape.makeFillet(_r, [_edge])
+        except Exception:
+            pass  # keep current shape if this fillet fails
+base_plate_shape = _shape
+
+# 2. Create central hole (NO LOOPS)
+# Central hole D20
+central_hole_diam  = 20.0
+central_hole_rad   = central_hole_diam / 2.0
+central_hole_depth = plate_thickness + 2.0   # extra depth for robust cut
+
+hole_center = Part.makeCylinder(
+    central_hole_rad,
+    central_hole_depth,
+    App.Vector(plate_length/2.0, plate_width/2.0, -1.0),
+    App.Vector(0, 0, 1)
+)
+shape_after_center = base_plate_shape.cut(hole_center)
+
+# 3. Create 8 edge holes (2 on each of 4 side faces)
+# Edge holes D5 (8 holes total: 2 on each of 4 side faces)
+edge_hole_diam  = 5.0
+edge_hole_rad   = edge_hole_diam / 2.0
+edge_hole_depth = 15.0                       # specified depth
+edge_offset     = 20.0                       # 20 mm from edge
+mid_thickness_z = plate_thickness / 2.0      # centered on thickness
+
+# Side face at Y=0 (front face): 2 holes at X=20 and X=80
+hole1 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(edge_offset, 0.0, mid_thickness_z),
+    App.Vector(0, 1, 0)
+)
+hole2 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(plate_length - edge_offset, 0.0, mid_thickness_z),
+    App.Vector(0, 1, 0)
+)
+
+# Side face at Y=100 (back face): 2 holes at X=20 and X=80
+hole3 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(edge_offset, plate_width, mid_thickness_z),
+    App.Vector(0, -1, 0)
+)
+hole4 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(plate_length - edge_offset, plate_width, mid_thickness_z),
+    App.Vector(0, -1, 0)
+)
+
+# Side face at X=0 (left face): 2 holes at Y=20 and Y=80
+hole5 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(0.0, edge_offset, mid_thickness_z),
+    App.Vector(1, 0, 0)
+)
+hole6 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(0.0, plate_width - edge_offset, mid_thickness_z),
+    App.Vector(1, 0, 0)
+)
+
+# Side face at X=100 (right face): 2 holes at Y=20 and Y=80
+hole7 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(plate_length, edge_offset, mid_thickness_z),
+    App.Vector(-1, 0, 0)
+)
+hole8 = Part.makeCylinder(
+    edge_hole_rad,
+    edge_hole_depth,
+    App.Vector(plate_length, plate_width - edge_offset, mid_thickness_z),
+    App.Vector(-1, 0, 0)
+)
+
+shape_after_holes = shape_after_center.cut(hole1).cut(hole2).cut(hole3).cut(hole4).cut(hole5).cut(hole6).cut(hole7).cut(hole8)
+
+# Register final object
+plate_obj = doc.addObject("Part::Feature", "FinishedPlate")
+plate_obj.Label = sanitized_title
+plate_obj.Shape = shape_after_holes
+doc.recompute()
+# Export directory handling
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([plate_obj], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(shape_after_holes, material="{mapped_material}")
+
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    shape_after_holes,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [plate_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape            = face,
+            LinearDeflection = 0.1,
+            AngularDeflection= 0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+
+# Final recompute (optional)
+doc.recompute()

@@ -1,0 +1,11 @@
+{
+    "class_name": "Bending",
+    "info_entries": [
+        {
+            "id": "B_01",
+            "category": "default_parameter",
+            "title": "Default inner bend radius and bend angle",
+            "description": "Inner bend radius equal to thickness and bend angle equal to 90 degrees (when not specified). bend_radius = thickness, bend_angle = 90"
+        }
+    ]
+}

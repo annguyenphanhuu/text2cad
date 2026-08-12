@@ -1,0 +1,48 @@
+{
+  "class_name": "Standard_Sheet",
+  "parent_category": "Sheet_Metal",
+  "rules": [
+    {
+      "id": "SM_01",
+      "title": "Steel thickness constraint",
+      "description": "If 25<thickness≤ 50mm, (ONLY asked when steel is selected)",
+      "severity": "error",
+      "error_message": "Warning! This part can be made by plasma, oxy-cutting, or CNC machining but not by laser cutting. Do you want to continue?"
+    },
+    {
+      "id": "SM_02",
+      "title": "Steel thickness constraint",
+      "description": "If thickness > 50 mm, (ONLY asked when steel is selected)",
+      "severity": "error",
+      "error_message": "Warning! This part can be made by oxy-cutting or CNC machining but not by laser cutting or plasma. Do you want to continue?"
+    },
+    {
+      "id": "SM_03",
+      "title": "Stainless Steel thickness constraint",
+      "description": "If 25<thickness≤ 50mm, (ONLY asked when stainless steel is selected)",
+      "severity": "error",
+      "error_message": "Warning! This part can be made by plasma or CNC machining but not by laser cutting. Do you want to continue?"
+    },
+    {
+      "id": "SM_04",
+      "title": "Stainless Steel thickness constraint",
+      "description": "If thickness > 50 mm, (ONLY asked when stainless steel is selected)",
+      "severity": "error",
+      "error_message": "Warning! This part can be made by CNC machining but not by laser cutting or plasma. Do you want to continue?"
+    },
+    {
+      "id": "SM_05",
+      "title": "Aluminum thickness constraint",
+      "description": "If 20<thickness≤ 30mm, (ONLY asked when aluminum is selected)",
+      "severity": "error",
+      "error_message": "Warning! This part can be made by plasma or CNC machining but not by laser cutting. Do you want to continue?"
+    },
+    {
+      "id": "SM_06",
+      "title": "Aluminum thickness constraint",
+      "description": "If thickness > 30 mm, (ONLY asked when aluminum is selected)",
+      "severity": "error",
+      "error_message": "Warning! This part can be made by CNC machining but not by laser cutting or plasma. Do you want to continue?"
+    }
+  ]
+}

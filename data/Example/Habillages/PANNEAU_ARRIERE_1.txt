@@ -1,0 +1,163 @@
+#Example I would like a technical ceiling cladding made of 1.5 mm anodized aluminum panels, for an area of ​​2400 mm x 1200 mm. Each panel will be 600 x 600 mm, with a 25 mm return around the entire perimeter for interlocking.
+# Keywords: Sheet/plate with secondary 180 degree crushed fold/open hem edge treatment. Synonyms: pli ecrase, repli ecrase, pli a 180, ourlet ouvert, rabat, rabattement, plis anglais, pli aplati, open hem, hem fold.
+# Shape type: plate
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# Define the sanitized_title variable  
+sanitized_title = "Plate_200x150x1.5_bend180_flange20"  # DO NOT CHANGE THIS VALUE
+
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# Parameters (mm)
+length = 200.0      # Length of the plate (X dimension)
+width = 150.0       # Width of the plate (Y dimension)
+thickness = 1.5     # Sheet thickness
+flange = 20.0       # Flange length (return bend around perimeter)
+bend_radius = thickness  # Default inner bend radius
+bend_angle_deg = 180.0   # Bend angle (180 degrees for full return)
+
+# 1. Create base plate
+base_shape = Part.makeBox(length, width, thickness)
+base_obj = doc.addObject("Part::Feature", "BasePlate")
+base_obj.Shape = base_shape
+base_obj.Label = "Base Plate"
+doc.recompute()
+
+# 2. Find top edges for bending (4 perimeter edges)
+def get_top_perimeter_edges(shape):
+    """Find the 4 top perimeter edges of a box shape"""
+    z_max = shape.BoundBox.ZMax
+    X_axis = App.Vector(1, 0, 0)
+    Y_axis = App.Vector(0, 1, 0)
+
+    x_edges = []  # Edges parallel to X axis
+    y_edges = []  # Edges parallel to Y axis
+
+    for i, edge in enumerate(shape.Edges, 1):
+        try:
+            p1 = edge.Vertexes[0].Point
+            p2 = edge.Vertexes[-1].Point
+        except:
+            continue
+
+        # Check if edge is at top (z = z_max)
+        if abs(p1.z - z_max) > 1e-4 or abs(p2.z - z_max) > 1e-4:
+            continue
+
+        # Get edge direction
+        edge_vec = p2.sub(p1)
+        if edge_vec.Length < 1e-9:
+            continue
+
+        edge_dir = edge_vec.normalize()
+
+        # Check if parallel to X or Y axis
+        dot_x = abs(edge_dir.dot(X_axis))
+        dot_y = abs(edge_dir.dot(Y_axis))
+
+        edge_name = f"Edge{i}"
+        if dot_x >= 0.99:
+            x_edges.append(edge_name)
+        elif dot_y >= 0.99:
+            y_edges.append(edge_name)
+
+    # Return first 2 edges from each direction (4 edges total)
+    selected_edges = x_edges[:2] + y_edges[:2]
+    return selected_edges
+
+edge_names = get_top_perimeter_edges(base_obj.Shape)
+
+# 3. Create 180° bends on all 4 edges (crushed fold)
+try:
+    bend_obj = doc.addObject("Part::FeaturePython", "SMBendWall_180_All")
+    SheetMetalCmd.SMBendWall(bend_obj, base_obj, edge_names)
+
+    # Set bend parameters
+    bend_obj.radius = bend_radius
+    bend_obj.length = flange
+    bend_obj.angle = bend_angle_deg
+    bend_obj.BendType = "Material Outside"
+    bend_obj.LengthSpec = "Leg"
+
+    doc.recompute()
+    final_obj = bend_obj
+
+except Exception as e:
+    final_obj = base_obj
+
+# Update label
+final_obj.Label = sanitized_title
+doc.recompute()
+
+# Export directory handling
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_obj], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(base_shape, material="{mapped_material}")
+
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    base_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape            = face,
+            LinearDeflection = 0.1,
+            AngularDeflection= 0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+
+# Final recompute (optional)
+doc.recompute()

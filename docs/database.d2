@@ -1,0 +1,30 @@
+title: |md
+  # Tolery AI CAD Databases
+| {near: top-center}
+
+
+sessions: {
+    shape: sql_table
+    id: int {constraint: primary_key}
+    session_id: string - {constraint: unique}
+    name: string
+    created_at: datetime
+    updated_at: datetime
+}
+
+chat_history: {
+    shape: sql_table
+    id: int {constraint: primary_key}
+    session_id: string - {constraint: index}
+    message: text
+    image_path: string
+    part_file_name: string
+    export_format: string
+    material_choice: string
+    selected_feature_uuid: string
+    output: text
+    created_at: datetime
+    updated_at: datetime   
+}
+  
+sessions.session_id -> chat_history.session_id

@@ -1,0 +1,5 @@
+Name,Parameters,Description
+"Flat Sheet Cut","thickness,length,width,cutting_direction","Flat sheet with laser cut patterns, automatic App.Vector positioning"
+"Through Hole Cut","thickness,hole_diameter,hole_position,cutting_direction","Through holes with laser cutting, automatic App.Vector positioning"
+"Profile Cut","thickness,profile_shape,cutting_direction","Custom profile cutting with automatic App.Vector positioning"
+"Rectangular Cutout","thickness,cutout_width,cutout_height,cutout_position,cutting_direction","Rectangular cutouts with automatic App.Vector positioning"

@@ -1,0 +1,54 @@
+volumes:
+  atn_tolery_data:
+
+services:
+  app:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      args:
+        - GEMINI_API_KEY=${GEMINI_API_KEY}
+        - OPENAI_API_KEY=${OPENAI_API_KEY}
+    container_name: atn_tolery_api
+    restart: always
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - tolery
+
+  db:
+    image: mysql:8.0
+    restart: always
+    container_name: atn_tolery_db
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command: ['mysqld', '--default-authentication-plugin=mysql_native_password', '--bind-address=0.0.0.0']
+    #ports:
+    #  - "3306:3306"
+    volumes:
+      - atn_tolery_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tolery
+
+networks:
+  tolery:
+    external: true

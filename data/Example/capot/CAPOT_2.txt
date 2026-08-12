@@ -1,0 +1,229 @@
+#Example I would like a 3D STEP file of a cover with a rectangular base measuring 400 × 300 mm and a thickness of 1.5 mm. 
+# Add four 90° bends of 151.5 mm that rise vertically, as well as two 50 mm wide bends along the 400 mm sides, bent outward. 
+# Do not forget the bending radii (inner bending radius = thickness and outer radius = 2 × thickness). 
+# Add 10 mm corner radii to the four corners of the 50 mm bends.
+# Base: 4 oblong holes 15×30 mm (minor diameter 15, total slot length 30, long axis along the width direction)
+#   arranged in a 2×2 grid, spaced 200 mm along the length and 150 mm along the width,
+#   front row 40 mm from the front face.
+# Front and Rear walls: Provide four hexagonal Ø8 cut holes (two per wall), positioned 10 mm from the edge and 22 mm from the lateral edges.
+# Left wall: 2 rectangular holes 10×20 mm, spaced 100 mm apart center-to-center, centered in the wall width,
+#   centers 20 mm from the bend line.
+#   2 oblong holes 8×15 mm (minor diameter 8, total slot length 15, long axis along the width direction),
+#   spaced 30 mm apart vertically, centered in the wall width, nearest hole 15 mm from the edge.
+# Shape type: capot
+import sys
+import os
+import math
+import FreeCAD as App
+import Part
+import Import
+import Mesh
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# Define the sanitized_title variable
+sanitized_title = "Box_shape_with_additional_bend"  # DO NOT CHANGE THIS VALUE
+
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# 1. Create the basic tub
+# Parameters (mm)
+thickness   = 1.5
+bend_radius = thickness    # Default inner bend radius
+length      = 400.0        # X dimension (long side, 400 mm)
+width       = 300.0        # Y dimension (short side, 300 mm)
+height      = 151.5        # Vertical wall height
+bend_angle_deg = 90.0      # Physical bend angle of all 4 walls (user requested 90°)
+
+tub_obj = Part.makeTub(
+    thickness   = thickness,
+    bend_radius = bend_radius,
+    dim_x=length,
+    dim_y=width,
+    height      = height,
+    bend_angle  = bend_angle_deg,
+    target_walls=["front", "back", "left", "right"]
+)
+
+doc.recompute()
+
+# 2. Create additional outward bend on the 2 high side walls (400 mm / X-axis sides)
+additional_bend_length = 50.0
+additional_bend_angle  = 90.0   # Default
+fillet_flange          = 10.0   # 10 mm corner radius on the outward flanges
+
+bent_obj = AddOutwardBend(
+    tub_obj,
+    additional_bend_length,
+    additional_bend_angle,
+    bend_radius,
+    target_walls = ['front', 'back'],
+    fillet    = fillet_flange,
+    thickness = thickness
+)
+
+doc.recompute()
+
+# ─────────────────────────────────────────────────────────────────
+# 4. Add oblong holes
+# ─────────────────────────────────────────────────────────────────
+final_shape = bent_obj.Shape
+
+# ── 4a. 4 oblong holes 15×30 mm (2×2 grid) on BASE ─────────────────
+base_oblong_diameter = 15.0
+base_oblong_length   = 30.0
+base_oblong_depth    = thickness + 2.0
+
+base_spacing_x = 200.0
+base_x1 = -(base_spacing_x / 2.0)
+base_x2 = +(base_spacing_x / 2.0)
+
+base_y_front = -width / 2.0 + 40.0
+base_y_back  = base_y_front + 150.0
+
+base_oblong_tools = []
+for cx in [base_x1, base_x2]:
+    for cy in [base_y_front, base_y_back]:
+        tool = Part.makeOblong(
+            base_oblong_diameter,
+            base_oblong_length,
+            base_oblong_depth,
+            App.Vector(cx - base_oblong_diameter / 2.0, cy - base_oblong_length / 2.0, 0.0),
+            App.Vector(0, 0, 1)
+        )
+        base_oblong_tools.append(tool)
+
+base_oblong_compound = Part.makeCompound(base_oblong_tools)
+final_shape = final_shape.cut(base_oblong_compound)
+
+# ── 4b. Add machining on LEFT WALL ─────────────────
+# Use resolve_capot_wall_hole_position() instead of a fixed dir/pnt so this
+# also works unchanged when bend_angle_deg != 90 (leaning/flared capot
+# walls). It snaps the analytically-computed (u, v) position onto the REAL
+# bent wall face on tub_obj.Shape before cutting, which stays correct even
+# at extreme bend angles where SMBendWall's corner relief/merge shifts the
+# real wall surface beyond what a fixed bend_radius offset alone captures.
+real_shape_for_snap = tub_obj.Shape  # pre-hole-cut geometry to snap positions against
+
+# 2 Rectangular holes 10x20 mm on LEFT WALL
+# u = along wall width (Y), v = distance from the bend line (wall height)
+rect_size_u = 20.0            # Y extent
+rect_size_v = 10.0            # height extent
+rect_depth  = thickness + 2.0
+
+rect_spacing_u = 100.0
+rect_u1 = -(rect_spacing_u / 2.0)
+rect_u2 = +(rect_spacing_u / 2.0)
+rect_v_center = 20.0          # centers 20 mm from the bend line
+
+_, left_u_dir, left_v_dir, _ = get_capot_wall_frame("left", bend_angle_deg, length, width, thickness)
+
+for u_c in (rect_u1, rect_u2):
+    start, n_dir, depth = resolve_capot_wall_hole_position(
+        real_shape_for_snap, "left", bend_angle_deg, length, width, thickness,
+        u_c, rect_v_center, rect_depth, bend_radius
+    )
+    tool = Part.makeBox(
+        rect_size_u, rect_size_v, depth,
+        App.Vector(-rect_size_u / 2.0, -rect_size_v / 2.0, 0.0)
+    )
+    tool = place_on_capot_wall(tool, start, left_u_dir, left_v_dir, n_dir)
+    final_shape = final_shape.cut(tool)
+
+# 2 Oblong holes 8x15 mm on LEFT WALL, long axis along the width (u) direction.
+# Part.makeOblong(diameter, length, depth) puts diameter along local-X and length
+# along local-Y (default dir), so swap u_dir/v_dir when placing to keep the
+# length axis on u (width) and the diameter axis on v (height).
+oblong_diam   = 8.0
+oblong_length = 15.0
+oblong_depth  = thickness + 2.0
+
+oblong_v_A = height - 15.0   # nearest hole 15 mm from the top edge
+oblong_v_B = oblong_v_A - 30.0             # spaced 30 mm apart vertically
+oblong_u_center = 0.0                      # centered in the wall width
+
+for v_c in (oblong_v_A, oblong_v_B):
+    start, n_dir, depth = resolve_capot_wall_hole_position(
+        real_shape_for_snap, "left", bend_angle_deg, length, width, thickness,
+        oblong_u_center, v_c, oblong_depth, bend_radius
+    )
+    tool = Part.makeOblong(
+        oblong_diam, oblong_length, depth,
+        App.Vector(-oblong_diam / 2.0, -oblong_length / 2.0, 0.0)
+    )
+    tool = place_on_capot_wall(tool, start, left_v_dir, left_u_dir, n_dir)
+    final_shape = final_shape.cut(tool)
+
+# ── 4c. Hexagonal holes on Front and Rear walls ─────────────────
+# Hexagon prisms are rotationally symmetric about `dir`, so n_dir can be used
+# directly - no place_on_capot_wall() transform needed.
+holes = []
+
+hex_flat = 8.0
+hex_rad = hex_flat / math.sqrt(3.0)
+hex_depth = thickness + 2.0
+edge_offset = 22.0
+hex_u1 = -length / 2.0 + edge_offset
+hex_u2 = length / 2.0 - edge_offset
+hex_v = height - 10.0   # 10 mm from the top (free) edge
+
+for wall in ("front", "back"):
+    for cu in (hex_u1, hex_u2):
+        pnt, n_dir, depth = resolve_capot_wall_hole_position(
+            real_shape_for_snap, wall, bend_angle_deg, length, width, thickness,
+            cu, hex_v, hex_depth, bend_radius
+        )
+        holes.append(Part.makeHexagon(hex_rad, depth, pnt, n_dir))
+
+hex_compound = Part.makeCompound(holes)
+final_shape = final_shape.cut(hex_compound)
+
+# 5. Register final object
+final_obj = doc.addObject("Part::Feature", "Capot_Fini")
+final_obj.Label = sanitized_title
+final_obj.Shape = final_shape
+doc.recompute()
+
+# Export directory handling
+output_dir_abs = f"./app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_obj], step_path)
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+
+# Final recompute (optional)
+doc.recompute()

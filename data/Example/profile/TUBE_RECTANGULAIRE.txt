@@ -1,0 +1,293 @@
+#Example a rectangular tube, 80 × 120 mm with 4 mm wall thickness, and a total length of 1000 mm. The left end should be cut straight at 90° and the right end needs a 45° bevel cut. At the 90° end, please add rectangular tabs (tenons) 30 mm long and 4 mm thick. Add Ø10 mm through holes on both sides of the 80 mm width face, centered and spaced every 300 mm starting 100 mm from the edge. Add rectangular slots (mortises) 40 × 5 mm on the side faces (120 mm height), and finally place a hexagonal cutout (with a 25 mm flat-to-flat dimension) on the top surface, 500 mm from the edge.
+# Shape type: tube
+
+"""
+This script generates a general rectangular tube incorporating multiple typical machining operations:
+- Material: Steel
+- Cross-section: 80mm x 120mm rectangular (Outer width = 80mm, Outer height = 120mm)
+- Length: 1000mm
+- Wall Thickness: 4mm
+- Features:
+  1. Angled cuts (90° at start Y=0, 45° at end Y=length)
+  2. Rectangular tabs / tenons (30mm x 4mm) at the 90° end (Y=0)
+  3. Circular through holes (Ø10mm) spaced along the top/bottom faces (drilled along Z)
+  4. Rectangular mortises / slots (40mm x 5mm) on the front/back faces (X-min, X-max)
+  5. Hexagonal cutout (25mm across flats) on the top face (Z-max)
+- Rounded corners with fillet radius (inner_radius = 4mm, outer_radius = 8mm)
+
+Coordinate system:
+  - Y-axis: length (longitudinal, tube extends from Y=0 to Y=total_length)
+  - X-axis: width  (outer_width = 80mm)
+  - Z-axis: height (outer_height = 120mm)
+"""
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+import Draft
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# 1. DOCUMENT INITIALIZATION
+doc = App.newDocument("GeneratedModel")
+sanitized_title = "Tube_Rect_Generique_Decoupes_Tenons_Trous"
+doc.Label = sanitized_title
+
+# 2. CREATE BASIC RECTANGULAR TUBE
+total_length   = 1000.0   # Y dimension — tube length
+thickness      = 4.0      # wall thickness
+outer_width    = 80.0     # X dimension
+outer_height   = 120.0    # Z dimension
+
+# ── LONG FACE / SHORT FACE IDENTIFICATION ──────────────────────────────────
+# long_side  = max(outer_width, outer_height) = max(80, 120) = 120 mm  → SHORT face in this tube? No:
+# long_side  = 120 mm (outer_height, Z dimension)  → FRONT/BACK faces (X-min, X-max)
+# short_side =  80 mm (outer_width,  X dimension)  → TOP/BOTTOM faces (Z-max, Z-min)
+#
+# Summary for Part.makeRectangularTube(length, outer_width, outer_height, ...):
+#   outer_width  (X) = 80 mm  → SHORT side → TOP/BOTTOM face  → drill along Z-axis (±Z)
+#   outer_height (Z) = 120 mm → LONG  side → FRONT/BACK face  → drill along X-axis (±X)
+#
+# ⚠️ RULE: long_side  = max(outer_width, outer_height) → the face whose cross-section span
+#                       equals long_side  → FRONT/BACK or TOP/BOTTOM accordingly.
+#          short_side = min(outer_width, outer_height) → the opposite pair of faces.
+# ──────────────────────────────────────────────────────────────────────────
+long_side  = max(outer_width, outer_height)   # = 120 mm — FRONT/BACK faces (X-min, X-max)
+short_side = min(outer_width, outer_height)   # =  80 mm — TOP/BOTTOM faces (Z-max, Z-min)
+
+# Inner dimensions
+inner_width  = outer_width  - 2 * thickness
+inner_height = outer_height - 2 * thickness
+
+# Default bend radius = thickness
+inner_fillet_radius = thickness
+outer_fillet_radius = inner_fillet_radius + thickness
+
+# FACE NOMENCLATURE FOR RECTANGULAR TUBES (Y-axis = length):
+#   - TOP FACE    (Z-max) and BOTTOM FACE (Z-min) : cross-section span = outer_width  = SHORT side (80 mm)
+#   - FRONT FACE  (X-min) and BACK FACE  (X-max)  : cross-section span = outer_height = LONG  side (120 mm)
+#
+# CRITICAL — "short face" / "face courte" → TOP/BOTTOM → drill along Z-axis (pnt.z = -2.0 or outer_height, dir=(0,0,±1))
+# CRITICAL — "long face"  / "face longue" → FRONT/BACK → drill along X-axis (pnt.x = -2.0 or outer_width,  dir=(±1,0,0))
+
+tube_shape = Part.makeRectangularTube(
+    total_length,
+    outer_width,
+    outer_height,
+    thickness,
+    outer_fillet_radius,
+    inner_fillet_radius
+)
+
+# 3. ANGLED CUTS
+# start (Y=0) = 90deg straight cut (0.0 = skip / no bevel)
+# end   (Y=total_length) = 45deg bevel
+left_cut_angle  = 0.0    # 0.0 → straight/90° cut at Y=0 (no bevel plane)
+right_cut_angle = 45.0   # 45° bevel at Y=total_length
+tube_shape = create_square_tube_angled_cuts(
+    tube_shape,
+    total_length,
+    outer_width,
+    outer_height,
+    left_cut_angle,
+    right_cut_angle
+)
+
+# 4. ADD TENONS (TABS)
+# Tabs at the start end (Y=0, the 90° straight-cut end)
+# tab_length : extent in X direction (centered on tube width)
+# tab_width  : protrusion beyond tube end in Y direction
+tab_length = 30.0
+tab_width  = thickness
+
+tube_shape = create_rectangular_tab(
+    tube_shape,
+    tab_length,
+    tab_width,
+    total_length,
+    outer_width,
+    outer_height,
+    thickness,
+    add_start_tab=True,
+    add_end_tab=False
+)
+
+# 5. ADD CIRCULAR HOLES
+# D10 holes on TOP face (Z-max = outer_height) and BOTTOM face (Z-min = 0),
+# each drilled INDEPENDENTLY from the outer face inward (depth = thickness + 2.0).
+# 3 holes per face × 2 faces = 6 cylinders total.
+#
+# COORDINATE RULE (consistent with CAPOT/SUPPORT pattern):
+#   TOP face    (Z = outer_height): pnt.z = outer_height, dir = (0, 0, -1), drills inward -Z
+#   BOTTOM face (Z = 0)           : pnt.z = -(thickness + 2.0) + 0 = start below bottom, dir = (0, 0, 1)
+#     ↳ i.e. pnt.z = -2.0, cut_depth = thickness + 2.0, dir=(0,0,1)  → cuts from below into bottom wall
+
+hole_diameter  = 10.0
+hole_radius    = hole_diameter / 2.0
+hole_cut_depth = thickness + 2.0   # depth through one wall only (not through-and-through)
+
+start_offset = 100.0    # first hole at Y=100
+hole_spacing = 300.0    # spacing between holes along Y
+center_x     = outer_width / 2.0   # centered in X (width)
+
+# Collect all Y-positions for holes
+y_positions = []
+y_pos = start_offset
+while y_pos <= total_length - 100.0:
+    y_positions.append(y_pos)
+    y_pos += hole_spacing
+
+# --- TOP face holes (Z-max = outer_height) — drill in -Z direction ---
+top_holes = []
+for y in y_positions:
+    top_hole = Part.makeCylinder(
+        hole_radius,
+        hole_cut_depth,
+        App.Vector(center_x, y, outer_height),  # start at outer face of TOP wall
+        App.Vector(0, 0, -1)                    # drill inward (-Z direction)
+    )
+    top_holes.append(top_hole)
+
+# --- BOTTOM face holes (Z-min = 0) — drill in +Z direction ---
+bottom_holes = []
+for y in y_positions:
+    bottom_hole = Part.makeCylinder(
+        hole_radius,
+        hole_cut_depth,
+        App.Vector(center_x, y, 0.0),
+        App.Vector(0, 0, 1)             # drill inward (+Z direction)
+    )
+    bottom_holes.append(bottom_hole)
+
+# Apply all 6 holes as a compound cut
+all_holes = top_holes + bottom_holes
+if all_holes:
+    holes_compound = Part.makeCompound(all_holes)
+    tube_shape = tube_shape.fuse(holes_compound)
+
+# 6. ADD MORTISES (RECTANGULAR SLOTS)
+# Mortises on FRONT face (X=0) and BACK face (X=outer_width), cutting along X-axis.
+# Consistent with CONSOLE_U / CAPOT pattern:
+#   Part.makeBox(size_z, size_y, depth_x, pnt, dir=(±1,0,0))
+#   - param1 (size_z)  : Z extent → +Z from pnt.z → pnt.z = center_z − size_z/2  (SUBTRACT)
+#   - param2 (size_y)  : Y extent → −Y from pnt.y → pnt.y = center_y + size_y/2  (ADD)
+#   - param3 (depth_x) : cut depth in ±X direction
+#   - FRONT face (X=0)         : pnt.x = 0.0,         dir=(1,0,0)  (drill inward +X)
+#   - BACK  face (X=outer_width): pnt.x = outer_width, dir=(-1,0,0) (drill inward -X)
+#   - Result: .cut() — NOT .fuse()
+
+mortise_len      = 40.0              # long axis along Y (length direction)
+mortise_height   = 5.0              # short axis along Z
+mortise_cut_depth = thickness + 2.0  # cut depth through one wall only
+mortise_center_y = 200.0            # hole center position along Y
+mortise_center_z = outer_height / 2.0  # centered in height (Z)
+
+# Mortise on FRONT face (X=0): drill in +X direction
+mortise_front = Part.makeBox(
+    mortise_height,                             # param1: Z extent → +Z from pnt.z (SUBTRACT ½)
+    mortise_len,                                # param2: Y extent → −Y from pnt.y (ADD ½)
+    mortise_cut_depth,                          # param3: cut depth → +X from pnt.x
+    App.Vector(
+        0.0,                                    # pnt.x = outer face of FRONT wall
+        mortise_center_y + mortise_len / 2.0,  # pnt.y = center_y + size_y/2  (ADD rule)
+        mortise_center_z - mortise_height / 2.0  # pnt.z = center_z - size_z/2  (SUBTRACT rule)
+    ),
+    App.Vector(1, 0, 0)                         # drill inward (+X)
+)
+tube_shape = tube_shape.cut(mortise_front)
+
+# Mortise on BACK face (X=outer_width): drill in -X direction
+mortise_back = Part.makeBox(
+    mortise_height,                             # param1: Z extent → +Z from pnt.z (SUBTRACT ½)
+    mortise_len,                                # param2: Y extent → −Y from pnt.y (ADD ½)
+    mortise_cut_depth,                          # param3: cut depth → −X from pnt.x
+    App.Vector(
+        outer_width,                            # pnt.x = outer face of BACK wall
+        mortise_center_y + mortise_len / 2.0,  # pnt.y = center_y + size_y/2  (ADD rule)
+        mortise_center_z - mortise_height / 2.0  # pnt.z = center_z - size_z/2  (SUBTRACT rule)
+    ),
+    App.Vector(-1, 0, 0)                        # drill inward (-X)
+)
+tube_shape = tube_shape.cut(mortise_back)
+
+# 7. ADD HEXAGONAL CUTOUT
+# On TOP face (Z-max = outer_height), 500 mm from start (Y=500), centered in X.
+# Consistent with TOP face hole pattern (same as circular holes on TOP):
+#   pnt.z = outer_height  → start at outer face of TOP wall
+#   dir   = (0, 0, -1)   → drill inward (-Z direction)
+#   depth = thickness + 2.0  → cuts through top wall only
+hex_key      = 25.0
+hex_radius   = hex_key / math.sqrt(3)
+hex_center_y = 500.0
+hex_center_x = outer_width / 2.0
+
+hex_prism = Part.makeHexagon(
+    radius=hex_radius,
+    height=thickness + 2.0,
+    pnt=App.Vector(hex_center_x, hex_center_y, outer_height),  # start at outer TOP face
+    dir=App.Vector(0, 0, -1)                                    # drill inward (-Z)
+)
+tube_shape = tube_shape.cut(hex_prism)
+
+# 8. FINALIZE OBJECT IN DOCUMENT
+tube_obj = doc.addObject("Part::Feature", "tube_rect_generique")
+tube_obj.Shape = tube_shape
+doc.recompute()
+
+# 9. EXPORT STEP AND OBJ
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([tube_obj], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(tube_shape, material="{mapped_material}")
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    tube_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# OBJ export (face-by-face)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+mesh_objects = []
+face_counter = 1
+for part in [tube_obj]:
+    shape = part.Shape
+    part_name = part.Label
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)

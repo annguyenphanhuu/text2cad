@@ -1,0 +1,196 @@
+# Example a wall-mounted bracket made of 4 mm thick aluminum sheet, with a total length of 300 mm.
+# It must be folded to obtain:
+# A horizontal base of 100 mm
+# A vertical flange of 150 mm (bent 90°, with an inside radius of 3 mm)
+# Then a small horizontal return of 50 mm, folded inward (second 90° bend)
+# On the horizontal base, I want two Ø8 mm holes in the two corners, 20 mm from the outer edges opposite the bend.
+# On the vertical flange, I want one slotted hole 20 × 8 mm, oriented in the length direction, centered at a height of 75 mm.
+# Shape type: L-bracket
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+import Draft
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# Define the sanitized_title variable  
+sanitized_title = "Wall_Bracket_300x100x150x4_Alu"   # DO NOT CHANGE THIS VALUE
+
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# 1. Create the L-shaped bracket
+dim_x         = 100.0   # horizontal base length (X dimension)
+dim_y         = 300.0   # extrusion depth / total length (Y dimension)/Depth/Bend along side
+thickness     =   4.0   # sheet thickness
+flange_height = 150.0   # vertical flange height (Z dimension)
+bend_angle_deg=  90.0   # bend angle
+bend_radius   =   3.0   # inner bend radius
+fillet_corner =   0.0   # no outer fillet
+
+# Horizontal part: 100x300
+# Vertical part: 150x300
+bracket_shape = Part.makeLShape(
+    dim_x=dim_x,
+    dim_y=dim_y,
+    thickness=thickness,
+    flange_height=flange_height,
+    bend_angle_deg=bend_angle_deg,
+    bend_radius=bend_radius
+)
+
+# 1.5. Bend Edge24 for folded inward
+# A horizontal return of 50 mm, folded inward (second 90° bend)
+bracket_obj = doc.addObject("Part::Feature", "Bracket_Base")
+bracket_obj.Shape = bracket_shape
+doc.recompute()
+
+# Bend parameters
+bend_length = 50.0  # 50mm bend length
+bend_angle = 90.0   # 90 degrees
+additional_bend_radius = bend_radius  # Use same radius as original bend
+
+# Create bend using SMBendWall on Edge24
+bend_obj = doc.addObject("Part::FeaturePython", "SMBendWall_Additional")
+SheetMetalCmd.SMBendWall(bend_obj, bracket_obj, ["Edge24"])
+
+# Set bend properties
+bend_obj.length = bend_length
+bend_obj.angle = 180 - bend_angle  # SheetMetal uses supplementary angle
+bend_obj.radius = additional_bend_radius
+doc.recompute()
+
+# Fuse the bent shape back to bracket_shape
+bracket_shape = bracket_obj.Shape.fuse(bend_obj.Shape)
+
+# 2. Add two Ø8 mm holes on the horizontal base (leg1):
+# In the two corners
+# 20 mm from the outer edges opposite the bend
+hole1_diam    =   8.0
+hole1_rad     = hole1_diam / 2.0
+hole_depth    = thickness + 2.0
+
+# 2.1 Corner 1: 20 mm from far X edge, 20 mm from one Y edge
+h1_x = dim_x - 20.0  # 20 mm from far edge (opposite bend)
+h1_y = 20.0          # 20 mm from one side edge
+
+# Hole 1 on leg1
+bracket_shape = add_hole_leg1(
+    bracket_shape,
+    hole1_rad,
+    h1_x,
+    h1_y,
+    dim_y,
+    thickness,
+    dim_x
+)
+
+# 2.2 Corner 2: 20 mm from far X edge, 20 mm from other Y edge
+h2_x = dim_x - 20.0  # 20 mm from far edge (opposite bend)
+h2_y = dim_y - 20.0  # 20 mm from other side edge
+
+# Hole 2 on leg1
+bracket_shape = add_hole_leg1(
+    bracket_shape,
+    hole1_rad,
+    h2_x,
+    h2_y,
+    dim_y,
+    thickness,
+    dim_x
+)
+
+# 3. Add one slotted hole 20 × 8 mm on vertical flange (leg2):
+# Oriented in the length direction
+# Centered at a height of 75 mm
+slot_width    =   8.0    # minor axis (width)
+slot_straight =  20.0    # slot straight length
+slot_total    = slot_straight + slot_width  # total length = straight + two semicircles (radius = width/2)
+slot_depth    = thickness + 2.0
+
+# 3.1 Oriented in the length direction (Y)
+slot_center_y = dim_y / 2.0       # centered in length (Y direction)
+
+# 3.2 Centered at a height of 75 mm (Z)
+slot_center_z = 75.0              # at height 75 mm (Z direction)
+
+slot_corner_x = -1.0  # Just outside the flange to ensure complete cut
+slot_corner_y = slot_center_y + slot_total / 2.0  # Start position for Y
+slot_corner_z = slot_center_z + slot_width / 2.0   # Start position for Z
+
+slot_tool = Part.makeOblong(
+    length = slot_width,      
+    width  = slot_total,      
+    height = slot_depth,
+    pnt    = App.Vector(slot_corner_x, slot_corner_y, slot_corner_z),
+    dir    = App.Vector(1, 0, 0)  
+)
+bracket_shape = bracket_shape.cut(slot_tool)
+
+# 4. Register final object
+final_bracket = doc.addObject("Part::Feature", "Wall_Bracket_Final")
+final_bracket.Label = sanitized_title
+final_bracket.Shape = bracket_shape
+doc.recompute()
+
+# Export STEP
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+step_filename = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_bracket], step_filename)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+
+# Export OBJ (Face Mesh Export)
+obj_filename = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+mesh_objects = []
+face_counter = 1
+
+for part in [final_bracket]:
+    shape = part.Shape
+    part_name = part.Label
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599,
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i + 1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_filename)

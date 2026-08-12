@@ -1,0 +1,90 @@
+Python Commands for 3D Drawing in FreeCAD Workbenches
+Below is a detailed list of Python commands from the main FreeCAD workbenches that support drawing and manipulating 3D shapes, along with examples:
+
+**1. Part Workbench (Core for 3D Modeling)**
+*Basic Objects:*
+- `Part.makeBox(length, width, height, [point])` - Creates a box, origin point can be specified
+  *Example:* `box = Part.makeBox(10, 20, 5)`
+- `Part.makeCylinder(radius, height, [point], [direction])` - Creates a cylinder with radius and height
+  *Example:* `cylinder = Part.makeCylinder(5, 30)`
+- `Part.makeSphere(radius, [point])` - Creates a sphere with radius
+  *Example:* `sphere = Part.makeSphere(10)`
+- `Part.makeCone(radius1, radius2, height, [point], [direction])` - Creates a cone with 2 radii
+  *Example:* `cone = Part.makeCone(5, 0, 15)` # Pointed cone
+- `Part.makeTorus(radius1, radius2, [point], [direction], [angle1], [angle2])` - Creates a torus
+  *Example:* `torus = Part.makeTorus(10, 2)`
+- `Part.makeWedge(xmin, ymin, zmin, z2min, x2min, xmax, ymax, zmax, z2max, x2max)` - Creates a wedge
+  *Example:* `wedge = Part.makeWedge(0,0,0, 5,5, 10,10,10, 15,15)`
+- `Part.makePrism(face, direction)` - Creates a prism from a face and direction vector
+  *Example:* `face = Part.makePlane(10,10); prism = Part.makePrism(face, App.Vector(0,0,5))`
+- `Part.makeHelix(pitch, height, radius, [angle])` - Creates a helix
+  *Example:* `helix = Part.makeHelix(pitch=2, height=10, radius=3)`
+- `Part.makeOblong(size_x, size_y, height, pnt, dir)` - Creates an oblong (stadium) shape. Works **identically to Part.makeBox**: `size_x` = X extent, `size_y` = Y extent, corner-based `pnt`. The 4 edges parallel to `dir` are filleted with radius = `min(size_x, size_y) / 2`. To orient the long axis along X: pass `slot_length` as `size_x` and `slot_diameter` as `size_y`. To orient along Y: pass `slot_diameter` as `size_x` and `slot_length` as `size_y`.
+
+*Boolean Operations:*
+- `Part.cut(shape1, shape2)` - Cuts shape2 from shape1
+  *Example:* `box1 = Part.makeBox(10,10,10); box2 = Part.makeBox(5,5,5, App.Vector(2,2,2)); cut_obj = Part.cut(box1, box2)`
+- `Part.fuse(shape1, shape2)` - Combines shape1 and shape2
+  *Example:* `cyl1 = Part.makeCylinder(5,10); cyl2 = Part.makeCylinder(3,15); fused_obj = Part.fuse(cyl1, cyl2)`
+- `Part.common(shape1, shape2)` - Creates the intersection of shape1 and shape2
+  *Example:* `sph1 = Part.makeSphere(10); sph2 = Part.makeSphere(8, App.Vector(5,0,0)); common_obj = Part.common(sph1, sph2)`
+- `Part.section(shape1, shape2)` - Creates a cross-section between shape1 and shape2
+  *Example:* `box = Part.makeBox(20,20,5); plane = Part.makePlane(30,30); section_obj = Part.section(box, plane)`
+
+*Complex Shape Creation Operations:*
+- `Part.makeLoft(listOfWires, [solid], [ruled])` - Creates a loft surface from a list of wires
+  *Example:* `w1 = Part.makeWire([App.Vector(0,0,0), App.Vector(10,0,0), App.Vector(10,10,0), App.Vector(0,10,0)], True); w2 = Part.makeWire([App.Vector(2,2,5), App.Vector(8,2,5), App.Vector(8,8,5), App.Vector(2,8,5)], True); loft = Part.makeLoft([w1, w2], True)`
+- `Part.makeSweep(spine, profile, [transition])` - Creates a sweep object along a path
+  *Example:* `spine = Part.makeLine((0,0,0), (0,0,20)); profile = Part.makeCircle(5); sweep = Part.makeSweep(spine, profile)`
+- `Part.makeExtrusion(face, vector)` - Extrudes a face along a vector
+  *Example:* `face = Part.makePlane(10,10); extrusion = Part.makeExtrusion(face, App.Vector(0,0,15))`
+- `Part.makeRevolution(profile, [placement], [angle], [solid])` - Creates a revolved object
+  *Example:* `profile = Part.makeCircle(10, App.Vector(15,0,0)); revolution = Part.makeRevolution(profile)`
+- `Part.makeShell(listOfFaces)` - Creates a shell from a list of faces (often for removing faces)
+  *Example:* `box = Part.makeBox(10,10,10); faces_to_remove = [box.Faces[0]]; shell = Part.makeShell(faces_to_remove)`
+- `Part.makeSolid(shell)` - Creates a solid from a shell
+  *Example:* `# Assuming 'shell' is a valid Part.Shell object; solid = Part.makeSolid(shell)`
+- `Part.makeCompound(listOfShapes)` - Creates a compound from a list of shapes
+  *Example:* `box = Part.makeBox(5,5,5); sphere = Part.makeSphere(3); compound = Part.makeCompound([box, sphere])`
+- `Part.makeFilledFace(listOfWires)` - Creates a face from a list of wires
+  *Example:* `wire = Part.makeWire([App.Vector(0,0,0), App.Vector(10,0,0), App.Vector(5,5,0)], True); face = Part.makeFilledFace([wire])`
+- `Part.makeOffset(shape, offset, [tolerance])` - Creates an offset object
+  *Example:* `box = Part.makeBox(10,10,10); offset_box = Part.makeOffset(box, 2)`
+- `Part.makeThickness(shape, thickness, [tolerance])` - Creates a thick object
+  *Example:* `sphere = Part.makeSphere(10); thick_sphere = Part.makeThickness(sphere, -1)` # Negative for inward thickness
+
+*Lines and Curves:*
+- `Part.makeCircle(radius, [center], [direction], [angle1], [angle2])` - Creates a circle
+  *Example:* `circle = Part.makeCircle(10)`
+- `Part.makeEllipse(major_radius, minor_radius, [center], [direction])` - Creates an ellipse
+  *Example:* `ellipse = Part.makeEllipse(10, 5)`
+- `Part.makePolygon(listOfPoints)` - Creates a polygon from a list of points
+  *Example:* `poly = Part.makePolygon([App.Vector(0,0,0), App.Vector(10,0,0), App.Vector(5,10,0)])`
+- `Part.makeSpline(listOfPoints, [periodic])` - Creates a spline
+  *Example:* `spline = Part.makeSpline([App.Vector(0,0,0), App.Vector(5,5,0), App.Vector(10,0,0)])`
+- `Part.makeBSpline(poles, [knots], [mults], [periodic], [degree], [weights])` - Creates a BSpline
+  *Example:* `poles = [App.Vector(0,0,0), App.Vector(5,5,0), App.Vector(10,0,0)]; bspline = Part.makeBSpline(poles)`
+- `Part.makeBezierCurve(poles)` - Creates a Bezier curve
+  *Example:* `poles = [App.Vector(0,0,0), App.Vector(5,5,0), App.Vector(10,0,0)]; bezier = Part.makeBezierCurve(poles)`
+
+**6. Mesh Workbench (Working with Meshes)**
+- `Mesh.createBox(length, width, height)` - Creates a mesh box
+  *Example:* `mesh_box = Mesh.createBox(10, 20, 5)`
+- `Mesh.createSphere(radius, [sampling])` - Creates a mesh sphere
+  *Example:* `mesh_sphere = Mesh.createSphere(10)`
+- `Mesh.createCylinder(radius, height, [sampling])` - Creates a mesh cylinder
+  *Example:* `mesh_cyl = Mesh.createCylinder(5, 30)`
+- `Mesh.createCone(radius1, radius2, height, [sampling])` - Creates a mesh cone
+  *Example:* `mesh_cone = Mesh.createCone(5, 0, 15)`
+- `Mesh.createTorus(radius1, radius2, [sampling])` - Creates a mesh torus
+  *Example:* `mesh_torus = Mesh.createTorus(10, 2)`
+- `Mesh.createFromShape(shape, [linear_deflection], [angular_deflection])` - Creates a mesh from a shape (Part object)
+  *Example:* `part_box = Part.makeBox(10,10,10); mesh_from_part = Mesh.createFromShape(part_box)`
+- `Mesh.flipNormals(mesh)` - Flips the normal vectors of the mesh
+  *Example:* `# Assuming 'mesh' is a Mesh object; Mesh.flipNormals(mesh)`
+- `Mesh.harmonizeNormals(mesh)` - Harmonizes normal vectors (outward or inward direction)
+  *Example:* `# Assuming 'mesh' is a Mesh object; Mesh.harmonizeNormals(mesh)`
+- `Mesh.smooth(mesh, [iterations])` - Smooths the mesh
+  *Example:* `# Assuming 'mesh' is a Mesh object; smoothed_mesh = Mesh.smooth(mesh)`
+- `Mesh.refine(mesh)` - Refines the mesh (adds detail)
+  *Example:* `# Assuming 'mesh' is a Mesh object; refined_mesh = Mesh.refine(mesh)`

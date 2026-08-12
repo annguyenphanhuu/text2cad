@@ -1,0 +1,179 @@
+#Example 1: Equilateral triangular sheet-metal tray with three flanges
+# Create an equilateral triangular sheet-metal part.
+# Base triangle: each side is 200 mm.
+# The first triangle vertex is placed at the origin (0, 0, 0).
+# The base edge runs along the +X axis and the third vertex points toward +Y.
+# Coordinate convention: Vertex A = (0,0,0), Vertex B = (side,0,0), Vertex C = (side/2,height,0).
+# Top perimeter edges at Z = thickness are the bend reference edges for triangular flanges.
+# Thickness is 2 mm.
+# Add one 15 mm upward flange or bend on each of the three triangle edges.
+# Bend angle is 90 degrees. Bend radius is equal to the thickness.
+# GENERATOR DECISION NOTES:
+# - If the user asks for an equilateral triangle with flanges on all edges / each side / all three sides, use this pattern.
+# - The triangle subtype is still `Triangle`, not L-bracket/U-shaped/CAPOT, because the base outline is triangular.
+# - Use `get_equilateral_triangle_points(side_length)` for the base points.
+# - Use `find_edge_by_points` on top perimeter edges at Z = thickness.
+# - For "all three edges", collect A-B, B-C, and C-A in one `SMBendWall` call so AutoMiter trims the corners.
+# - If the user asks for only one edge, select only the requested edge instead of looping over all three.
+# Shape type: Triangle
+#
+# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+import os
+import sys
+import FreeCAD as App
+import Part
+import Import
+import Mesh
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# 1) Metadata / document setup
+sanitized_title = "Triangle_Equilateral_Side200_Thk2_ThreeFlanges15"
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# 2) Parameters (mm)
+side_length = 200.0
+thickness = 2.0
+flange_height = 15.0
+bend_angle_deg = 90.0
+bend_radius = thickness
+
+
+def bootstrap_sheetmetal():
+    sheetmetal_path = os.path.join(project_root, "sheetmetal")
+    if sheetmetal_path not in sys.path:
+        sys.path.insert(0, sheetmetal_path)
+
+    import SheetMetalCmd
+    import SheetMetalTools
+
+    def task_restore_defaults(_obj, _default_vars):
+        pass
+
+    SheetMetalTools.taskRestoreDefaults = task_restore_defaults
+    return SheetMetalCmd
+
+
+def add_sheetmetal_bends(doc, SheetMetalCmd, base_obj, edge_names, object_name):
+    bend_obj = doc.addObject("Part::FeaturePython", object_name)
+    SheetMetalCmd.SMBendWall(bend_obj, base_obj, edge_names)
+    # SheetMetal SMBendWall expects the straight flange length after the bend zone.
+    # Use the same convention as the bracket examples: requested height minus radius and thickness.
+    bend_obj.length = flange_height - (bend_radius + thickness)
+    bend_obj.angle = 180.0 - bend_angle_deg
+    bend_obj.radius = bend_radius
+    bend_obj.invert = False
+    bend_obj.AutoMiter = True
+    bend_obj.minGap = 0.0
+    bend_obj.maxExtendDist = flange_height * 3.0
+    bend_obj.reliefw = 0.0
+    bend_obj.reliefd = 0.0
+    doc.recompute()
+    return bend_obj
+
+
+SheetMetalCmd = bootstrap_sheetmetal()
+
+# 3) Create triangular base plate
+# GENERATOR DECISION:
+# - The confirmed subtype is equilateral with three edge flanges.
+# - First create the same equilateral base as the flat example, then select all top perimeter edges for bends.
+triangle_points = get_equilateral_triangle_points(side_length)
+base_shape = make_triangle_plate(triangle_points, thickness)
+
+base_obj = doc.addObject("Part::Feature", "Base_Triangle_200")
+base_obj.Shape = base_shape
+base_obj.Label = "Base triangle side 200 thickness 2"
+doc.recompute()
+
+# 4) Add one sheet-metal bend on all three top perimeter edges
+# EDGE NAMING:
+# - A-B is the base edge along +X.
+# - B-C is the right slanted edge.
+# - C-A is the left slanted edge.
+# - For right triangles only, B-C is also the hypotenuse / grand cote.
+# Pass all three adjacent edges in one SMBendWall call so AutoMiter can trim the triangular corners.
+top_points = [App.Vector(point.x, point.y, thickness) for point in triangle_points]
+edge_names = []
+for index, start_point in enumerate(top_points):
+    end_point = top_points[(index + 1) % len(top_points)]
+    edge_name = find_edge_by_points(base_obj.Shape, start_point, end_point)
+    if not edge_name:
+        raise RuntimeError(
+            "Could not find triangle perimeter edge from "
+            f"{start_point} to {end_point}."
+        )
+    edge_names.append(edge_name)
+
+bend_obj = add_sheetmetal_bends(
+    doc,
+    SheetMetalCmd,
+    base_obj,
+    edge_names,
+    "SMBend_Triangle_All_Edges",
+)
+
+final_shape = bend_obj.Shape.removeSplitter()
+
+result = doc.addObject("Part::Feature", "TriangleThreeFlanges")
+result.Label = sanitized_title
+result.Shape = final_shape
+doc.recompute()
+
+# 5) Export to STEP, geometry JSON, and OBJ
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([result], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [result]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()

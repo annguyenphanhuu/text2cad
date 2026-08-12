@@ -1,0 +1,190 @@
+# Example Create a 90° L-shaped angle bracket with a 26.5×21.5×1.5 mm section and 2 mm fillet radii applied to the four external corners of the part. The length is 100 mm, with an inside bend radius of 1.5 mm and an outside radius of 3 mm. Vertical flange includes two Ø5.5 mm holes, spaced 80 mm apart, centered along the length and positioned 10.5 mm from the edge opposite the bend. Base flange, add two rectangular holes measuring 22.90×11.20 mm, positioned 15.45 mm from each end and 9.6 mm from the edge opposite the bend.
+# Shape type: L-bracket
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+import Draft
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# Define sanitized_title
+sanitized_title = "L_Bracket_265x215x1p5_L100"
+
+# Document Setup
+doc = App.newDocument("L_Bracket_265x215x1p5")
+doc.Label = "L-Bracket 26.5x21.5x1.5mm_Length100"
+
+# 1. Create L-shaped bracket
+# Parameters
+dim_x = 26.5          # horizontal leg length (base flange)
+dim_y = 100.0         # extrusion length
+thickness = 1.5       # sheet thickness
+flange_height = 21.5  # vertical leg height
+bend_angle_deg = 90.0
+bend_radius = thickness     # Default inner bend radius
+fillet_corner = 2.0   # external corner fillets
+
+bracket_shape = Part.makeLShape(
+    dim_x=dim_x,
+    dim_y=dim_y,
+    thickness=thickness,
+    flange_height=flange_height,
+    bend_angle_deg=bend_angle_deg,
+    bend_radius=bend_radius
+)
+
+# Apply 2mm corner fillets to all thickness edges
+fillet_edges = []
+for edge in bracket_shape.Edges:
+    if abs(edge.Length - thickness) < 1e-6:
+        fillet_edges.append(edge)
+if fillet_edges:
+    bracket_shape = bracket_shape.makeFillet(2.0, fillet_edges)
+
+# 2. Add two holes on vertical leg
+# Vertical flange includes two Ø5.5 mm holes, spaced 80 mm apart, 
+# centered along the length and positioned 10.5 mm from the edge opposite the bend.
+
+# Hole parameters - vertical leg
+hole_vert_radius = 5.5 / 2.0  # D5.5mm
+spacing_vert = 80.0
+hole_vert_z = flange_height + bend_radius - 10.5  # 10.5mm from edge opposite bend
+hole_center_z1 = hole_vert_z - bend_radius  # Position from leg2 base
+hole_center_z2 = hole_vert_z - bend_radius  # Same Z position for both holes
+
+# 2.1 First hole on vertical leg
+hole1_vert_y = (dim_y - spacing_vert) / 2.0
+
+bracket_shape = add_hole_leg2(
+    bracket_shape=bracket_shape,
+    hole_radius=hole_vert_radius,
+    hole_center_y=hole1_vert_y,
+    hole_center_z=hole_center_z1,
+    angle_deg=bend_angle_deg,
+    dim_y=dim_y,
+    thickness=thickness,
+    leg2_length=flange_height
+)
+
+# 2.2 Second hole on vertical leg
+hole2_vert_y = hole1_vert_y + spacing_vert
+
+bracket_shape = add_hole_leg2(
+    bracket_shape=bracket_shape,
+    hole_radius=hole_vert_radius,
+    hole_center_y=hole2_vert_y,
+    hole_center_z=hole_center_z2,
+    angle_deg=bend_angle_deg,
+    dim_y=dim_y,
+    thickness=thickness,
+    leg2_length=flange_height
+)
+
+
+# 3. Add two rectangular holes on base flange
+# Base flange, add two rectangular holes measuring 22.90×11.20 mm, 
+# positioned 15.45 mm from each end and 9.6 mm from the edge opposite the bend.
+
+# Rectangular hole parameters - base flange
+rect_w = 11.20   # X-direction size (width, rotated horizontally)
+rect_l = 22.90   # Y-direction size (length, rotated horizontally)
+offset_end = 15.45
+offset_edge = 9.6
+rect_x = dim_x - offset_edge - rect_w / 2.0
+
+# 3.1 First rectangular hole on base flange
+rect1_y = offset_end - rect_l / 2.0
+
+rect1 = Part.makeBox(
+    rect_w, 
+    rect_l, 
+    thickness * 1.2, 
+    App.Vector(rect_x, rect1_y, 0), 
+    dir=App.Vector(0, 0, 1)
+)
+bracket_shape = bracket_shape.cut(rect1)
+
+# 3.2 Second rectangular hole on base flange
+rect2_y = dim_y - offset_end - rect_l / 2.0
+
+rect2 = Part.makeBox(
+    rect_w, 
+    rect_l, 
+    thickness * 1.2, 
+    App.Vector(rect_x, rect2_y, 0), 
+    dir=App.Vector(0, 0, 1)
+)
+bracket_shape = bracket_shape.cut(rect2)
+
+final_shape = bracket_shape
+
+# 4. Create final object
+final_obj = doc.addObject("Part::Feature", "FinalBracket")
+final_obj.Label = "L-Bracket 26.5x21.5x1.5mm_Length100"
+final_obj.Shape = final_shape
+doc.recompute()
+
+# Export STEP
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+step_filename = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([final_obj], step_filename)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+# Analyze final shape geometry
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+
+
+# Export geometry data to JSON
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+
+# Export OBJ (Face Mesh Export)
+obj_filename = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [final_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599,
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i + 1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+
+Mesh.export(mesh_objects, obj_filename)

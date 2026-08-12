@@ -1,0 +1,110 @@
+#Example 1: Equilateral triangular plate
+# Create a flat equilateral triangular plate.
+# The triangle side length is 100 mm.
+# The thickness is 2 mm.
+# The first triangle vertex is placed at the origin (0, 0, 0).
+# The base edge runs along the +X axis and the third vertex points toward +Y.
+# Coordinate convention: Vertex A = (0,0,0), Vertex B = (side,0,0), Vertex C = (side/2,height,0).
+# The top face is at Z = thickness. Use dir=(0,0,1) and pnt.z=0.0 for through cuts on the triangular base.
+# This is a simple triangular sheet or triangular plate without bends or flanges.
+# GENERATOR DECISION NOTES:
+# - If the user says "triangle equilateral", "triangle regulier", or gives one common side for all edges, use this pattern.
+# - Keep the parameter name `side_length`; do not replace it with `base_length` or `equal_side_length`.
+# - Use `get_equilateral_triangle_points(side_length)` for the 3 base points.
+# - If the user instead asks for an isosceles triangle, switch to `get_isosceles_triangle_points(base_length, equal_side_length)`.
+# - If the user asks for a right/right-isosceles triangle, switch to the right-triangle helpers shown in the right-isosceles hypotenuse example.
+# Shape type: Triangle
+#
+# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+import os
+import sys
+import FreeCAD as App
+import Part
+import Import
+import Mesh
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# 1) Metadata / document setup
+sanitized_title = "Triangle_Equilateral_Side100_Thk2"
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# 2) Parameters (mm)
+side_length = 100.0
+thickness = 2.0
+
+# 3) Create the equilateral triangle plate
+# GENERATOR DECISION:
+# - The confirmed subtype is equilateral, so one `side_length` drives all three edges.
+# - The correct helper is `get_equilateral_triangle_points(side_length)`.
+# - Do not compute `triangle_height` manually here; the helper owns the geometry math.
+# TRIANGLE HELPER CONVENTION:
+# - points[0] = A = origin
+# - points[1] = B, so A-B is the base edge
+# - points[2] = C toward +Y
+# - thickness is extruded along +Z
+triangle_points = get_equilateral_triangle_points(side_length)
+final_shape = make_triangle_plate(triangle_points, thickness)
+
+result = doc.addObject("Part::Feature", "TriangleEquilateralPlate")
+result.Label = sanitized_title
+result.Shape = final_shape
+doc.recompute()
+
+# 4) Export to STEP, geometry JSON, and OBJ
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([result], step_path)
+
+# ============================================================
+# GEOMETRY ANALYSIS
+# ============================================================
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+
+geometry_result = analyze_geometry(final_shape, material="{mapped_material}")
+
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    final_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# Export OBJ with separate meshes for each face (MANDATORY PATTERN)
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+
+mesh_objects = []
+face_counter = 1
+
+for part in [result]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape=face,
+            LinearDeflection=0.1,
+            AngularDeflection=0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()

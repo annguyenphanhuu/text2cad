@@ -1,0 +1,258 @@
+{
+  "class_name": "Bending",
+  "parent_category": "Forming",
+  "rules": [
+    {
+      "id": "B_01",
+      "title": "Sheet Thickness Validation",
+      "rule": "thickness must be between 0.6mm and 25mm for bending",
+      "severity": "error",
+      "error_message": "In industrial sheet metal work, it will be difficult to manufacture below 0.6 mm and beyond 25 mm. Do you want to continue?"
+    },
+    {
+      "id": "B_02",
+      "title": "Default Bend Radius and Bend Angle",
+      "description": "Default: bend_radius = thickness, bend_angle = 90 degrees",
+      "applies_when": "bend_radius or bend_angle not provided"
+    },
+    {
+      "id": "B_03",
+      "title": "Bending Distance Reference Table",
+      "description": [
+        "thickness | min_flange | hole_to_bend | z_bend_dist",
+        "0.5-0.6mm | 5mm        | 3mm          | 8.5mm",
+        "0.8mm     | 6mm        | 3mm          | 9.1mm",
+        "1.0mm     | 6mm        | 3mm          | 9.5mm",
+        "1.2-1.5mm | 7.5mm      | 4mm          | 11mm",
+        "2.0mm     | 9mm        | 5mm          | 13.5mm",
+        "2.5mm     | 10mm       | 5mm          | 14.5mm",
+        "3.0mm     | 12mm       | 6mm          | 16mm",
+        "4.0mm     | 16mm       | 8mm          | 21mm",
+        "5.0mm     | 20mm       | 10mm         | 26mm",
+        "6.0mm     | 25mm       | 12.5mm       | 30.5mm",
+        "8.0mm     | 35mm       | 17.5mm       | 40mm",
+        "10.0mm    | 45mm       | 38mm         | 60mm",
+        "12.0mm    | 59mm       | 48mm         | 74mm",
+        "15.0mm    | 70mm       | 52mm         | 85mm"
+      ],
+      "severity": "info"
+    },
+    {
+      "id": "B_04a",
+      "title": "Minimum Flange Length",
+      "rule": "flange_length >= min_flange from B_03 table",
+      "severity": "warning",
+      "error_message": "**Suggestion:** We recommend that the edge be at least equal to {{min_flange from B_03}}. Do you want to continue or modify?"
+    },
+    {
+      "id": "B_04b",
+      "title": "Minimum Flange Length Information Request",
+      "rule": "When customer asks for min flange length: provide value from B_03 table for given thickness",
+      "severity": "info",
+      "response_format": "Minimum flange length for {{thickness}}mm = {{min_flange from B_03}}mm."
+    },
+    {
+      "id": "B_05_COMMON",
+      "title": "Bend Zone & Hole-Edge Distance Reference (shared by all B_05 rules)",
+      "position_resolution": [
+        "MANDATORY for ALL B_05 rules — resolve hole center before applying bend formula.",
+        "Use the same patterns as LC_02 position_resolution:",
+        "  Pattern A: 'hole at X from edge/corner'       -> center = X from that edge",
+        "  Pattern B: 'hole centered'                    -> center = face_dim / 2",
+        "  Pattern C: 'N holes, D apart / distance D'    -> each_center = (face_dim - D) / 2",
+        "  Pattern D: 'at X from one end, Y from other' -> centers at X and (face_dim - Y)",
+        "",
+        "After resolving: C = hole center measured from the THEORETICAL CORNER (TC).",
+        "TC = intersection of the two EXTENDED flat planes at the bend (the virtual sharp corner).",
+        "  TC is NOT the inner tangent (inner tangent is at r from TC along the face).",
+        "  TC is the reference used in BendFunction.py: bend_deduction = r+t is subtracted from TC.",
+        "If hole is described relative to the FREE edge: C = face_dim - center_from_free_edge"
+      ],
+      "description": [
+        "outer_bend_zone = bend_radius + thickness  = setback for 90° bend  (default B_02: = 2 x thickness)",
+        "  This is the distance from TC to where the FLAT ZONE begins on each adjacent face.",
+        "",
+        "FLAT ZONE per face (holes must be placed here):",
+        "  n_bends=1 (L-wall, L-base, flange of U/Z/CAPOT): flat_zone = face_dim - 1x(r+t)",
+        "  n_bends=2 (U-base, Z-web, tube face):             flat_zone = face_dim - 2x(r+t)",
+        "  n_bends=4 (CAPOT base):                           flat_zone_x = dim_x - 2x(r+t)  AND  flat_zone_y = dim_y - 2x(r+t)",
+        "",
+        "EQUIVALENCE with B_03 (hole_to_bend_min for given thickness):",
+        "  Minimum hole EDGE distance from TC = outer_bend_zone + t = r + 2t  (default r=t: equals 3t)",
+        "  B_03 hole_to_bend value measured from TC equals r + 2t when default r=t.",
+        "  When user specifies r explicitly: recalculate outer_bend_zone = r+t accordingly.",
+        "",
+        "All distances from HOLE EDGE (not center): hole_edge = C - R",
+        "Bend-side formula: effective_dist = hole_edge - outer_bend_zone = C - R - outer_bend_zone",
+        "VIOLATION if effective_dist < thickness"
+      ]
+    },
+    {
+      "id": "B_05_L",
+      "title": "Hole to Bend Distance — L-Bracket",
+      "description": [
+        "SCOPE: L-Bracket BASE (1 bend toward wall) | L-Bracket WALL (1 bend toward base).",
+        "Free edges (3 per face) -> LC_02.  Bend edge (1) -> this rule.",
+        "Bend zone: see B_05_COMMON. outer_bend_zone used in formula."
+      ],
+      "bend_edge_identification": [
+        "The BEND EDGE is the fold line shared between the base and the wall.",
+        "On the BASE face: the bend edge runs along the LENGTH dimension (bend_along_side).",
+        "  C = hole center measured from that bend edge toward the FREE edge (opposite side).",
+        "On the WALL face: the bend edge runs along the LENGTH dimension at the bottom.",
+        "  C = hole center measured upward from the bend edge.",
+        "",
+        "When bend edge is ambiguous (user says 'bracket' without specifying which edge bends):",
+        "  Take the dimension where C-to-C spacing D was given along that axis.",
+        "  each_center = (face_dim - D) / 2  (smaller value is nearer to one edge).",
+        "  Apply B_05_L to the SMALLER center value (nearer edge is the more critical bend-side check).",
+        "  Also apply LC_02 to the same smaller center value treating it as a potential FREE edge.",
+        "  If EITHER check fails -> report the appropriate violation.",
+        "  This ensures violation is caught regardless of which edge is BEND vs FREE."
+      ],
+      "rule": [
+        "Variables: C = hole_center from TC (Theoretical Corner) of the bend edge, R = diameter/2, t = thickness",
+        "  hole_edge = C - R",
+        "  effective_dist = hole_edge - outer_bend_zone  (outer_bend_zone = bend_radius + t)",
+        "  VIOLATION if effective_dist < t",
+        "Multiple holes: check each independently.",
+        "",
+        "EXAMPLE: C, D, t given. R=D/2, outer_bend_zone=2t (default).",
+        "  effective = C - D/2 - 2t  ->  OK if C - D/2 >= 3t",
+        "",
+        "FOR RECTANGLE CUTOUTS (use edge of rectangle, not center):",
+        "  C_perp = hole center distance from bend TC, perpendicular to fold line",
+        "  half_perp = rect_dim_perpendicular_to_fold / 2",
+        "  cutout_edge = C_perp - half_perp",
+        "  effective_dist = cutout_edge - outer_bend_zone",
+        "  VIOLATION if effective_dist < t",
+        "",
+        "FOR OBLONG CUTOUTS (long axis parallel to fold):",
+        "  C_perp = hole center from TC, perpendicular to fold",
+        "  half_perp = W_ob / 2  (W_ob = oblong width = shorter dimension, perpendicular to fold)",
+        "  cutout_edge = C_perp - half_perp",
+        "  effective_dist = cutout_edge - outer_bend_zone",
+        "  VIOLATION if effective_dist < t"
+
+      ],
+      "severity": "error",
+      "error_message": "**Suggestion:** We recommend that the minimum distance between the hole and the inner bend be at least {{hole_to_bend_min from B_03 table}}mm. Would you like to continue or modify?"
+    },
+    {
+      "id": "B_05_U",
+      "title": "Hole to Bend Distance — U-Bracket",
+      "description": [
+        "SCOPE:",
+        "  BASE   : 2 bend sides along dim_x (left+right flanges). Free: dim_y front/back -> LC_02.",
+        "  FLANGE : 1 bend side at bottom. Free: top + 2 lateral -> LC_02.",
+        "Bend zone: see B_05_COMMON. outer_bend_zone used in formula."
+      ],
+      "rule": [
+        "BASE — W=dim_x, C=hole_center from LEFT TC (Theoretical Corner), R=diameter/2, t=thickness:",
+        "  hole_edge = C - R",
+        "  effective_near = hole_edge - outer_bend_zone  >=  t",
+        "  effective_far  = (W - C - R) - outer_bend_zone  >=  t",
+        "  VIOLATION if either < t",
+        "",
+        "FLANGE — C_z=hole_center height from BOTTOM TC (Theoretical Corner):",
+        "  effective = (C_z - R) - outer_bend_zone  >=  t  ->  VIOLATION if < t",
+        "Multiple holes: check each independently.",
+        "",
+        "EXAMPLE (BASE, centered hole): C=W/2, outer_bend_zone=2t",
+        "  effective_near = effective_far = W/2 - R - 2t  ->  OK if W/2 - R >= 3t"
+      ],
+      "severity": "error",
+      "error_message": "**Suggestion:** We recommend that the minimum distance between the hole and the inner bend be at least {{hole_to_bend_min from B_03 table}}mm. Would you like to continue or modify?"
+    },
+    {
+      "id": "B_05_Z",
+      "title": "Hole to Bend Distance — Z-Bracket",
+      "description": [
+        "SCOPE — 3 faces, each with a different bend count:",
+        "  TOP FLANGE : 1 bend edge at bottom (toward web). Free: top + 2 lateral -> LC_02.",
+        "  WEB        : 2 bend edges — top (toward top_flange) + bottom (toward bot_flange). Free: 2 lateral -> LC_02.",
+        "  BOT FLANGE : 1 bend edge at top (toward web). Free: bottom + 2 lateral -> LC_02.",
+        "Flat zones: top_flange = top_length - 1x(r+t) | web = horizontal_length - 2x(r+t) | bot_flange = bottom_length - 1x(r+t)",
+        "Bend zone: see B_05_COMMON. outer_bend_zone used in formula."
+      ],
+      "rule": [
+        "TOP FLANGE — H_top=top_length, C=hole_center from BOTTOM TC (toward web), R=diameter/2, t=thickness:",
+        "  effective = (C - R) - outer_bend_zone  >=  t  ->  VIOLATION if < t",
+        "",
+        "WEB — H=horizontal_length, C=hole_center from TOP TC (toward top_flange), R=diameter/2, t=thickness:",
+        "  effective_near = (C - R) - outer_bend_zone       >=  t   (check: top bend side)",
+        "  effective_far  = (H - C - R) - outer_bend_zone   >=  t   (check: bottom bend side)",
+        "  VIOLATION if either < t",
+        "",
+        "BOT FLANGE — H_bot=bottom_length, C=hole_center from TOP TC (toward web), R=diameter/2, t=thickness:",
+        "  effective = (C - R) - outer_bend_zone  >=  t  ->  VIOLATION if < t",
+        "",
+        "Multiple holes: check each independently.",
+        "",
+        "EXAMPLE (WEB, centered hole): H=horizontal_length, C=H/2, outer_bend_zone=2t (default r=t)",
+        "  effective_near = effective_far = H/2 - R - 2t  ->  OK if H/2 - R >= 3t"
+      ],
+      "severity": "error",
+      "error_message": "**Suggestion:** We recommend that the minimum distance between the hole and the inner bend be at least {{hole_to_bend_min from B_03 table}}mm. Would you like to continue or modify?"
+    },
+    {
+      "id": "B_05_TUBE",
+      "title": "Hole to Bend Distance — Tube-Rectangular",
+      "description": [
+        "SCOPE: Tube bent from sheet. Each face: 2 bend sides in face_width direction (cross-section corners).",
+        "  Free edges: 2 tube-end openings (length direction) -> LC_02.",
+        "face_width W = tube outer cross-section width.  t = wall_thickness.",
+        "Bend zone: see B_05_COMMON. outer_bend_zone used in formula."
+      ],
+      "rule": [
+        "Variables: W=face_width, C=hole_center from left inner corner, R=diameter/2, t=wall_thickness",
+        "  hole_edge = C - R",
+        "  effective_near = hole_edge - outer_bend_zone  >=  t",
+        "  effective_far  = (W - C - R) - outer_bend_zone  >=  t",
+        "  VIOLATION if either < t",
+        "Multiple holes: check each independently.",
+        "",
+        "EXAMPLE (centered hole): C=W/2, outer_bend_zone=2t",
+        "  effective = W/2 - R - 2t  ->  OK if W/2 - R >= 3t  (i.e., W >= diameter + 6t)"
+      ],
+      "severity": "error",
+      "error_message": "**Suggestion:** We recommend that the minimum distance between the hole and the inner bend corner be at least {{hole_to_bend_min from B_03 table}}mm on both sides. Would you like to continue or modify?"
+    },
+    {
+      "id": "B_05_CAPOT",
+      "title": "Hole to Bend Distance — CAPOT/Cover Box",
+      "description": [
+        "SCOPE:",
+        "  BASE : 4 bend sides (all edges to walls). 0 free edges -> LC_02 NOT applied to base.",
+        "  WALL : 1 bend side at bottom. Free: top + 2 lateral -> LC_02.",
+        "Bend zone: see B_05_COMMON. outer_bend_zone used in formula."
+      ],
+      "rule": [
+        "BASE — 2-sided check on X-axis AND Y-axis independently:",
+        "  X: W_x=capot_length, C_x=hole_center from front inner corner, R=diameter/2, t=thickness",
+        "     effective_near_x = (C_x - R) - outer_bend_zone  >=  t",
+        "     effective_far_x  = (W_x - C_x - R) - outer_bend_zone  >=  t",
+        "  Y: W_y=capot_width,  C_y=hole_center from left inner corner",
+        "     effective_near_y = (C_y - R) - outer_bend_zone  >=  t",
+        "     effective_far_y  = (W_y - C_y - R) - outer_bend_zone  >=  t",
+        "  VIOLATION if any of the 4 checks < t",
+        "",
+        "WALL — C_z=hole_center height from bottom inner corner:",
+        "  effective = (C_z - R) - outer_bend_zone  >=  t  ->  VIOLATION if < t",
+        "Multiple holes: check each independently.",
+        "",
+        "EXAMPLE (BASE, centered hole): C_x=W_x/2, C_y=W_y/2, outer_bend_zone=2t",
+        "  all 4 checks = W_axis/2 - R - 2t  ->  OK if min(W_x,W_y)/2 - R >= 3t"
+      ],
+      "severity": "error",
+      "error_message": "**Suggestion:** We recommend that the minimum distance between the hole and the nearest inner bend be at least {{hole_to_bend_min from B_03 table}}mm. Would you like to continue or modify?"
+    },
+    {
+      "id": "B_06",
+      "title": "Minimum Z-Bend Counter Bend Distance",
+      "rule": "z_bend_distance >= z_bend_dist value from B_03 table",
+      "severity": "error",
+      "error_message": "**Suggestion:** We recommend that the minimum distance against bends be at least equal to {{z_bend_dist from B_03}}. Do you want to continue or modify?"
+    }
+  ]
+}

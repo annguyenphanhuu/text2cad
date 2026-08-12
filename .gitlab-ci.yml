@@ -1,0 +1,110 @@
+# ============================================
+# 1. WORKFLOW
+# ============================================
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+
+# ============================================
+# 2. STAGES DEFINITION
+# ============================================
+
+stages:
+  - build
+  - deploy
+
+# ============================================
+# 3. DEFAULT CONFIGURATION
+# ============================================
+
+default:
+  interruptible: true
+  retry:
+    max: 2
+    when:
+      - script_failure
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+# ============================================
+# 4. VARIABLES
+# ============================================
+
+variables:
+  GIT_DEPTH: "0"
+
+# ============================================
+# 5. JOB TEMPLATES
+# ============================================
+
+.build_template:
+  stage: build
+  image: docker
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+  script:
+    - |
+      docker build \
+        --cache-from $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG \
+        --build-arg GEMINI_API_KEY=$GEMINI_API_KEY \
+        --build-arg OPENAI_API_KEY=$OPENAI_API_KEY \
+        -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA \
+        -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG \
+        .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+
+.deploy_template:
+  stage: deploy
+  image: kroniak/ssh-client:latest
+  before_script:
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+  script:
+    - |
+      ssh ${DEPLOY_USER}@${DEPLOY_HOST} -p ${DEPLOY_PORT} "
+        cd ${DEPLOY_PATH} &&
+        sudo git stash &&
+        sudo git pull origin ${DEPLOY_BRANCH} &&
+        sudo docker compose -f ${DEPLOY_COMPOSE_FILE} pull &&
+        sudo docker compose -f ${DEPLOY_COMPOSE_FILE} down &&
+        sudo docker compose -f ${DEPLOY_COMPOSE_FILE} up -d
+      "
+
+# ============================================
+# 6. MERGE REQUEST JOBS
+# ============================================
+
+build_MR:
+  extends: .build_template
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop"'
+
+# ============================================
+# 7. DEVELOP BRANCH JOBS
+# ============================================
+
+build_develop:
+  extends: .build_template
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop" && $CI_PIPELINE_SOURCE == "push"'
+
+deploy_develop:
+  extends: .deploy_template
+  variables:
+    SSH_PRIVATE_KEY: "$SSH_PRIVATE_KEY_DEVELOP"
+    DEPLOY_USER: "sysadmin"
+    DEPLOY_HOST: "14.161.22.78"
+    DEPLOY_PORT: "8683"
+    DEPLOY_PATH: "ATN/atn-tolery-docker/"
+    DEPLOY_BRANCH: "develop"
+    DEPLOY_COMPOSE_FILE: "docker-compose.dev.yml"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop" && $CI_PIPELINE_SOURCE == "push"'

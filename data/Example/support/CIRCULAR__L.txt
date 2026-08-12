@@ -1,0 +1,96 @@
+#Example Make a semi-circular plate of diameter 200 mm, thickness 2 mm, with a single 90 degree bend at an offset of 30 mm from the center, using a bend radius of 2 mm and arc angle of 180 degrees.
+# Shape type: L-bracket-Circular
+
+import os
+import sys
+import math
+import FreeCAD as App
+import Part
+import Mesh
+import Import
+import MeshPart
+
+# MANDATORY PATH SETUP - NEVER SKIP THIS
+script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from FreeCadUtil import *
+
+# Define the sanitized_title variable
+sanitized_title = "Semi_Circular_L_Shape_Plate"
+
+# Document Setup
+doc = App.newDocument("GeneratedModel")
+doc.Label = sanitized_title
+
+# Parameters
+diameter = 200.0
+thickness = 2.0
+offset_x = 30.0
+bend_angle_deg = 90.0
+bend_radius = 2.0
+arc_angle = 180.0  # 180 degrees for semi-circle
+
+# Create circular L-bracket shape
+circular_shape = Part.makeCircularLShape(
+    diameter=diameter,
+    thickness=thickness,
+    offset_x=offset_x,
+    bend_angle_deg=bend_angle_deg,
+    bend_radius=bend_radius,
+    arc_angle=arc_angle
+)
+
+# Register final object
+plate_obj = doc.addObject("Part::Feature", "FinishedPlate")
+plate_obj.Label = sanitized_title
+plate_obj.Shape = circular_shape
+doc.recompute()
+
+# Export directory handling
+output_dir_abs = f"/app/storage/{sanitized_title}/output"
+os.makedirs(output_dir_abs, exist_ok=True)
+
+# STEP export
+step_path = os.path.join(output_dir_abs, f"{sanitized_title}.step")
+Import.export([plate_obj], step_path)
+
+# Geometry analysis and export
+from FreeCadUtil.GeometryAnalyzer import analyze_geometry, export_geometry_to_json
+geometry_result = analyze_geometry(circular_shape, material="{mapped_material}")
+
+geometry_json = os.path.join(output_dir_abs, f"{sanitized_title}_geometry.json")
+export_geometry_to_json(
+    circular_shape,
+    geometry_json,
+    material="{mapped_material}",
+    additional_info={
+        "part_name": sanitized_title,
+    }
+)
+
+# Export OBJ with separate meshes for each face
+obj_path = os.path.join(output_dir_abs, f"{sanitized_title}.obj")
+mesh_objects = []
+face_counter = 1
+
+for part in [plate_obj]:
+    shape = part.Shape
+    part_name = part.Label
+
+    for i, face in enumerate(shape.Faces):
+        face_mesh = MeshPart.meshFromShape(
+            Shape            = face,
+            LinearDeflection = 0.1,
+            AngularDeflection= 0.523599
+        )
+        mesh_obj = doc.addObject("Mesh::Feature", f"Face_{face_counter:02d}")
+        mesh_obj.Mesh  = face_mesh
+        mesh_obj.Label = f"{part_name}_Face_{i+1:02d}"
+        mesh_objects.append(mesh_obj)
+        face_counter += 1
+
+doc.recompute()
+Mesh.export(mesh_objects, obj_path)
+doc.recompute()

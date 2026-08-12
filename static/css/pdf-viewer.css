@@ -1,0 +1,339 @@
+/* ============================================================================
+   PDF VIEWER STYLES
+   Beautiful PDF viewer for Technical Drawing display below chat
+   ============================================================================ */
+
+/* PDF Viewer Container */
+.pdf-viewer-container {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  padding: 0;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+  position: relative;
+  overflow: hidden;
+  animation: slideInFromBottom 0.5s ease-out;
+  margin-top: 24px;
+  display: none; /* Hidden by default */
+}
+
+.pdf-viewer-container.visible {
+  display: block;
+}
+
+/* Glass morphism effect */
+.pdf-viewer-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* PDF Viewer Header */
+.pdf-viewer-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  color: white;
+  background: rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.pdf-viewer-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.pdf-viewer-title i {
+  font-size: 1.5rem;
+  animation: pulse 2s infinite;
+}
+
+.pdf-viewer-subtitle {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 4px;
+}
+
+/* PDF Viewer Controls */
+.pdf-viewer-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pdf-control-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdf-control-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.pdf-control-btn:active {
+  transform: translateY(0);
+}
+
+.pdf-control-btn i {
+  font-size: 1rem;
+}
+
+/* PDF Content Area */
+.pdf-viewer-content {
+  position: relative;
+  z-index: 1;
+  background: white;
+  border-radius: 0 0 20px 20px;
+  overflow: hidden;
+}
+
+.pdf-iframe-wrapper {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  background: #f5f5f5;
+}
+
+.pdf-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* Loading State */
+.pdf-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 10;
+}
+
+.pdf-loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(102, 126, 234, 0.2);
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+.pdf-loading-text {
+  color: #667eea;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+/* Empty State */
+.pdf-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 40px;
+}
+
+.pdf-empty-state i {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.pdf-empty-state-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.pdf-empty-state-subtitle {
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+
+/* Fullscreen Styles */
+.pdf-viewer-container.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  z-index: 9999;
+  animation: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.pdf-viewer-container.fullscreen .pdf-viewer-header {
+  border-radius: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.pdf-viewer-container.fullscreen .pdf-viewer-content {
+  height: calc(100vh - 80px);
+  border-radius: 0;
+  background: #2d2d2d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-viewer-container.fullscreen .pdf-iframe-wrapper {
+  width: 100%;
+  height: 100%;
+  background: #2d2d2d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-viewer-container.fullscreen .pdf-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
+/* Animations */
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .pdf-viewer-header {
+    padding: 16px;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .pdf-viewer-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .pdf-viewer-title {
+    font-size: 1.125rem;
+  }
+
+  .pdf-iframe-wrapper {
+    height: 400px;
+  }
+
+  .pdf-control-btn {
+    padding: 6px 12px;
+    font-size: 0.75rem;
+  }
+}
+
+/* Success animation when PDF is loaded */
+@keyframes successPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 15px rgba(102, 126, 234, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(102, 126, 234, 0);
+  }
+}
+
+.pdf-viewer-container.loaded {
+  animation: successPulse 1.5s ease-out;
+}
+
+/* Close button specific styling */
+.pdf-control-btn.close-btn {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.pdf-control-btn.close-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* Download button specific styling */
+.pdf-control-btn.download-btn {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.pdf-control-btn.download-btn:hover {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+/* Fullscreen button specific styling */
+.pdf-control-btn.fullscreen-btn {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.pdf-control-btn.fullscreen-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+

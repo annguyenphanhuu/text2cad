@@ -1,0 +1,12 @@
+# Normalize line endings: LF in the repo, native in the working tree.
+# The app is deployed on Linux (Docker), so LF is the source of truth.
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.step binary
+*.stp binary
+*.obj binary
+*.index binary
+*.ttf binary
+*.otf binary

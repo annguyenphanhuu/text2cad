@@ -1,0 +1,186 @@
+{
+    "class_name": "Countersinking",
+    "parent_category": "Machining",
+    "info_entries": [
+        {
+            "id": "CS_DEFAULT",
+            "rule": "When countersink is not specified in user request, use reference table Countersinks 90° ISO Standard Metric",
+            "severity": "info"
+        },
+        {
+            "id": "CS_ISO_90",
+            "title": "Countersinks 90° ISO Standard Metric",
+            "description": [
+                "Standard dimensions for 90° conical countersinks according to ISO standards:",
+                "M2: hole_diameter=2.2, cs_diameter=4.4, depth=0.8",
+                "M2.5: hole_diameter=2.7, cs_diameter=5.4, depth=1.0",
+                "M3: hole_diameter=3.2, cs_diameter=6.5, depth=1.2",
+                "M4: hole_diameter=4.2, cs_diameter=8.2, depth=1.5",
+                "M5: hole_diameter=5.3, cs_diameter=10.2, depth=1.8",
+                "M6: hole_diameter=6.4, cs_diameter=11.6, depth=2.2",
+                "M8: hole_diameter=8.4, cs_diameter=15.0, depth=2.8",
+                "M10: hole_diameter=10.5, cs_diameter=18.0, depth=3.5",
+                "M12: hole_diameter=13.0, cs_diameter=22.0, depth=4.2",
+                "M14: hole_diameter=12.0, cs_diameter=26.0, depth=4.5",
+                "M16: hole_diameter=14.0, cs_diameter=29.0, depth=5.0",
+                "M18: hole_diameter=15.5, cs_diameter=32.0, depth=5.5",
+                "M20: hole_diameter=17.5, cs_diameter=35.0, depth=6.0",
+                "M22: hole_diameter=19.5, cs_diameter=38.0, depth=6.5",
+                "M24: hole_diameter=21.0, cs_diameter=41.0, depth=7.0",
+                "M27: hole_diameter=24.0, cs_diameter=46.0, depth=7.5",
+                "M30: hole_diameter=26.0, cs_diameter=50.0, depth=8.0",
+                "M33: hole_diameter=29.0, cs_diameter=56.0, depth=8.5",
+                "M36: hole_diameter=32.0, cs_diameter=60.0, depth=9.0",
+                "M42: hole_diameter=36.0, cs_diameter=68.0, depth=10.0",
+                "M48: hole_diameter=42.0, cs_diameter=76.0, depth=11.0",
+                "M56: hole_diameter=52.0, cs_diameter=88.0, depth=12.5",
+                "M64: hole_diameter=60.0, cs_diameter=100.0, depth=14.0"
+            ],
+            "rule": "Use these parameters for Countersinks 90° ISO Standard Metric",
+            "severity": "info",
+            "parameters": [
+                "hole_diameter",
+                "cs_diameter",
+                "depth",
+                "angle"
+            ]
+        },
+        {
+            "id": "CS_ISO_120",
+            "category": "ISO Extension",
+            "title": "Conical Countersinks 120° ISO Extension",
+            "description": [
+                "Standard dimensions for 120° conical countersinks according to ISO extension:",
+                "M2: hole_diameter=2.2, cs_diameter=5.0, depth=0.6",
+                "M2.5: hole_diameter=2.7, cs_diameter=6.0, depth=0.8",
+                "M3: hole_diameter=3.2, cs_diameter=7.0, depth=1.0",
+                "M4: hole_diameter=4.2, cs_diameter=9.0, depth=1.2",
+                "M5: hole_diameter=5.3, cs_diameter=11.0, depth=1.5",
+                "M6: hole_diameter=6.4, cs_diameter=13.0, depth=1.8",
+                "M8: hole_diameter=8.4, cs_diameter=17.0, depth=2.4",
+                "M10: hole_diameter=10.5, cs_diameter=20.0, depth=3.0",
+                "M12: hole_diameter=13.0, cs_diameter=24.0, depth=3.6",
+                "M14: hole_diameter=12.0, cs_diameter=28.0, depth=4.0",
+                "M16: hole_diameter=14.0, cs_diameter=32.0, depth=4.5",
+                "M18: hole_diameter=15.5, cs_diameter=36.0, depth=5.0",
+                "M20: hole_diameter=17.5, cs_diameter=40.0, depth=5.5",
+                "M24: hole_diameter=21.0, cs_diameter=46.0, depth=6.0",
+                "M30: hole_diameter=26.0, cs_diameter=58.0, depth=7.0",
+                "M36: hole_diameter=32.0, cs_diameter=68.0, depth=8.0",
+                "M42: hole_diameter=36.0, cs_diameter=76.0, depth=9.0",
+                "M48: hole_diameter=42.0, cs_diameter=84.0, depth=10.0",
+                "M56: hole_diameter=52.0, cs_diameter=96.0, depth=11.0",
+                "M64: hole_diameter=60.0, cs_diameter=108.0, depth=12.0"
+            ],
+            "rule": "Use these parameters for Countersinks 120° ISO Extension",
+            "severity": "info",
+            "parameters": [
+                "hole_diameter",
+                "cs_diameter",
+                "depth",
+                "angle"
+            ]
+        },
+        {
+            "id": "CS_ANSI_82",
+            "category": "ANSI Standard",
+            "title": "82° ANSI B18.6.3 Full Countersinks",
+            "description": [
+                "Standard dimensions for 82° full countersinks according to ANSI B18.6.3:",
+                "#0: hole_diameter=1.1, head_diameter=2.16, depth=0.32",
+                "#1: hole_diameter=1.3, head_diameter=2.54, depth=0.38",
+                "#2: hole_diameter=1.6, head_diameter=2.92, depth=0.43",
+                "#3: hole_diameter=1.9, head_diameter=3.30, depth=0.49",
+                "#4: hole_diameter=2.2, head_diameter=3.68, depth=0.55",
+                "#5: hole_diameter=2.5, head_diameter=4.06, depth=0.61",
+                "#6: hole_diameter=2.9, head_diameter=4.45, depth=0.67",
+                "#8: hole_diameter=3.6, head_diameter=5.21, depth=0.79",
+                "#10: hole_diameter=4.2, head_diameter=5.97, depth=0.91",
+                "#12: hole_diameter=4.9, head_diameter=6.73, depth=1.03",
+                "1/4-20: hole_diameter=5.1, head_diameter=9.30, depth=1.42",
+                "5/16-18: hole_diameter=6.5, head_diameter=10.92, depth=1.67",
+                "3/8-16: hole_diameter=8.0, head_diameter=12.70, depth=1.94",
+                "7/16-14: hole_diameter=9.4, head_diameter=14.30, depth=2.18",
+                "1/2-13: hole_diameter=10.7, head_diameter=16.00, depth=2.44",
+                "9/16-12: hole_diameter=12.2, head_diameter=17.30, depth=2.72",
+                "5/8-11: hole_diameter=13.5, head_diameter=19.50, depth=2.97",
+                "3/4-10: hole_diameter=16.3, head_diameter=23.01, depth=3.51",
+                "7/8-9: hole_diameter=19.0, head_diameter=26.54, depth=4.04",
+                "1-8: hole_diameter=21.7, head_diameter=30.07, depth=4.58"
+            ],
+            "rule": "Use these parameters for Countersinks 82° ANSI B18.6.3 Full",
+            "severity": "info",
+            "parameters": [
+                "hole_diameter",
+                "head_diameter",
+                "depth",
+                "angle"
+            ]
+        },
+        {
+            "id": "CS_ANSI_100",
+            "category": "ANSI Standard",
+            "title": "100° Countersinks ANSI B18.6.3 Complete",
+            "description": [
+                "Standard dimensions for 100° countersinks according to ANSI B18.6.3:",
+                "NAS1097AD3: hole_diameter=2.3, cs_diameter=4.95, depth=0.78",
+                "NAS1097AD4: hole_diameter=3.2, cs_diameter=6.25, depth=1.00",
+                "NAS1097AD5: hole_diameter=4.0, cs_diameter=7.45, depth=1.21",
+                "NAS1097AD6: hole_diameter=4.8, cs_diameter=8.70, depth=1.42",
+                "NAS1097AD8: hole_diameter=6.4, cs_diameter=11.20, depth=1.83",
+                "NAS1097AD10: hole_diameter=7.9, cs_diameter=13.70, depth=2.24",
+                "NAS1097AD12: hole_diameter=9.5, head_diameter=16.20, depth=2.65",
+                "NAS1097AD14: hole_diameter=11.1, head_diameter=18.70, depth=3.06",
+                "NAS1097AD16: hole_diameter=12.7, head_diameter=21.20, depth=3.48",
+                "NAS1097AD20: hole_diameter=15.9, head_diameter=26.20, depth=4.30",
+                "MS24693C3: hole_diameter=2.3, head_diameter=4.95, depth=0.78",
+                "MS24693C4: hole_diameter=3.2, head_diameter=6.25, depth=1.00",
+                "MS24693C5: hole_diameter=4.0, head_diameter=7.45, depth=1.21",
+                "MS24693C6: hole_diameter=4.8, head_diameter=8.70, depth=1.42",
+                "MS24693C8: hole_diameter=6.4, head_diameter=11.20, depth=1.83",
+                "MS24693C10: hole_diameter=7.9, head_diameter=13.70, depth=2.24",
+                "MS24693C12: hole_diameter=9.5, head_diameter=16.20, depth=2.65",
+                "MS24693C14: hole_diameter=11.1, head_diameter=18.70, depth=3.06",
+                "MS24693C16: hole_diameter=12.7, head_diameter=21.20, depth=3.48",
+                "MS24693C20: hole_diameter=15.9, head_diameter=26.20, depth=4.30"
+            ],
+            "rule": "Use these parameters for Countersinks 100° Countersinks ANSI B18.6.3 Complete",
+            "severity": "info",
+            "parameters": [
+                "hole_diameter",
+                "head_diameter",
+                "depth",
+                "angle"
+            ]
+        },
+        {
+            "id": "CS_CNC_CUSTOM",
+            "category": "CNC Custom Machining",
+            "title": "CNC Countersinks (Custom Machining)",
+            "description": [
+                "Custom machining dimensions for CNC countersinks with tight tolerances and non-standard angles:",
+                "M3: hole_diameter=3.2, cs_diameter=7.0, depth=1.4, angle=Custom (90°-120°)",
+                "M4: hole_diameter=4.2, cs_diameter=9.5, depth=1.8, angle=Custom (82°-120°)",
+                "M5: hole_diameter=5.3, cs_diameter=11.5, depth=2.1, angle=Custom",
+                "M6: hole_diameter=6.4, cs_diameter=13.5, depth=2.5, angle=Custom",
+                "M8: hole_diameter=8.4, cs_diameter=17.5, depth=3.2, angle=Custom",
+                "M10: hole_diameter=10.5, cs_diameter=21.0, depth=4.0, angle=Custom",
+                "M12: hole_diameter=13.0, cs_diameter=25.0, depth=4.8, angle=Custom",
+                "M16: hole_diameter=14.0, cs_diameter=30.0, depth=5.8, angle=Custom",
+                "M20: hole_diameter=17.5, cs_diameter=36.0, depth=7.0, angle=Custom",
+                "M24: hole_diameter=21.0, cs_diameter=42.0, depth=8.0, angle=Custom",
+                "1/4-20: hole_diameter=5.1, cs_diameter=12.0, depth=2.2, angle=82° or 100°",
+                "5/16-18: hole_diameter=6.5, cs_diameter=14.0, depth=2.6, angle=82° or 100°",
+                "3/8-16: hole_diameter=8.0, cs_diameter=17.0, depth=3.1, angle=82° or 100°"
+            ],
+            "rule": "Use these parameters for CNC Countersinks (Custom Machining)",
+            "severity": "info",
+            "parameters": [
+                "hole_diameter",
+                "cs_diameter",
+                "depth",
+                "angle"
+            ]
+        }
+    ]
+}
