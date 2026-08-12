@@ -71,9 +71,16 @@ def flipped_fields(fingerprints):
     return out
 
 
-def load_cases(limit=None, per_section=None, section=None):
+def load_cases(limit=None, per_section=None, section=None, ids=None):
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
     cases = data["cases"]
+    if ids:
+        wanted = {i.strip() for i in ids.split(",") if i.strip()}
+        cases = [c for c in cases if c["id"] in wanted]
+        missing = wanted - {c["id"] for c in cases}
+        if missing:
+            raise SystemExit(f"unknown case ids: {sorted(missing)}")
+        return cases
     if section:
         cases = [c for c in cases if c.get("section") and
                  section.lower() in c["section"].lower()]
@@ -135,11 +142,18 @@ async def main():
     ap.add_argument("--per-section", type=int,
                     help="at most N cases per section (good coverage, low cost)")
     ap.add_argument("--section", help="only sections matching this substring")
+    ap.add_argument("--ids", help="comma-separated case ids; overrides other selectors")
     ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--max-cost", type=float, default=2.0,
                     help="refuse to start above this estimate without --yes")
     ap.add_argument("--yes", action="store_true", help="skip the cost prompt")
     ap.add_argument("--out", default="stability_report.json")
+    ap.add_argument("--compare", metavar="OLD_REPORT",
+                    help="diff this run's answers against an earlier report. "
+                         "Stability alone cannot tell you a prompt edit left the "
+                         "answers unchanged — it only says the chain agrees with "
+                         "itself. Run once before the edit, once after, and "
+                         "compare the two reports.")
     args = ap.parse_args()
 
     if args.runs < 2:
@@ -147,7 +161,7 @@ async def main():
     if not FIXTURE.exists():
         sys.exit(f"missing fixture: {FIXTURE}")
 
-    cases = load_cases(args.limit, args.per_section, args.section)
+    cases = load_cases(args.limit, args.per_section, args.section, args.ids)
     if not cases:
         sys.exit("no cases selected")
 
@@ -235,10 +249,54 @@ async def main():
                           for fp in set(fps)]}
             for c, fps, flips in regressions + cosmetic
         ],
+        # Every answer, not just the unstable ones — this is what makes the
+        # report usable as a before/after baseline for a prompt edit.
+        "answers": {
+            c["id"]: sorted(
+                [dict(fp) if len(fp) > 1 else {"error": fp[0]} for fp in set(fps)],
+                key=lambda d: json.dumps(d, sort_keys=True))
+            for c, fps in results
+        },
     }
     Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=1),
                               encoding="utf-8")
     print(f"\n-> {args.out}")
+
+    changed_behaviour = []
+    if args.compare:
+        old = json.loads(Path(args.compare).read_text(encoding="utf-8"))
+        old_ans = old.get("answers") or {}
+        if not old_ans:
+            print(f"\n[compare] {args.compare} has no 'answers' block "
+                  f"(written before --compare existed) — cannot diff.")
+        else:
+            shared = sorted(set(old_ans) & set(report["answers"]))
+            print("\n" + "=" * 78)
+            print(f"COMPARE vs {args.compare}  ({len(shared)} cases in both)")
+            print("=" * 78)
+            same = 0
+            for cid in shared:
+                a, b = old_ans[cid], report["answers"][cid]
+                if a == b:
+                    same += 1
+                    continue
+                # Which fields differ between the two runs' answer sets?
+                fields = {k for d in a + b for k in d}
+                diff = {f for f in fields
+                        if {d.get(f) for d in a} != {d.get(f) for d in b}}
+                tag = ("BEHAVIOUR CHANGED" if diff & set(BEHAVIOURAL)
+                       else "cosmetic drift")
+                if diff & set(BEHAVIOURAL):
+                    changed_behaviour.append(cid)
+                print(f"\n[{tag}] {cid}  fields: {', '.join(sorted(diff))}")
+                print(f"   before: {a}")
+                print(f"   after : {b}")
+            print(f"\nidentical {same}/{len(shared)} | "
+                  f"behaviour changed {len(changed_behaviour)}")
+
+    if changed_behaviour:
+        print("\nBEHAVIOUR CHANGED on: " + ", ".join(changed_behaviour))
+        return 1
     # Gate on behavioural flips only. A cosmetic flip (complexity_level 1 vs 2)
     # would otherwise fail the run without any pipeline behaviour having changed.
     return 1 if regressions else 0
