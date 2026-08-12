@@ -102,3 +102,6 @@ desktop.ini
 node_modules/
 npm-debug.log
 yarn-error.log
+
+# stability check output (regenerated per run)
+stability_report*.json

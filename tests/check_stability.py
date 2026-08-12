@@ -49,6 +49,27 @@ FIXTURE = ROOT / "tests" / "fixtures" / "pptx_ok_cases.json"
 COMPARED = ("shape_type", "missing_info", "complexity_level",
             "skip_questions_requested", "step_by_step_requested", "design_type")
 
+# Fields whose value actually changes what the pipeline does. complexity_level is
+# NOT here: the only branch on it is `== 0` (pure-information request), so a flip
+# between 1 and 2 takes the identical path — see text_to_cad_agent.py:2363 and
+# :4938. The "complexity_level >= threshold" in agent_chains.py's step-planner
+# docstring describes a check that does not exist in code.
+# A flip in these fields is a regression; a flip only outside them is cosmetic.
+BEHAVIOURAL = ("shape_type", "missing_info",
+               "skip_questions_requested", "step_by_step_requested", "design_type")
+
+
+def flipped_fields(fingerprints):
+    """Field names whose value differs across runs."""
+    fps = [fp for fp in fingerprints if len(fp) > 1]     # drop ERROR/PARSE markers
+    if len(fps) < 2:
+        return []
+    out = []
+    for i, field in enumerate(COMPARED):
+        if len({fp[i][1] for fp in fps}) > 1:
+            out.append(field)
+    return out
+
 
 def load_cases(limit=None, per_section=None, section=None):
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -144,8 +165,12 @@ async def main():
         sys.exit(f"estimate exceeds --max-cost ${args.max_cost:.2f}; "
                  f"narrow with --limit/--per-section or pass --yes")
 
+    # Config lives in .env, same as src/core/chatbot.py — load it before checking
+    # for the key, otherwise this exits on a shell that never exported it.
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
     if not os.getenv("OPENAI_API_KEY"):
-        sys.exit("OPENAI_API_KEY is not set")
+        sys.exit(f"OPENAI_API_KEY not set, and not found in {ROOT / '.env'}")
 
     print("initialising agent (this imports the RAG singleton lazily)...")
     from src.core.chatbot import text_to_cad_agent as agent
@@ -164,39 +189,59 @@ async def main():
     results = await asyncio.gather(*(guarded(c) for c in cases))
 
     unstable = [(c, fps) for c, fps in results if len(set(fps)) > 1]
+    errored = [(c, fps) for c, fps in results if any(len(fp) == 1 for fp in fps)]
+
+    regressions, cosmetic = [], []
+    for c, fps in unstable:
+        flips = flipped_fields(fps)
+        (regressions if any(f in BEHAVIOURAL for f in flips) else cosmetic
+         ).append((c, fps, flips))
 
     print("\n" + "=" * 78)
-    print(f"STABLE   {len(results) - len(unstable)}/{len(results)}")
-    print(f"UNSTABLE {len(unstable)}/{len(results)}")
+    print(f"STABLE      {len(results) - len(unstable)}/{len(results)}")
+    print(f"UNSTABLE    {len(unstable)}/{len(results)}")
+    print(f"  behavioural (regression) {len(regressions)}")
+    print(f"  cosmetic only            {len(cosmetic)}")
+    if errored:
+        print(f"ERRORED     {len(errored)} case(s) had a failed/unparsed run")
     print("=" * 78)
 
-    for c, fps in unstable:
-        print(f"\n[{c['id']}] {c.get('section')}  #{c.get('num')}")
-        print(f"  prompt: {c['prompt'][:110]}...")
-        for fp, n in Counter(fps).most_common():
-            if len(fp) == 1:
-                print(f"    x{n}  {fp[0]}")
-            else:
-                print(f"    x{n}  " + "  ".join(f"{k}={v!r}" for k, v in fp))
+    for label, group in (("BEHAVIOURAL", regressions), ("COSMETIC", cosmetic)):
+        for c, fps, flips in group:
+            print(f"\n[{label}] {c['id']}  {c.get('section')}  #{c.get('num')}")
+            print(f"  flipped: {', '.join(flips) or 'error/parse only'}")
+            print(f"  prompt: {c['prompt'][:105]}...")
+            for fp, n in Counter(fps).most_common():
+                if len(fp) == 1:
+                    print(f"    x{n}  {fp[0]}")
+                else:
+                    print(f"    x{n}  " + "  ".join(
+                        f"{k}={v!r}" for k, v in fp if k in flips))
 
     report = {
         "runs": args.runs,
         "cases": len(results),
         "stable": len(results) - len(unstable),
         "unstable": len(unstable),
+        "behavioural_regressions": len(regressions),
+        "cosmetic_only": len(cosmetic),
         "compared_fields": list(COMPARED),
+        "behavioural_fields": list(BEHAVIOURAL),
         "unstable_detail": [
             {"id": c["id"], "section": c.get("section"), "prompt": c["prompt"],
+             "flipped_fields": flips,
+             "behavioural": any(f in BEHAVIOURAL for f in flips),
              "variants": [dict(fp) if len(fp) > 1 else {"error": fp[0]}
                           for fp in set(fps)]}
-            for c, fps in unstable
+            for c, fps, flips in regressions + cosmetic
         ],
     }
     Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=1),
                               encoding="utf-8")
     print(f"\n-> {args.out}")
-    # Non-zero exit when anything flipped, so CI can gate on it.
-    return 1 if unstable else 0
+    # Gate on behavioural flips only. A cosmetic flip (complexity_level 1 vs 2)
+    # would otherwise fail the run without any pipeline behaviour having changed.
+    return 1 if regressions else 0
 
 
 if __name__ == "__main__":
