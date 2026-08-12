@@ -16,7 +16,7 @@ services:
   db:
     image: mysql:8.0
     container_name: tolery_mysql_local
-    restart: unless-stopped
+    restart: "no"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
