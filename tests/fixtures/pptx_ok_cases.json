@@ -1,0 +1,1527 @@
+{
+ "source": "2511_ATN_TEST_REPORT_Roman.pptx",
+ "extracted_ok": 169,
+ "cases": [
+  {
+   "id": "s007",
+   "slide": 7,
+   "section": "1.1 PLATINE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 200x100x3 avec des rayons de 5mm dans chaques coins",
+   "tester_note": null
+  },
+  {
+   "id": "s007",
+   "slide": 7,
+   "section": "1.1 PLATINE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 300x150x4 avec des rayons de 20mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s008",
+   "slide": 8,
+   "section": "1.1 PLATINE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 400x200x5 avec des rayons de 40mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s008",
+   "slide": 8,
+   "section": "1.1 PLATINE",
+   "num": 4,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 500x300x10 avec des rayons de 50mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s009",
+   "slide": 9,
+   "section": "1.1 PLATINE",
+   "num": 5,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 600x300x10 avec des rayons de 20mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s009",
+   "slide": 9,
+   "section": "1.1 PLATINE",
+   "num": 6,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 800x800x8 avec des rayons de 60mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s010",
+   "slide": 10,
+   "section": "1.1 PLATINE",
+   "num": 7,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 1000x800x6 avec des rayons de 100mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s010",
+   "slide": 10,
+   "section": "1.1 PLATINE",
+   "num": 8,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 1500x200x2 avec des rayons de 60mm dans chaques coins",
+   "tester_note": null
+  },
+  {
+   "id": "s011",
+   "slide": 11,
+   "section": "1.1 PLATINE",
+   "num": 9,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 1200x650x6 avec des rayons de 80mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s011",
+   "slide": 11,
+   "section": "1.1 PLATINE",
+   "num": 10,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 1300x750x8 avec des rayons de 50mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s012",
+   "slide": 12,
+   "section": "1.1 PLATINE",
+   "num": 11,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 2000x1000x6 avec des rayons de 100mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s012",
+   "slide": 12,
+   "section": "1.1 PLATINE",
+   "num": 12,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 2100x850x3 avec des rayons de 80mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s013",
+   "slide": 13,
+   "section": "1.1 PLATINE",
+   "num": 13,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 1800x666x5 avec des rayons de 90mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s013",
+   "slide": 13,
+   "section": "1.1 PLATINE",
+   "num": 14,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 1950x1000x6 avec des rayons de 150mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s014",
+   "slide": 14,
+   "section": "1.1 PLATINE",
+   "num": 15,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 1250x350x10 avec des rayons de 80mm dans chaques coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s014",
+   "slide": 14,
+   "section": "1.1 PLATINE",
+   "num": 16,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de 500x500x5 avec des rayons de 10mm dans les coins, en ajoutant un perçage Ø50 au centre de la pièce, avec des Ø12 tout autour de la pièce, le premier à 20mm de l’origine, puis à répéter 4 fois tout les 115mm sur la longueur et largeur, faire la symétrie de ces perçages.",
+   "tester_note": null
+  },
+  {
+   "id": "s015",
+   "slide": 15,
+   "section": "1.1 PLATINE",
+   "num": 17,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de 600x600x5 avec des rayons de 15mm dans les coins, en ajoutant un perçage Ø100 au centre de la pièce, avec des Ø15 tout autour de la pièce, le premier à 30mm de l’origine, puis à répéter 4 fois tout les 135mm sur la longueur et largeur, faire la symétrie de ces perçages.",
+   "tester_note": null
+  },
+  {
+   "id": "s015",
+   "slide": 15,
+   "section": "1.1 PLATINE",
+   "num": 18,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de 650x400x5 avec des rayons de 15mm dans les coins, en ajoutant un perçage Ø120 au centre de la pièce, avec des Ø15 tout autour de la pièce, le premier à 30mm de l’origine, puis à répéter 4 fois tout les 147.5mm sur la longueur et 4 fois tout les 85mm sur la largeur, faire la symétrie de ces perçages.",
+   "tester_note": null
+  },
+  {
+   "id": "s016",
+   "slide": 16,
+   "section": "1.1 PLATINE",
+   "num": 19,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de 700x450x6 avec des rayons de 20mm dans les coins, en ajoutant une découpe rectangulaire de 150x50mm au centre de la pièce orienté le 150mm sur la longueur de 700mm, avec des Ø20 tout autour de la pièce, le premier à 40mm de l’origine, puis à répéter 4 fois tout les 155mm sur la longueur et 3 fois tout les 123.33mm sur la largeur, faire la symétrie de ces perçages.",
+   "tester_note": null
+  },
+  {
+   "id": "s016",
+   "slide": 16,
+   "section": "1.1 PLATINE",
+   "num": 20,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de 850x500x8 avec des rayons de 25mm dans les coins, en ajoutant une découpe rectangulaire de 200x150mm au centre de la pièce orienté le 200mm sur la longueur de 850mm, avec des Ø25 tout autour de la pièce, le premier à 45mm de longueur et largeur de l’origine, puis à répéter 4 fois tout les 190mm sur la longueur et 3 fois tout les 136.66mm sur la largeur, faire la symétrie de ces perçages.",
+   "tester_note": null
+  },
+  {
+   "id": "s017",
+   "slide": 17,
+   "section": "1.1 PLATINE",
+   "num": 21,
+   "status": "OK",
+   "prompt": "je voudrais une plaque de fixation, dimensions 200 x 150 mm, épaisseur 4 mm. Elle doit avoir 4 perçages non débouchants de Ø10 mm sur une profondeur de 2mm, dans chaque coin à 20 mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s017",
+   "slide": 17,
+   "section": "1.1 PLATINE",
+   "num": 22,
+   "status": "OK",
+   "prompt": "J’ai besoin d’une platine support, en acier galvanisé de 3 mm d’épaisseur. Taille : 300 x 200 mm. Elle doit avoir un trou central Ø50 mm et 4 perçages Ø5 centré à entraxe 100 x 100 mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s018",
+   "slide": 18,
+   "section": "1.1 PLATINE",
+   "num": 23,
+   "status": "OK",
+   "prompt": "je cherche à faire réaliser un socle plat en tôle inox 304, dimensions 250 x 250 mm, épaisseur 2 mm. Il me faut 6 trous Ø6 mm répartis en cercle de Ø180 mm, orienté avec le premier perçage à la verticale du centre de la pièce, et une découpe rectangulaire de 40 x 20 mm centré.",
+   "tester_note": null
+  },
+  {
+   "id": "s018",
+   "slide": 18,
+   "section": "1.1 PLATINE",
+   "num": 24,
+   "status": "OK",
+   "prompt": "Pour un projet, j’ai besoin d’une tôle plate de fixation en aluminium brut de 2 mm d’épaisseur, 400 mm x 120 mm. Elle doit avoir deux perçages oblongs de 30 x 10 mm , orienté le 20 sur la longueur espacés de 200 mm, centrés.",
+   "tester_note": null
+  },
+  {
+   "id": "s019",
+   "slide": 19,
+   "section": "1.1 PLATINE",
+   "num": 26,
+   "status": "OK",
+   "prompt": "Besoin d’une plaque métallique technique en acier S235, format 600 x 400 mm, épaisseur 6 mm. Elle doit comporter une découpe rectangulaire de 100 x 50 mm à 100 mm du haut et centré en largeur, et 4 perçages Ø12 mm dans les coins à 30 mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s019",
+   "slide": 19,
+   "section": "1.1 PLATINE",
+   "num": 25,
+   "status": "OK",
+   "prompt": "Il me faudrait un support en tôle plane, alu épaisseur 3 mm, 500 x 300 mm. Avec 8 trous Ø6 mm en ligne à entraxe 50 mm, décalés à 30 mm du bord long. Également un perçage central de Ø20 mm. Ajouter des rayons de 20mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s020",
+   "slide": 20,
+   "section": "1.1 PLATINE",
+   "num": 27,
+   "status": "OK",
+   "prompt": "Je veux réaliser une flasque de fixation plate en inox 2 mm, diamètre extérieur 200 mm, avec un trou central Ø100 mm. Il me faut aussi 6 perçages Ø8 mm répartis tous les 60° sur un Ø150mm en orientant le premier Ø sur la verticale du centre de la pièce.",
+   "tester_note": null
+  },
+  {
+   "id": "s020",
+   "slide": 20,
+   "section": "1.1 PLATINE",
+   "num": 28,
+   "status": "OK",
+   "prompt": "Réaliser une platine de 100x100x10 avec 1 perçage Ø20 au centre. Rajouter 2 perçages Ø5 sur les tous les chants dans les bouts à 20mm des bords centrés sur l'épaisseur avec une profondeur de 15mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s021",
+   "slide": 21,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "faire un fichier d’une platine de 400mm de longueur, 300mm en largeur, épaisseur 4mm. Il faut 4 perçages taraudés M8 dans chaques coins situés à 40mm des bords. Il faut également un taraudage M10 au centre de la platine. Peux tu ajouter des rayons de 10mm dans chaque angles.",
+   "tester_note": null
+  },
+  {
+   "id": "s021",
+   "slide": 21,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "faire un fichier d’une platine de 200mm de longueur, 200mm en largeur, épaisseur 3mm. Il faut 4 perçages taraudés M6 dans chaques coins situés à 20mm des bords. Peux tu ajouter des rayons de 10mm dans chaque angles.",
+   "tester_note": null
+  },
+  {
+   "id": "s022",
+   "slide": 22,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "faire un fichier d’une platine de 500mm de longueur, 250mm en largeur, épaisseur 3mm. Il faut 4 perçages taraudés M8 dans chaques coins situés à 30mm des bords. Il faut également un taraudage M8 au centre de la platine. Peux tu ajouter des rayons de 20mm dans chaque angles.",
+   "tester_note": null
+  },
+  {
+   "id": "s022",
+   "slide": 22,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 4,
+   "status": "OK",
+   "prompt": "faire un fichier d’une platine de 200mm de longueur, 200mm en largeur, épaisseur 5mm. Il faut 4 perçages taraudés M6 dans chaques coins situés à 25mm des bords. Peux tu ajouter des rayons de 15mm dans chaque angles.",
+   "tester_note": null
+  },
+  {
+   "id": "s023",
+   "slide": 23,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 5,
+   "status": "OK",
+   "prompt": "peux tu faire une platine de 400x300x4mm avec un taraudage M5 dans le coins en bas à gauche situé a 20mm de chaque bord. Il faut le repeter 5 fois sur la longueur de 400mm avec un espace de 30mm puis 3 fois sur largeur de 300mm espacé de 75mm",
+   "tester_note": "Generated correctly, but the response time is long (it may time out)."
+  },
+  {
+   "id": "s023",
+   "slide": 23,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 6,
+   "status": "OK",
+   "prompt": "je voudrais une plaque métallique de 120 par 80 mm, en acier brut, épaisseur 4 mm. Il me faut 4 taraudages M6, un dans chaque coin, positionnés à 20 mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s024",
+   "slide": 24,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 7,
+   "status": "OK",
+   "prompt": "Je souhaite fabriquer une platine en aluminium de 200 x 150 mm, épaisseur 8 mm. J’ai besoin de 6 trous taraudés M8 disposés en cercle de Ø100 mm, centrés sur la pièce en orientant le premier perçage à 45° par rapport à la verticale.",
+   "tester_note": null
+  },
+  {
+   "id": "s024",
+   "slide": 24,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 8,
+   "status": "OK",
+   "prompt": "Je cherche à faire une base en acier S355, 150 x 150 mm, épaisseur 10 mm. Il me faut un trou central Ø20 mm non taraudé, et autour, 4 taraudages M10 à entraxe 100 x 100 mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s025",
+   "slide": 25,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 9,
+   "status": "OK",
+   "prompt": "Je voudrais une platine en acier de 220 x 180 mm, épaisseur 6 mm. Il faut 4 taraudages M8 à entraxe 140 x 100 mm, et un trou central Ø30 mm (non taraudé).",
+   "tester_note": null
+  },
+  {
+   "id": "s025",
+   "slide": 25,
+   "section": "1.2 PLATINE TARAUDÉE",
+   "num": 10,
+   "status": "OK",
+   "prompt": "J’ai besoin d’une flasque en acier, diamètre 160 mm, épaisseur 8 mm. Il faut un trou central de Ø40 mm non taraudé, et autour, 6 taraudages M10 répartis tous les 60°, sur un cercle de Ø120 mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s026",
+   "slide": 26,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 62x31x4 avec des rayons de 4mm dans chaques coins, avec 2 oblongs Ø7.3x4.25mm sur la longueur avec un entraxe de 41.15mm centré sur la platine.",
+   "tester_note": null
+  },
+  {
+   "id": "s026",
+   "slide": 26,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 75x35x5 avec des rayons de 5mm dans chaques coins, avec 2 oblongs Ø8.5x8mm sur la longueur avec un entraxe de 45mm centré sur la platine.",
+   "tester_note": null
+  },
+  {
+   "id": "s027",
+   "slide": 27,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 100x50x5 avec des rayons de 5mm dans chaques coins, avec 2 oblongs Ø9x9mm sur la longueur avec un entraxe de 50mm centré sur la platine, à 20mm du bord en largeur.",
+   "tester_note": null
+  },
+  {
+   "id": "s027",
+   "slide": 27,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 4,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 110x45x4 avec des rayons de 10mm dans chaques coins, avec 2 oblongs Ø7.5x10mm sur la longueur avec un entraxe de 45mm centré sur la platine, à 15mm du bord en largeur.",
+   "tester_note": null
+  },
+  {
+   "id": "s028",
+   "slide": 28,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 5,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 150x75x6 avec des rayons de 15mm dans chaques coins, avec 2 oblongs Ø8.5x20mm sur la longueur avec un entraxe de 75mm centré sur la platine, à 25mm du bord en largeur avec un perçage carré 20x20 au centre de la platine.",
+   "tester_note": null
+  },
+  {
+   "id": "s028",
+   "slide": 28,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 6,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 160x70x8 avec des rayons de 20mm dans chaques coins, avec 2 oblongs Ø8.2x25mm sur la longueur avec un entraxe de 80mm centré sur la platine, centré en largeur avec un perçage carré 25x25 au centre de la platine.",
+   "tester_note": null
+  },
+  {
+   "id": "s029",
+   "slide": 29,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 7,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 170x80x8 avec des rayons de 20mm dans chaques coins, avec 2 oblongs Ø9x27mm sur la longueur avec un entraxe de 90mm centré sur la platine, centré en largeur avec un perçage oblong dans la sur la largeur Ø10x20mm au centre de la platine.",
+   "tester_note": null
+  },
+  {
+   "id": "s029",
+   "slide": 29,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 8,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 180x90x10 avec des rayons de 20mm dans chaques coins, avec 2 oblongs Ø10.5xm30mm sur la longueur avec un entraxe de 95mm centré sur la platine, centré en largeur avec un perçage hexagonal de 14mm de bord à bord au centre de la platine orienté les pointes dans le sens de la largeur.",
+   "tester_note": null
+  },
+  {
+   "id": "s030",
+   "slide": 30,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 9,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 200x100x10 avec des rayons de 25mm dans chaques coins, avec 2 oblongs Ø12x35mm sur la longueur avec un entraxe de 100mm centré sur la platine, centré en largeur avec un perçage hexagonal de 15mm de bord à bord au centre de la platine orienté les pointes dans le sens de la largeur.",
+   "tester_note": null
+  },
+  {
+   "id": "s030",
+   "slide": 30,
+   "section": "1.3 PLATINE OBLONGUE",
+   "num": 10,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D pour une platine de dimensions 220x120x12 avec des rayons de 26mm dans chaques coins, avec 2 oblongs Ø15x40mm sur la longueur avec un entraxe de 110mm centré sur la platine, centré en largeur avec un perçage hexagonal de 20mm de bord à bord au centre de la platine orienté les pointes dans le sens de la longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s031",
+   "slide": 31,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Il faut une platine de dimensions 100x50x4 avec des trous Ø5, avec un d’entraxe de 70mm sur la longueur et de 30mm sur la largeur, centré sur la platine. Rajouter des chanfreins Ø8.5 à 90° sur les arrêtes de ces perçages sur un seul côté de la platine pour réaliser des fraisurages. Rajouter des rayons de 5mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s031",
+   "slide": 31,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Il faut une platine de dimensions 150x100x5 avec des trous Ø6.5, avec un d’entraxe de 95mm sur la longueur et de 70mm sur la largeur, centré sur la platine. Rajouter des chanfreins Ø11.2 à 90° sur les arrêtes de ces perçages sur un seul côté de la platine pour réaliser des fraisurages. Rajouter des rayons de 10mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s032",
+   "slide": 32,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Il faut une platine de dimensions 200X150X6 avec des trous Ø8, avec un d’entraxe de 150mm sur la longueur et de 100mm sur la largeur, centré sur la platine. Rajouter des chanfreins Ø13.2 à 90° sur les arrêtes de ces perçages sur un seul côté de la platine pour réaliser des fraisurages. Rajouter des rayons de 10mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s032",
+   "slide": 32,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 4,
+   "status": "OK",
+   "prompt": "Il faut une platine de dimensions 250X175X8 avec des trous Ø10.5, avec un d’entraxe de 195mm sur la longueur et de 130mm sur la largeur, centré sur la platine. Rajouter des chanfreins Ø20 à 120° sur les arrêtes de ces perçages sur une seule face de la platine pour réaliser des fraisurages. Rajouter des rayons de 10mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s033",
+   "slide": 33,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 5,
+   "status": "OK",
+   "prompt": "Il faut une platine de dimensions 300X200X8 avec des trous Ø10.5, avec un d’entraxe de 200mm sur la longueur et de 130mm sur la largeur, centré sur la platine. Rajouter des chanfreins Ø21 à 90° sur les arrêtes de ces perçages sur une seule face de la platine pour réaliser des fraisurages. Rajouter des rayons de 30mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s033",
+   "slide": 33,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 6,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 120mm de longueur, 80mm de largeur et 4mm d’épaisseur. Rajouter 4 perçages Ø4.2 à 15mm de chaque bords et avec un fraisurage Ø8 à 90° sur un côté. Rajouter des rayons de 5mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s034",
+   "slide": 34,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 7,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 150mm de longueur, 90mm de largeur et 4mm d’épaisseur. Rajouter 4 perçages Ø5.50 à 20mm de chaque bords et avec un fraisurage Ø10 à 90° sur un côté. Rajouter des rayons de 10mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s034",
+   "slide": 34,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 8,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 200mm de longueur, 200mm de largeur et 4mm d’épaisseur. Rajouter 4 perçages Ø8.2 à 30mm de chaque bords et avec un fraisurage Ø13.5 à 80° sur un côté. Rajouter des rayons de 10mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s035",
+   "slide": 35,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 9,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 250mm de longueur, 200mm de largeur et 6mm d’épaisseur. Rajouter 4 perçages Ø8.6 à 30mm de chaque bords et avec un fraisurage Ø14.5 à 90° sur un côté + un perçage Ø10 au centre de la plaque avec un fraisurage Ø16 à 90° à l’opposé des autres fraisurages. Rajouter des rayons de 20mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s035",
+   "slide": 35,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 10,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 250mm de longueur, 250mm de largeur et 6mm d’épaisseur. Rajouter 4 perçages Ø9 à 25mm de chaque bords et avec un fraisurage Ø14 à 80° sur un côté + un perçage Ø11 au centre de la plaque avec un fraisurage Ø16 à 90° à l’opposé des autres fraisurages. Rajouter des rayons de 20mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s036",
+   "slide": 36,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 11,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 300mm de longueur, 250mm de largeur et 6mm d’épaisseur. Rajouter 4 perçages Ø10 à 40mm de chaque bords et avec un fraisurage Ø15 à 75° sur un côté + un perçage Ø12 au centre de la plaque avec un fraisurage Ø18 à 120° à l’opposé des autres fraisurages. Rajouter des rayons de 20mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s036",
+   "slide": 36,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 12,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 400mm de longueur, 400mm de largeur et 8mm d’épaisseur. Rajouter 4 perçages Ø11 à 50mm de chaque bords et avec un fraisurage Ø27 à 90° sur un côté + un perçage Ø50 au centre de la plaque avec un fraisurage Ø60 à 85° à l’opposé des autres fraisurages. Rajouter des rayons de 30mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s037",
+   "slide": 37,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 13,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 400mm de longueur, 400mm de largeur et 8mm d’épaisseur. Rajouter 4 perçages Ø11 à 50mm de chaque bords et avec un fraisurage Ø27 à 90° sur un côté + un perçage Ø50 au centre de la plaque avec un fraisurage Ø60 à 85° du même côté des autres fraisurages. Rajouter des rayons de 30mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s037",
+   "slide": 37,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 14,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 300mm de longueur, 250mm de largeur et 8mm d’épaisseur. Rajouter 4 perçages Ø10 à 40mm de chaque bords et avec un fraisurage Ø16 à 110° sur un côté + un perçage Ø20 au centre de la plaque avec un fraisurage Ø30 à 105° du même sens des autres fraisurages. Rajouter des rayons de 30mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s038",
+   "slide": 38,
+   "section": "1.4 PLATINE FRAISURÉE",
+   "num": 15,
+   "status": "OK",
+   "prompt": "je souhaite une platine de 350mm de longueur, 300mm de largeur et 5mm d’épaisseur. Rajouter 4 perçages Ø12 à 45mm de chaque bords et avec un fraisurage Ø20 à 90° sur un côté + un perçage Ø15 au centre de la plaque avec un fraisurage Ø22 à 90° du même sens des autres fraisurages. Rajouter des rayons de 20mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s039",
+   "slide": 39,
+   "section": "1.5 PLATINE DE DISTRIBUTION",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite une platine de distribution en tôle acier galvanisé de 2 mm, dimensions 300 x 250 mm, sans pli, avec une découpe rectangulaire de 80 x 40 mm centrée à 100 mm du bord supérieur, 4 trous de 6 mm dans chaque coin à 15 mm des bords, 6 trous de 4 mm alignés horizontalement à 150 mm du haut espacés de 30 mm centré sur la longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s039",
+   "slide": 39,
+   "section": "1.5 PLATINE DE DISTRIBUTION",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite une platine de distribution en tôle acier galvanisé de 2 mm, dimensions 350 x 200 mm, sans pli, avec une découpe rectangulaire de 150 x 40 mm centrée à 80 mm du bord supérieur, 4 trous de 6 mm dans chaque coin à 20 mm des bords, 6 trous de 4 mm alignés horizontalement à 150 mm du haut espacés de 40 mm centré sur la longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s040",
+   "slide": 40,
+   "section": "1.5 PLATINE DE DISTRIBUTION",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Je souhaite une platine de distribution en tôle acier galvanisé de 3 mm, dimensions 400 x 300 mm, sans pli, avec une découpe rectangulaire de 150 x 40 mm centrée à 70 mm du bord supérieur, 4 trous de 6 mm dans chaque coin à 25 mm des bords, 7 trous de 4.2 mm alignés horizontalement à 200 mm du haut espacés de 40 mm centré sur la longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s041",
+   "slide": 41,
+   "section": "1.6 PLATINE DE MASSE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite une platine de masse en tôle d’acier électrozingué de 3 mm d’épaisseur, dimensions 200 x 100 mm, sans pli, avec 10 perçages de 6 mm de diamètre alignés en deux rangées de 5 trous espacés de 30 mm, tout les 30mm à 35mm du bord supérieur, un trou de fixation central de 8 mm, ajouter des rayons de 10mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s041",
+   "slide": 41,
+   "section": "1.6 PLATINE DE MASSE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite une platine de masse en tôle d’acier électrozingué de 2 mm d’épaisseur, dimensions 250 x 120 mm, sans pli, avec 12 perçages de 6 mm de diamètre alignés en deux rangées de 6 trous espacés de 30 mm, tout les 30mm à 45mm du bord supérieur, un trou de fixation central de 9 mm, ajouter des rayons de 10mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s042",
+   "slide": 42,
+   "section": "1.6 PLATINE DE MASSE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Je souhaite une platine de masse en tôle d’acier électrozingué de 2 mm d’épaisseur, dimensions 250 x 150 mm, sans pli, avec 15 perçages de 6.5 mm de diamètre alignés en trois rangées de 5 trous espacés de 30 mm, tout les 30mm à 45mm du bord supérieur, ajouter des rayons de 10mm dans les coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s043",
+   "slide": 43,
+   "section": "1.7 PLATINE FENDUE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite une platine fendue pour pouvoir régler sa position sur la longueur. La dimension serait de 200x100x10 avec 2 fentes en oblong de 150x15 centré d'entraxe de 30mm. Rajouter 4 Ø8 dans les coins à 10mm des bords. Sur ces perçage, réaliser un enlèvement de matière de type lamage de Ø12 sur une profondeur de 5mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s043",
+   "slide": 43,
+   "section": "1.7 PLATINE FENDUE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "je souhaite une platine fendue pour pouvoir régler sa position sur la longueur. La dimension serait de 200x100x10 avec 2 fentes en oblong de 150x15 centré d'entraxe de 30mm. Réaliser un enlèvement de matière de type lamage tout autour du oblong en décalant les bords de 4mm sur une profondeur de 5mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s044",
+   "slide": 44,
+   "section": "1.8 PLATINE À DOUILLES SOUDÉES",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Besoin d’une platine carrée 150 x 150 mm, tôle inox 4 mm, avec 4 colonettes  soudées pour fixation par goujons M10.\nLes douilles doivent être représentées dans le fichier : Ø intérieur 8.5 pour le M10, extérieur 13 et hauteur 25 mm.\nPosition : en carré, entraxe 100 x 100 mm. Voir fichier qui ne s’exporte pas",
+   "tester_note": null
+  },
+  {
+   "id": "s044",
+   "slide": 44,
+   "section": "1.8 PLATINE À DOUILLES SOUDÉES",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite une platine circulaire Ø180 mm, épaisseur 5 mm, en acier galvanisé. 3 douilles à souder disposées à 120° sur un Ø150, Ø intérieur 12 mm, Ø extérieur 15 mm, hauteur 30 mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s045",
+   "slide": 45,
+   "section": "1.8 PLATINE À DOUILLES SOUDÉES",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Bonjour, je voudrais une plaque passe-tige (ou plaque de guidage pour tiges filetées) de forme rectangulaire, dimensions 120 x 80 mm, épaisseur 3 mm, en acier galvanisé.\nJe veux 3 trous ronds de diamètre 12 mm, alignés horizontalement, espacés de 40 mm d’entraxe, centrés en hauteur.\nLes trous doivent avoir un jeu de 0,5 mm pour permettre le passage libre des tiges.",
+   "tester_note": null
+  },
+  {
+   "id": "s046",
+   "slide": 46,
+   "section": "1.10 PLAQUE À REPÈRES GRAVÉS",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Besoin d'une plaque d'identification de 120x80 épaisseur 3mm en inox avec gravé \"029\" au centre de la pièce. Il faut réaliser une emprunte de 0.1mm dans la tôle.",
+   "tester_note": "The chatbot will ask again for the character height.\u000bSuggested answer: 20."
+  },
+  {
+   "id": "s047",
+   "slide": 47,
+   "section": "1.11 PLAQUE DE LIAISON",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je voudrais une platine de jonction (ou plaque de raccordement) en forme de T, pour connecter un tube vertical à un tube horizontal.\nPartie centrale : 100 x 40 mm, branche perpendiculaire : 60 x 40 mm, épaisseur 4 mm, inox 304.\nChaque branche comporte 1 trou rond de 6 mm, centrés.",
+   "tester_note": null
+  },
+  {
+   "id": "s050",
+   "slide": 50,
+   "section": "2.1 SUPPORT",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Créer un support en forme de L, avec une base de 100 mm, une hauteur de 60 mm, une largeur de 30 mm, d'épaisseur 2 mm, avec un pli à 90° et un rayon de pliage intérieur de 2 mm et exterieur de 4mm, comprenant deux trous de 6 mm de diamètre sur la base espacés de 70 mm, centrés en largeur, ainsi qu’un trou de 8 mm de diamètre centré sur la partie de 60mm. Ajouter des rayons de 5mm dans chaque coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s050",
+   "slide": 50,
+   "section": "2.1 SUPPORT",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Créer un support en forme de L, avec une base de 200 mm, une hauteur de 80 mm, une largeur de 50 mm, d'épaisseur 3 mm, avec un pli à 90° et un rayon de pliage intérieur de 3 mm et exterieur de 6mm, comprenant deux trous de 6 mm de diamètre sur la base espacés de 90 mm, centrés en largeur, ainsi qu’un trou de 8 mm de diamètre centré sur la partie de 80mm. Ajouter des rayons de 10mm dans chaque coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s051",
+   "slide": 51,
+   "section": "2.1 SUPPORT",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Créer un support en forme de L, avec une base de 250 mm, une hauteur de 250 mm, une largeur de 140 mm, d'épaisseur 4 mm, avec un pli à 90° et un rayon de pliage intérieur de 4 mm et exterieur de 8mm, comprenant deux trous de 8 mm de diamètre sur côté  espacés de 120 mm, centrés en largeur, ainsi qu’un trou de 20 mm de diamètre centré sur l’autre partie. Ajouter des rayons de 10mm dans chaque coin.",
+   "tester_note": null
+  },
+  {
+   "id": "s051",
+   "slide": 51,
+   "section": "2.1 SUPPORT",
+   "num": 4,
+   "status": "OK",
+   "prompt": "Créer un support en forme de L, avec une base de 300 mm, une hauteur de 300 mm, une largeur de 200 mm, d'épaisseur 4 mm, avec un pli à 90° et un rayon de pliage intérieur de 4 mm et exterieur de 8mm Ajouter des rayons de 10mm dans chaque coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s052",
+   "slide": 52,
+   "section": "2.1 SUPPORT",
+   "num": 6,
+   "status": "OK",
+   "prompt": "réaliser une cornière en L à 90° d’une section de 30x20x1.5 longueur 103mm avec un rayon de pliage intérieur de 1.5mm et extérieur de 3mm, ajouter 2 perçages Ø3.2 avec un fraisurage Ø6 à 90° avec un entraxe de 82mm sur le l’aile de 20mm centré sur le 103mm mais à 12mm du bord opposé du pliage. Les fraisuages sont sur le côté intérieur du pli. Ajouter également 2 perçages Ø6.6 sur l’aile de 30mm avec un entraxe de 60.5mm à 10mm du bord opposé du pliage.",
+   "tester_note": null
+  },
+  {
+   "id": "s053",
+   "slide": 53,
+   "section": "2.1 SUPPORT",
+   "num": 7,
+   "status": "OK",
+   "prompt": "réaliser une cornière en L à 90° d’une section de 30x20x1.5 longueur 103mm avec un rayon de pliage intérieur de 1.5mm et extérieur de 3mm, ajouter 2 perçages Ø3.2 avec un fraisurage Ø6 à 90° avec un entraxe de 82mm sur le l’aile de 20mm centré sur le 103mm mais à 12mm du bord opposé du pliage. Les fraisuages sont sur le côté intérieur du pli. Ajouter également 2 perçages Ø6.6 sur l’aile de 30mm avec un entraxe de 60.5mm à 10mm du bord opposé du pliage. Ajouter des rayons de 8mm dans les 4 coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s053",
+   "slide": 53,
+   "section": "2.1 SUPPORT",
+   "num": 8,
+   "status": "OK",
+   "prompt": "Modéliser une cornière en L pliée à 90°, de longueur 200 mm, formée dans une tôle acier de 3 mm d'épaisseur, avec une section 50 x 50 mm, un rayon de pliage intérieur de 3 mm (extérieur 6 mm), comportant deux perçages Ø6 mm avec fraisurage Ø11 à 90°, implantés sur une aile avec un entraxe de 150 mm, centrés en longueur et positionnés à 14 mm du bord opposé au pli (fraisurage côté intérieur), ainsi que deux perçages Ø8 mm avec fraisurage Ø14 à 120° sur l’autre aile avec un entraxe de 130 mm, positionnés à 15 mm du bord opposé au pli(fraisurage côté extérieur), et des rayons de congé de 8 mm appliqués aux quatre coins extérieurs de la pièce.",
+   "tester_note": null
+  },
+  {
+   "id": "s054",
+   "slide": 54,
+   "section": "2.1 SUPPORT",
+   "num": 9,
+   "status": "OK",
+   "prompt": "Faire une cornière pliée à 100° ouvert, de longueur 200 mm, formée dans une tôle acier de 3 mm d'épaisseur, avec une section 50 x 50 mm, un rayon de pliage intérieur de 3 mm (extérieur 6 mm), comportant deux perçages Ø6 mm avec fraisurage Ø11 à 90°, implantés sur une aile avec un entraxe de 150 mm, centrés en longueur et positionnés à 14 mm du bord opposé au pli (fraisurage côté intérieur), ainsi que deux perçages Ø8 mm avec fraisurage Ø14 à 120° sur l’autre aile avec un entraxe de 130 mm, positionnés à 15 mm du bord opposé au pli(fraisurage côté extérieur).",
+   "tester_note": null
+  },
+  {
+   "id": "s054",
+   "slide": 54,
+   "section": "2.1 SUPPORT",
+   "num": 10,
+   "status": "OK",
+   "prompt": "Faire une coiffe pliée à 90°, de longueur 250 mm, formée dans une tôle acier de 3 mm d'épaisseur, avec une section 50 x 50 mm, un rayon de pliage intérieur de 3 mm (extérieur 6 mm), comportant deux perçages Ø6 mm avec fraisurage Ø11 à 90°, implantés sur une aile avec un entraxe de 150 mm, centrés en longueur et positionnés à 14 mm du bord opposé au pli (fraisurage côté intérieur), ainsi qu’une découpe rectangulaire pour réaliser une mortaise de 20.2x5.2mm(qui peut acceuillir un tenon de 20x5mm) sur l’autre aile centré sur la longueur, positionnés à 10 mm du bord opposé au pli sur la largeur.",
+   "tester_note": null
+  },
+  {
+   "id": "s055",
+   "slide": 55,
+   "section": "2.1 SUPPORT",
+   "num": 11,
+   "status": "OK",
+   "prompt": "je voudrais réaliser une équerre de fixation en tôle acier S235, épaisseur 3 mm sur une longueur de 300mm..\nL’équerre aura deux ailes : une aile verticale de 100 mm et une aile horizontale de 80 mm, avec un pli à 90°, rayon intérieur de 2 mm.\nSur l’aile horizontale, je veux 2 trous Ø6.5 mm, positionnés à 20 mm de chaque bord et centrés en largeur.\nSur l’aile verticale, je veux 1 trou taraudé M6 centré à 50 mm de hauteur.",
+   "tester_note": null
+  },
+  {
+   "id": "s056",
+   "slide": 56,
+   "section": "2.1 SUPPORT",
+   "num": 13,
+   "status": "OK",
+   "prompt": "J’ai besoin d’une patte de montage en forme de L, en inox 304 de 2 mm d’épaisseur. L’aile horizontale doit mesurer 120 mm et l’aile verticale 60 mm, avec un pli à 90 degrés et un rayon intérieur de 1,5 mm. La largeur de la patte sera de 250 mm.  Sur la partie horizontale, je veux deux trous de 6 mm de diamètre, espacés de 80 mm, centrés sur la largeur et situés à 20 mm du bord extérieur de la base horizontale. Sur la partie verticale, il me faut deux trous taraudés M5, situé à 30 mm de bord du haut et situés à 15 mm des bords latéraux.",
+   "tester_note": null
+  },
+  {
+   "id": "s058",
+   "slide": 58,
+   "section": "2.1 SUPPORT",
+   "num": 17,
+   "status": "OK",
+   "prompt": "Je cherche à faire un support en Z, en tôle acier galvanisée DX51D+Z, épaisseur 1,5 mm. Longueur totale : 200 mm. Les ailes font 30 mm, 20 mm, et 50 mm, pliées à 90°, avec rayons intérieurs de 1,5 mm. Sur chaque aile de 50 mm et 30 mm, je veux 2 trous Ø5 mm, espacés de 100 mm, centrés en longueur et en largeur. Merci.",
+   "tester_note": null
+  },
+  {
+   "id": "s058",
+   "slide": 58,
+   "section": "2.1 SUPPORT",
+   "num": 18,
+   "status": "OK",
+   "prompt": "Je veux créer un support en inox 316L, tôle de 2 mm, pour fixer un petit coffret électrique. Dimensions : 180 mm x 120 mm, avec 3 plis : un retour de 20 mm à gauche et à droite à 90°, et un retour arrière de 30 mm. Rayon intérieur 2 mm. Sur la face principale, prévoir une découpe rectangulaire centrée de 60 x 30 mm, et 4 trous Ø6,5 mm pour vis M6, à 10 mm des coins.",
+   "tester_note": null
+  },
+  {
+   "id": "s059",
+   "slide": 59,
+   "section": "2.2 SUPPORT MOTEUR",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je veux un support de fixation moteur en tôle acier S355 de 5 mm d’épaisseur. Dimensions 200 x 150 mm. Je dois fixer un moteur avec entraxe de 120 mm sur la longueur et de 60mm sur la largeur entre trous, donc il me faut 4 trous Ø10,5 mm positionnés en rectangle, centrés en longueur et en largeur. Prévoir 2 trous oblongs de 20 x 8 mm pour réglage dans le sens de la longueur, à 20 mm du bord du bas et d'entraxe de 100 centré.",
+   "tester_note": null
+  },
+  {
+   "id": "s059",
+   "slide": 59,
+   "section": "2.2 SUPPORT MOTEUR",
+   "num": 2,
+   "status": "OK",
+   "prompt": "J’ai besoin d’une patte moteur en inox 304L, tôle de 4 mm. La base mesure 160 mm de long et 50 mm de large. Un pli à 90° est nécessaire pour faire un retour vertical de 80 mm avec un trou Ø12 mm centré à 50 mm de la base. La partie horizontale reçoit 2 trous Ø8 mm d'entraxe de 120 mm centré et 20 mm du bord. Rayons de pliage intérieurs de 4 mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s061",
+   "slide": 61,
+   "section": "2.3 SUPPORT DE VENTILATION",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite créer un support pour un petit extracteur d’air, en tôle acier galvanisée DX51D+Z d’épaisseur 2 mm. Il s’agit d’une platine verticale de 300 mm de long sur 200 mm de large, avec un retour plié à 90° sur le bas de 50 mm de profondeur pour former une équerre de fixation. , Il s’agit d’une platine verticale de 300 mm de large et 200 mm de long, avec un retour de 50 mm en bas, plié à 90° pour former une équerre de fixation. Rayon de pliage intérieur 2 mm. Sur la face verticaleje veux une découpe circulaire Ø150 mm au centre pour le passage du conduit, avec 4 trous de fixation Ø6 mm autour du cercle, espacés de 90°, à 10 mm du bord de la découpe. Sur le base retour horizontal, prévoir 2 trous Ø8 mm à 30 mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s061",
+   "slide": 61,
+   "section": "2.3 SUPPORT DE VENTILATION",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je veux un cadre de fixation en tôle acier galvanisée de 2 mm d’épaisseur, pour encastrer une grille de ventilation de 400 x 400 mm. Le cadre fait 450 x 450 mm extérieur, avec une découpe intérieure de 402 x 402 mm (jeu de 1 mm de chaque côté). Prévoir un retour plié à 90° de 15 mm sur les 4 côtés (pli intérieur), avec rayon de pliage de 2 mm. Sur chaque aile pliée, ajouter 2 trous Ø4 mm sur 2 côtés opposés à 7mm du bord et 20mm des côtés",
+   "tester_note": null
+  },
+  {
+   "id": "s062",
+   "slide": 62,
+   "section": "2.4 CORNIÈRE DE RENFORT",
+   "num": 2,
+   "status": "OK",
+   "prompt": "J’ai besoin d’un renfort de type cornière en forme de Z, en tôle inox 304L épaisseur 3 mm. La pièce mesure 400 mm de long. Les trois ailes font 40 mm, 100 mm, et 40 mm. Pli à 90°, rayon intérieur 3 mm. Sur l’aile centrale, prévoir 3 lumières oblongues à la verticale de 40 x 12 mm espacées de 120 mm, centrées. Sur les ailes extérieures, ajouter 2 trous Ø8,5 mm à 20 mm des coins",
+   "tester_note": "J’ai besoin d’un renfort de type cornière en forme de Z, en tôle inox 304L d’épaisseur 3 mm. La pièce mesure 400 mm de long. Les trois ailes font 40 mm, 100 mm et 40 mm. Les plis sont à 90°, avec un rayon intérieur de 3 mm.\nSur l’aile centrale, prévoir 3 lumières oblongues de 40 × 12 mm, centrées en longueur, alignées dans le sens de la longueur, avec leur axe orienté dans le sens de la largeur, et espacées de 120 mm (entraxe).\nSur les ailes extérieures, ajouter 2 trous Ø8,5 mm positionnés à 20 mm des coins."
+  },
+  {
+   "id": "s065",
+   "slide": 65,
+   "section": "2.6 SUPPORT DE CÂBLES",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je voudrais un support de câble plat, découpé dans une tôle de 3 mm d’épaisseur, en inox 304.\nLa pièce doit mesurer 300 mm de long et 40 mm de large.\nJe souhaite intégrer quatre trous oblongs de 10 mm par 20 mm à la verticale, disposés dans le sens de la longueur, espacés régulièrement tous les 70 mm et centrés en largeur. De plus il faut graver le chiffre 30 en bas à droite en réalisant une emprunte de 0.1mm de dimension de 7x7.",
+   "tester_note": null
+  },
+  {
+   "id": "s065",
+   "slide": 65,
+   "section": "2.6 SUPPORT DE CÂBLES",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je cherche à réaliser une fixation de câble suspendue, en tôle pliée en forme de U.\nLa largeur intérieure du U doit être de 50 mm, avec des ailes verticales de 120 mm de hauteur, et une longueur totale de 400 mm.\nLa tôle utilisée doit faire 2,5 mm d’épaisseur, en acier S235.\nLe rayon de pliage intérieur doit être de 1,5 mm.\nJe souhaite trois trous de fixation de diamètre 10 mm sur chaque aile, espacés à 150mm sur la côte de 400mm et à 50mm du bord de la tôle.\nLa partie inférieure du U doit également comporter deux trous de 8 mm, positionnés à 50 mm des extrémités centré en largeur.",
+   "tester_note": null
+  },
+  {
+   "id": "s069",
+   "slide": 69,
+   "section": "2.8 SUPPORT PLAFOND",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je voudrais un support en tôle acier pour fixation au plafond. Il s’agit d’une platine rectangulaire de 120 mm par 60 mm, avec deux ailes latérales pliées à 90°de 20mm vers le bas, , le long du côté de 120 mm. Je veux 4 trous de fixation Ø6 mm aux 4 coins de la platine, espacés à 15 mm des bords. Au centre de la platine, je veux un trou de Ø12 mm pour faire passer une tige filetée. L’acier doit faire 2 mm d’épaisseur, rayons de pliage standards.",
+   "tester_note": null
+  },
+  {
+   "id": "s069",
+   "slide": 69,
+   "section": "2.8 SUPPORT PLAFOND",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je voudrais un support en tôle acier pour fixation au plafond. Il s’agit d’une platine rectangulaire de 150 mm par 100 mm, avec deux ailes latérales pliées à 90°de 25mm vers le bas, le long du côté de 150 mm. Je veux 4 trous de fixation Ø6 mm aux 4 coins de la platine, espacés à 20 mm des bords. Au centre de la platine, je veux un trou de Ø12 mm pour faire passer une tige filetée. L’acier doit faire 2 mm d’épaisseur, rayons de pliage standards.",
+   "tester_note": null
+  },
+  {
+   "id": "s072",
+   "slide": 72,
+   "section": "2.11 FIXATION MURALE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite un support mural en tôle pliée en acier galvanisé de 2 mm d’épaisseur, avec un dos plat vertical de 200 mm de haut sur 80 mm de large, plié à 90° en bas pour former une tablette horizontale de 100 mm de profondeur, le pli a un rayon de 2 mm, avec deux trous de fixation de 6 mm de diamètre sur la partie verticale (espacés de 150 mm, centrés en largeur et en longueur), et deux autres trous de 5 mm sur la tablette horizontale (espacés de 40 mm sur la largeur et centrés). Rajouter des rayons de 10mm dans les coins du plis de 100m.",
+   "tester_note": "The chatbot will automatically fillet all 4 edges, so if you want to fillet only 2 edges, you should use Edit mode + Select Edges."
+  },
+  {
+   "id": "s073",
+   "slide": 73,
+   "section": "2.11 FIXATION MURALE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite un support mural en tôle pliée en acier galvanisé de 3 mm d’épaisseur, avec un dos plat vertical de 200 mm de haut sur 120 mm de large, plié à 90° en bas pour former une tablette horizontale de 100 mm de profondeur, le pli a un rayon de 3 mm, avec deux trous de fixation de 10 mm de diamètre sur la partie verticale (espacés de 150 mm, centrés en largeur et en longueur), et deux autres trous de 4 mm sur la tablette horizontale (espacés de 80 mm sur la largeur et centrés). Rajouter des rayons de 10mm dans les coins du plis de 100m.",
+   "tester_note": "The chatbot will automatically fillet all 4 edges, so if you want to fillet only 2 edges, you should use Edit mode + Select Edges."
+  },
+  {
+   "id": "s074",
+   "slide": 74,
+   "section": "2.11 FIXATION MURALE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Je souhaite un support mural en tôle pliée en acier galvanisé de 3 mm d’épaisseur, avec un dos plat vertical de 250 mm de haut sur 120 mm de large, plié à 90° en bas pour former une tablette horizontale de 120 mm de profondeur, le pli a un rayon de 3 mm, avec deux trous de fixation de 10 mm de diamètre sur la partie verticale (espacés de 170 mm, centrés en largeur et en longueur), et deux autres trous de 8 mm sur la tablette horizontale (espacés de 80 mm sur la largeur et centrés). Rajouter des rayons de 12mm dans les coins du plis de 100m.",
+   "tester_note": null
+  },
+  {
+   "id": "s075",
+   "slide": 75,
+   "section": "2.12 SUPPORT PIED DE MACHINE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite modéliser une platine de fixation en tôle pliée, qui servira de support pour un vérin de réglage.\nElle doit être en forme de L, avec une base horizontale de 120 mm de long sur 80 mm de large, et un retour vertical de 100 mm de haut.\nL’épaisseur de la tôle est de 5 mm, en acier S355.\nLe pli doit être réalisé à 90°, avec un rayon intérieur de 2 mm.\nSur la base, je souhaite deux trous de fixation au sol de Ø12 mm, centré espacés de 80 mm, ainsi qu’un trou fileté M16 au centre pour accueillir un pied réglable.",
+   "tester_note": null
+  },
+  {
+   "id": "s075",
+   "slide": 75,
+   "section": "2.12 SUPPORT PIED DE MACHINE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je voudrais créer un socle d’appui plat pour un pied antivibratoire de machine, découpé dans une tôle d’acier S355 de 8 mm d’épaisseur.\nLa plaque fait 150x150 mm.\nEn son centre, je veux un trou taraudé M20 pour le pied.\nIl faut également quatre trous Ø14 mm aux coins, à 20 mm des bords, pour la fixation au sol. \nne demande plus",
+   "tester_note": null
+  },
+  {
+   "id": "s076",
+   "slide": 76,
+   "section": "2.13 SUPPORT EN Z",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je veux un support en tôle acier pliée en forme de Z.\nLa pièce doit avoir trois segments sur une longueur de 40mm:\n– une patte de fixation au plafond de 60 mm de long,\n– un segment vertical de 40 mm de haut,\n– et une patte inférieure de 60 mm dans l'autre sens.\nLes deux plis à 90° avec des rayons de pliage standards.\nL’épaisseur de tôle est de 3 mm.\nJe veux 2 trous Ø6 mm sur la patte supérieure (plafond), centrés espacés de 30 mm, pour la fixation.\nEt un trou Ø10 mm centré sur la patte inférieure pour une fixation suspendue.",
+   "tester_note": null
+  },
+  {
+   "id": "s076",
+   "slide": 76,
+   "section": "2.13 SUPPORT EN Z",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je veux un support en tôle acier pliée en forme de Z.\nLa pièce doit avoir trois segments sur une longueur de 30mm:\n– une patte de fixation au plafond de 50 mm de long,\n– un segment vertical de 30 mm de haut,\n– et une patte inférieure de 60 mm dans l'autre sens.\nLes deux plis à 90° avec des rayons de pliage standards.\nL’épaisseur de tôle est de 3 mm.\nJe veux 2 trous Ø6 mm sur la patte supérieure (plafond), centrés espacés de 15 mm, pour la fixation.\nEt un trou Ø10 mm centré sur la patte inférieure pour une fixation suspendue.",
+   "tester_note": null
+  },
+  {
+   "id": "s077",
+   "slide": 77,
+   "section": "2.14 CONSOLE U RENFORCÉE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je cherche à fabriquer un support en U métallique renforcé, en tôle galvanisée de 3 mm d’épaisseur.\nIl me faut un U de 250 mm de long, 80 mm de large (intérieur), avec des ailes verticales de 120 mm de haut.\nLes plis doivent être faits à 90° avec un rayon de pliage standard.\nJe souhaite un retour de 15 mm sur chaque aile pour renforcer la rigidité.\nAjoutez 3 trous de Ø8 mm sur la base, répartis sur la longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s078",
+   "slide": 78,
+   "section": "2.15 SUPPORT ROTULÉ",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je cherche une chape ouverte latéralement, pour montage d’une rotule sans démontage axial.\nEn tôle acier 4 mm, longueur totale 120 mm, largeur extérieure 60 mm, hauteur ailes 80 mm.\nLes deux ailes doivent avoir un trou Ø18 mm centré sur la longueur à 20mm su bord du haut, mais l’aile droite sera fendue avec une découpe rectangulaire sur le bas de 80x25 à 16mm extérieur du pli pour permettre une mise en place latérale.",
+   "tester_note": null
+  },
+  {
+   "id": "s080",
+   "slide": 80,
+   "section": "2.17 CHÂSSIS D’INDEXAGE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite un chassis d'indexage réglable circulairement sur 16 positions pour une table de soudage. Le chassis est en tôle pliée de 4mm d'épaisseur avec une base de 508x508mm avec 4 plis de 45mm sur chaque côté. Bien fermer les angles dans les coins pour pouvoir souder en laissant un jeu de 0.2mm verticalement et horizontalement. Au centre de la base ajouter un Ø50, ensuite ajouter 16x Ø10 équidistants en répétition circulaire par rapport à ce centre sur un Ø300. Il faut également 4 Ø13 pour la fixation, dans chaque coins à 54mm du bord.",
+   "tester_note": null
+  },
+  {
+   "id": "s080",
+   "slide": 80,
+   "section": "2.17 CHÂSSIS D’INDEXAGE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite un socle de guidage avec des pions de positionnement avec plusieurs crans. Il faut une platine de 400x400x5 avec 12 perçages Ø6.2 en 2 rangés de 6 espacées de 150mm centrées. Il faut des crans tous les 40mm ce qui donne un entraxe entre les 2 extrémités de 200mm. Rajouter des pions en Ø6 de longueur 20mm dans chaque trous dépassent de 20mm sur un côté. Rajouter 4 M8 dans chaque coins à 40mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s082",
+   "slide": 82,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite créer un fichier CAO au format STEP pour un tube rectangulaire de 1400 mm de long, avec une section de 60 x 30 mm, une épaisseur de 2 mm, des coupes droites à chaque extrémité, un rayon intérieur égal à l’épaisseur (2 mm) et un rayon extérieur égal à deux fois l’épaisseur (4 mm).",
+   "tester_note": null
+  },
+  {
+   "id": "s082",
+   "slide": 82,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Génère un fichier CAO au format STEP d’un tube rectangulaire en acier S235, long de 1000 mm, avec une section de 60 mm par 30 mm, une épaisseur de 3 mm, un rayon intérieur de 3 mm et un rayon extérieur de 6 mm, sans aucun perçage. Le bout d’une section du tube doit être découpé à 80° du côté des 60mm, l’autre à 90°.",
+   "tester_note": null
+  },
+  {
+   "id": "s083",
+   "slide": 83,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Je veux un tube en acier rectangulaire, 80X60X3mm, de longueur 1500mm. Il me faut des perçages Ø5, sur les deux partie de la largeur du tube , centré en commençant à 20mm du bords, et tous les 200mm jusqu’au bout.",
+   "tester_note": null
+  },
+  {
+   "id": "s083",
+   "slide": 83,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 4,
+   "status": "OK",
+   "prompt": "Je veux un tube en acier rectangulaire, 40X20X2mm, de longueur 1200mm. Il me faut 2 perçages Ø5, sur les deux parties de la largeur de la section du tube , centré en commençant à 30mm des bords et 1 perçage Ø8 centré au milieu du tube sur un seul côté de la partie de la longueur de la section. Les 2 bouts à 90°.",
+   "tester_note": null
+  },
+  {
+   "id": "s084",
+   "slide": 84,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 5,
+   "status": "OK",
+   "prompt": "Je souhaite créer un fichier CAO au format STEP pour un tube rectangulaire de 1150 mm de long, avec une section de 100 x 80 mm, une épaisseur de 5 mm, des coupes droites à chaque extrémité, un rayon intérieur égal à l’épaisseur (5 mm) et un rayon extérieur égal à deux fois l’épaisseur (10 mm).",
+   "tester_note": null
+  },
+  {
+   "id": "s084",
+   "slide": 84,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 6,
+   "status": "OK",
+   "prompt": "Peux tu réaliser un fichier 3D d’un tube rectangulaire d’une section de 120x60x3 de longueur 720mm. Dans chaque bout ajouter des rectangles (tenons) de 40x3mm centrés sur les faces du 120mm, le tube fera donc 726mm de longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s085",
+   "slide": 85,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 7,
+   "status": "OK",
+   "prompt": "Peux tu réaliser un fichier 3D d’un tube rectangulaire d’une section de 80x40x4 de longueur 1200mm. Dans chaque bout ajouter des rectangles (tenons) de 25x4mm centrés sur les faces du 80mm, le tube fera donc 1208mm de longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s085",
+   "slide": 85,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 8,
+   "status": "OK",
+   "prompt": "Peux-tu créer un fichier 3D d’un tube rectangulaire en tôle pliée, de section 100 mm x 60 mm, avec une épaisseur de 3 mm, et une longueur totale de 1106 mm ? À chaque extrémité du tube, il faut ajouter un tenon sur chacune des deux faces de 100 mm (donc 2 tenons par extrémité) au centre. Chaque tenon est un rectangle de 40 mm de long et 3 mm d’épaisseur, dans le prolongement du tube. Ces tenons sont solidaires du tube et prolongent la tôle, ce qui explique que la longueur totale passe à 1106 mm. L’objectif est de pouvoir insérer ces tenons dans des découpes correspondantes sur une autre pièce.",
+   "tester_note": null
+  },
+  {
+   "id": "s086",
+   "slide": 86,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 9,
+   "status": "OK",
+   "prompt": "Peux-tu créer un fichier 3D d’un tube rectangulaire en tôle pliée, de section 100 mm x 60 mm, avec une épaisseur de 3 mm, et une longueur totale de 1106 mm ? À chaque extrémité du tube, il faut ajouter un tenon sur chacune des deux faces de 60 mm (donc 2 tenons par extrémité au centre). Chaque tenon est un rectangle de 30 mm de long et 3 mm d’épaisseur, dans le prolongement du tube. Ces tenons sont solidaires du tube et prolongent la tôle. L’objectif est de pouvoir insérer ces tenons dans des découpes correspondantes sur une autre pièce .",
+   "tester_note": null
+  },
+  {
+   "id": "s086",
+   "slide": 86,
+   "section": "3.1 TUBE RECTANGULAIRE",
+   "num": 10,
+   "status": "OK",
+   "prompt": "Peux-tu créer un fichier 3D d’un tube rectangulaire en tôle pliée, de section 50 mm x 25 mm, avec une épaisseur de 2 mm, et une longueur totale de 1104 mm ? À chaque extrémité du tube, il faut ajouter un tenon sur chacune des deux faces de 250 mm (donc 2 tenons par extrémité). Chaque tenon est un rectangle de 15 mm de long et 2 mm d’épaisseur, dans le prolongement du tube. Ces tenons sont solidaires du tube et prolongent la tôle. L’objectif est de pouvoir insérer ces tenons dans des découpes correspondantes sur une autre pièce.",
+   "tester_note": null
+  },
+  {
+   "id": "s087",
+   "slide": 87,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite créer un fichier CAO au format STEP pour un tube circulaire, d’une longueur de 1000 mm, avec un diamètre extérieur de 50 mm, une épaisseur de 2 mm, une extrémité coupée à 90° et l’autre à 45°, avec 2 perçages Ø8 aux extrémités à 50mm du bord axés sur la longueur la plus longue.",
+   "tester_note": null
+  },
+  {
+   "id": "s087",
+   "slide": 87,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite créer un fichier CAO au format STEP pour un tube circulaire, d’une longueur de 800 mm, avec un diamètre extérieur de 42.40 mm, une épaisseur de 2 mm, une extrémité coupée à 90° et l’autre à 60°",
+   "tester_note": null
+  },
+  {
+   "id": "s088",
+   "slide": 88,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Je souhaite créer un fichier CAO au format STEP pour un tube circulaire, d’une longueur de 600 mm, avec un diamètre extérieur de 76.1mm, une épaisseur de 4 mm, une extrémité coupée à 90° et l’autre à 70°.",
+   "tester_note": null
+  },
+  {
+   "id": "s088",
+   "slide": 88,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 4,
+   "status": "OK",
+   "prompt": "Je souhaite créer un fichier CAO au format STEP pour un tube circulaire, d’une longueur de 600 mm, avec un diamètre extérieur de 114.3 mm, une épaisseur de 5 mm, aux extrémitéx coupées à 90°, avec 2 perçages Ø8 aux extrémités à 20mm du bord",
+   "tester_note": null
+  },
+  {
+   "id": "s089",
+   "slide": 89,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 5,
+   "status": "OK",
+   "prompt": "Je souhaite créer un fichier CAO au format STEP pour un tube circulaire, d’une longueur de 1000 mm, avec un diamètre extérieur de 70 mm, une épaisseur de 2 mm, une extrémité coupée à 90° et l’autre à 45°, avec 2 perçages Ø10 aux extrémités à 50mm du bord axés sur la longueur la plus longue.",
+   "tester_note": null
+  },
+  {
+   "id": "s089",
+   "slide": 89,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 6,
+   "status": "OK",
+   "prompt": "Modéliser un fichier CAO d’un tube circulaire Ø55x2 d’un longueur de 750mm, avec un bout coupé à 45° et l’autre 90°. Il faut également une ouverture en gueule de loup pour accueillir un tube Ø40 à 400mm du bord à 90° axé sur le petit côté suivant la découpe à 45°.",
+   "tester_note": null
+  },
+  {
+   "id": "s090",
+   "slide": 90,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 7,
+   "status": "OK",
+   "prompt": "Modéliser un fichier CAO d’un tube circulaire Ø88.9x3 d’un longueur de 900mm, avec un bout coupé à 45° et l’autre 90°. Il faut également une ouverture en gueule de loup pour accueillir un tube Ø50 à 450mm du bord à 90° axé sur le grand côté suivant la découpe à 45°.",
+   "tester_note": null
+  },
+  {
+   "id": "s090",
+   "slide": 90,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 8,
+   "status": "OK",
+   "prompt": "Modéliser un fichier CAO d’un tube circulaire Ø152.4x4 d’un longueur de 750mm, avec un bout coupé à 45° et l’autre également en symétrie. Il faut également une ouverture en gueule de loup pour accueillir un tube Ø101.6mm à 400mm au centre sur la longueur axé sur le petit côté suivant les découpse à 45°.",
+   "tester_note": null
+  },
+  {
+   "id": "s091",
+   "slide": 91,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 9,
+   "status": "OK",
+   "prompt": "Modéliser un fichier CAO d’un tube circulaire Ø152.4x4 d’un longueur de 750mm, avec un bout coupé à 45° et l’autre également en symétrie. Il faut également 2 ouvertures en gueule de loup traversante pour accueillir un tube Ø101.6mm au centre de la pièce mais orienté à 45° dans le sens de la longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s091",
+   "slide": 91,
+   "section": "3.2 TUBE CIRCULAIRE",
+   "num": 10,
+   "status": "OK",
+   "prompt": "Modéliser un fichier CAO d’un tube circulaire Ø152.4x4 d’un longueur de 750mm, avec les bout à 90°. Il faut également une ouverture en gueule de loup pour accueillir un tube Ø101.6mm au centre de la pièce mais orienté à 45° dans le sens de la longueur.",
+   "tester_note": null
+  },
+  {
+   "id": "s092",
+   "slide": 92,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Créer un fichier CAO au format STEP pour un tube carré, d’une longueur de 800 mm, avec une section de 40 mm x 40 mm, une épaisseur de paroi de 2 mm. Le rayon intérieur est égal à l’épaisseur (2 mm) et le rayon extérieur est égal à deux fois l’épaisseur (4 mm). Les deux extrémités doivent être coupées à 45° en symétrie. Avec un perçage Ø8 sur chaques faces centré sur la section et au centre du tube.",
+   "tester_note": null
+  },
+  {
+   "id": "s092",
+   "slide": 92,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Créer un fichier CAO au format STEP pour un tube carré, d’une longueur de 500 mm, avec une section de 80 mm x 80 mm, une épaisseur de paroi de 6 mm. Le rayon intérieur est égal à l’épaisseur (6 mm) et le rayon extérieur est égal à deux fois l’épaisseur (12 mm). Les deux extrémités doivent être coupées à 45° en symétrie.",
+   "tester_note": null
+  },
+  {
+   "id": "s093",
+   "slide": 93,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Génère un fichier CAO au format STEP d’un tube carre en acier S235, long de 100 mm, avec une section de 50 mm par 50 mm, une épaisseur de 2 mm, un rayon intérieur de 2 mm et un rayon extérieur de 4 mm, sans aucun perçage. des extrémités coupées à 90°.",
+   "tester_note": null
+  },
+  {
+   "id": "s093",
+   "slide": 93,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 4,
+   "status": "OK",
+   "prompt": "Génère un fichier CAO au format STEP d’un tube carre en acier S235, long de 1000 mm, avec une section de 60 mm par 60 mm, une épaisseur de 3 mm, un rayon intérieur de 3 mm et un rayon extérieur de 6 mm, sans aucun perçage ni traitement de surface. Le bout d’une section du tube doit être découpé à 80°, l’autre à 90°.",
+   "tester_note": null
+  },
+  {
+   "id": "s094",
+   "slide": 94,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 5,
+   "status": "OK",
+   "prompt": "Génère un fichier CAO au format STEP d’un tube carré en acier S235, long de 1200 mm, avec une section de 90 mm par 90 mm, une épaisseur de 4 mm, un rayon intérieur de 4 mm et un rayon extérieur de 8 mm, avec un perçage Ø10 centré à 50mm du bord sur une seul face, des extrémités coupées à 90°",
+   "tester_note": null
+  },
+  {
+   "id": "s094",
+   "slide": 94,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 6,
+   "status": "OK",
+   "prompt": "je souhaite un tube de section 40x40x2mm de longueur 815mm de longueur totale avec d’un côté une coupe à 45° et de l’autre des tenons de 20x2 centré sur les faces symétriques selon la coupe. Egalement, sur les autres faces rajouter des mortaises 20.2x2.2mm centré à 400mm du bord de la coupe à 90° sans prendre en compte les tenons sur les autres faces.",
+   "tester_note": null
+  },
+  {
+   "id": "s095",
+   "slide": 95,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 7,
+   "status": "OK",
+   "prompt": "je souhaite un tube de section 40x40x2mm de longueur 815mm de longueur totale avec d’un côté une coupe à 45° et de l’autre des tenons de 20x2 centré sur les faces symétriques selon la coupe. Faire un enlèvement de matière d’un 3/4 de cercle de Ø0.75mm à la base des tenons.Egalement, sur les autres faces rajouter des mortaises 20.2x2.2mm centré à 400mm du bord de la coupe à 90° sans prendre en compte les tenons sur les autres faces.",
+   "tester_note": null
+  },
+  {
+   "id": "s095",
+   "slide": 95,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 8,
+   "status": "OK",
+   "prompt": "Je souhaite créer un tube carré en acier de 50 x 50 mm de section, avec une épaisseur de 2 mm, et une longueur totale de 980 mm. À l’extrémité gauche, je veux une coupe à 45°. À l’extrémité droite, je veux intégrer des tenons de 20 x 2 mm, centrés sur deux faces opposées du tube (alignées selon la coupe à 90°). Sur les deux autres faces, j’aimerais ajouter des mortaises de 20.2 x 2.2 mm, centrées à 450 mm du bord coupé à 90°, sans tenir compte des tenons présents sur les autres faces.",
+   "tester_note": null
+  },
+  {
+   "id": "s096",
+   "slide": 96,
+   "section": "3.3 TUBE CARRÉ",
+   "num": 9,
+   "status": "OK",
+   "prompt": "Je voudrais un tube carré en acier de 60 mm de côté, avec une épaisseur de 2 mm, et une longueur totale de 920 mm.\nJe veux que l'extrémité gauche soit coupée à 90°, et celle de droite en biseau à 45°.\nSur les faces comprenant la coupe à 45° côté coupe à 90°, je veux ajouter un tenon de 30 mm de long sur 1.5 mm d’épaisseur, bien centré sur chaque face. Sur les deux autres faces (le petit et grand côté), je veux des mortaises de 30,2 mm par 2,2 mm, centrées à 460 mm du bord coupé à 90°, sans qu’elles ne chevauchent les tenons.\nAussi, je voudrais une découpe en forme d’hexagone (clé de 20.5 mm entre plats), placée sur la plus petite face, à 300 mm du bord droitsans compter les tenons, bien centrée sur la largeur de la face.",
+   "tester_note": null
+  },
+  {
+   "id": "s098",
+   "slide": 98,
+   "section": "4.1 CAPOTS",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D type STEP d’un capot avec un base rectangulaire de 400x300mm d’épaisseur 1.5mm, rajouter 4 plis à 90° de 151.5mm qui remontent, 2 plis de 50mm de largeur sur la longueur de 400mm dans l’autre sens avec 4 perçages Ø8mm dans chaques coins à 20mm des bords. Ne pas oublier les rayon de pliage (rayon de pliage intérieur = l’épaisseur et les rayons extérieures 2 fois l’épaisseur)",
+   "tester_note": null
+  },
+  {
+   "id": "s099",
+   "slide": 99,
+   "section": "4.1 CAPOTS",
+   "num": 3,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D type STEP d’un capot avec un base rectangulaire de 500x350mm d’épaisseur 2mm, rajouter 4 plis à 90° de 52mm qui remontent, 2 plis de 25mm de largeur sur la longueur de 500mm dans l’autre sens avec 4 perçages Ø6mm dans chaques coins à 10mm des bords. Ne pas oublier les rayon de pliage (rayon de pliage intérieur = l’épaisseur et les rayons extérieures 2 fois l’épaisseur)",
+   "tester_note": null
+  },
+  {
+   "id": "s099",
+   "slide": 99,
+   "section": "4.1 CAPOTS",
+   "num": 4,
+   "status": "OK",
+   "prompt": "je souhaite un fichier 3D type STEP d’un capot avec un base rectangulaire de 450x350mm d’épaisseur 2mm, rajouter 4 plis à 90° de 152mm qui remontent, 2 plis de 55mm de largeur sur la longueur de 450mm dans l’autre sens avec 4 perçages Ø8mm dans chaques coins à 20mm des bords. Ne pas oublier les rayon de pliage (rayon de pliage intérieur = l’épaisseur et les rayons extérieures 2 fois l’épaisseur)",
+   "tester_note": null
+  },
+  {
+   "id": "s102",
+   "slide": 102,
+   "section": "4.1 CAPOTS",
+   "num": 9,
+   "status": "OK",
+   "prompt": "Je voudrais un fichier 3D au format STEP pour un capot en tôle. La base doit faire 520 mm par 380 mm, avec une épaisseur de 1,5 mm. Je souhaite que les 4 côtés soient pliés à 90° vers le haut, avec une hauteur de 140 mm. Sur les deux côtés les plus longs (les 520 mm), je veux des retours pliés vers l’extérieur de 45 mm de large. Merci d’ajouter 4 perçages de 6 mm de diamètre, un dans chaque coin de la base, positionnés à 15 mm des bords (horizontalement et verticalement). Je voudrais également une découpe en forme de demi-lune, placée sur la face avant du capot, avec une largeur de 70 mm et une hauteur de 35 mm (rayon de 35 mm), centrée horizontalement, située à 50 mm du bord supérieur du pli, et orienté avec la partie droite à l’opposé de la partie supérieur du capot. Enfin, merci d’appliquer les rayons de pliage standards : 1,5 mm à l’intérieur (égal à l’épaisseur), et 3 mm à l’extérieur (le double de l’épaisseur).",
+   "tester_note": null
+  },
+  {
+   "id": "s103",
+   "slide": 103,
+   "section": "4.2 CADRE PLIÉ",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite un encadré plié avec une base de 200x150x2 avec une découpe intérerieur de 144x94mm centrée, rajouter des plis de 30mm sur tous les bords exterieurs(rayon intérieur=1 fois l’éapisseur et rayon extérieur=2 fois l’épaisseur). Prévoir 4 trous Ø7 sur les grand plis, à 10mm du bord de la tôle sur la largeur et 22mm sur la longueur, ce qui fait un entraxe de 160mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s103",
+   "slide": 103,
+   "section": "4.2 CADRE PLIÉ",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite un encadré plié avec une base de 300x150x2 avec une découpe intérerieur de 244x94mm centrée, rajouter des plis de 30mm sur tous les bords exterieurs(rayon intérieur=1 fois l’éapisseur et rayon extérieur=2 fois l’épaisseur). Prévoir 4 trous découpes hexagonales Ø8 sur les grand plis, à 10mm du bord de la tôle sur la largeur et 22mm sur la longueur, ce qui fait un entraxe de 260mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s104",
+   "slide": 104,
+   "section": "4.2 CADRE PLIÉ",
+   "num": 3,
+   "status": "OK",
+   "prompt": "Je souhaite un encadré plié avec une base de 300x300x2 avec une découpe intérerieur de 244x244mm centrée, rajouter des plis de 40mm sur tous les bords exterieurs(rayon intérieur=1 fois l’éapisseur et rayon extérieur=2 fois l’épaisseur). Prévoir 4 trous découpes hexagonales Ø8 sur les 2 côtés opposés, à 15mm du bord de la tôle sur la largeur et 22mm sur la longueur, ce qui fait un entraxe de 260mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s105",
+   "slide": 105,
+   "section": "4.3 CAPOT VENTILÉ LATÉRAL",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite un capot plié avec une base de 400x400x2, rajouter des plis de 150mm sur tous les bords exterieurs(rayon intérieur=1 fois l’épaisseur et rayon extérieur=2 fois l’épaisseur). Rajouter un cadrillage de 10x10 trous Ø3.5 d’entraxe 6mm sur les plis d’un côté, centré sur la largeur et longueur pour l’aération d’un ventilateur.",
+   "tester_note": "SLOW EXPORT"
+  },
+  {
+   "id": "s105",
+   "slide": 105,
+   "section": "4.3 CAPOT VENTILÉ LATÉRAL",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite un capot plié avec une base de 450x400x2, rajouter des plis de 150mm sur tous les bords exterieurs(rayon intérieur=1 fois l’épaisseur et rayon extérieur=2 fois l’épaisseur). Rajouter un cadrillage de 12x12 trous Ø2.5 d’entraxe 5.5mm sur les plis d’une longeur de 404mm, centré sur la largeur et longueur pour l’aération d’un ventilateur.",
+   "tester_note": "SLOW EXPORT"
+  },
+  {
+   "id": "s106",
+   "slide": 106,
+   "section": "4.4 COUVERTINE, COIFFE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "faire un fichier d’une couvertine en U avec une base du U de 104mm extérieur et les ailes 12 en épaisseur 1.5mm de longueur 2980mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s106",
+   "slide": 106,
+   "section": "4.4 COUVERTINE, COIFFE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "faire un fichier d’une couvertine en U avec une base du U de 200mm extérieur et les ailes 20 en épaisseur 1.5mm de longueur 2980mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s107",
+   "slide": 107,
+   "section": "4.4 COUVERTINE, COIFFE",
+   "num": 3,
+   "status": "OK",
+   "prompt": "faire un fichier d’une couvertine en U avec une base du U de 250mm extérieur et les ailes 25 en épaisseur 1.5mm de longueur 2980mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s118",
+   "slide": 118,
+   "section": "6.1 BOÎTIER MONOCOQUE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite un boitier plié avec une base de 304x204 d’épaissuer 2mm, avec une découpe réctangulaire centrale de 100x50, orienté le 100mm sur la partie de 304mm. 4 plis relevés de 102mm sur chaques côtés, 4 plis relevés de 25mm également au bout de ces plis avec des découpes à 45° dans les angles pour ne pas créer de collision.",
+   "tester_note": null
+  },
+  {
+   "id": "s121",
+   "slide": 121,
+   "section": "6.4 BOÎTIER POUR RELAIS INDUSTRIELS",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Il faut générer un fichier d'une boite de 300mm, sur 404mm de hauteur et 200mm de profondeur 300 mm de longueur, 404 mm de largeur et 200 mm de hauteur et d'épaisseur 2mm. Fermer ce boitier avec les plis sur le dessus et dessous. Rajouter des perçages sur la base:\n- 4x Ø8.5 dans les coins à 25mm des bords.\n- 3x rangés de 5 perçages Ø5mm, le premier perçage à 60mm de la partie gauche et 100mm de la partie supérieure. Ensuite faire une rangé de 5 perçages à 25mm d'entraxe, répéter cette rangé vers le bas à 30mm d'entraxe.",
+   "tester_note": null
+  },
+  {
+   "id": "s122",
+   "slide": 122,
+   "section": "6.5 COFFRET PROFONDEUR RÉDUITE",
+   "num": 1,
+   "status": "OK",
+   "prompt": ".Me faire un fichier 3D de coffret à profondeur réduite. 50mm de profondeur suffira. Le coffret doit faire 354mm de hauteur sur 225mm 354 mm de longueur, 225 mm de largeur et 50 mm de hauteurde d'épaisseur 2mm. Sur la base, il faut 4 trous oblongs de 8.5x8. Les orienter à la vertical et les positionner dans les coins à 50mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s129",
+   "slide": 129,
+   "section": "7.1 TÔLE GARDE-CORPS",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je souhaite un garde-corps de 1800 × 350 × 2 mm, avec un pli de 40 mm de largeur sur la longueur de 1800 mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s131",
+   "slide": 131,
+   "section": "7.3 GARDES CORPS",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Peux tu me fournir un fichier 3d pour un garde corps en plat de 100x8mm et des ronds Ø20. Faire 2 plat de longueur 1200mm à l'horizontal et les espacer de 992mm. Entre ces 2 panneaux intégrer 9 ronds Ø20 de longueur 984mm, les premiers à 30mm des bords et ensuite les espacer de 142.5mm.",
+   "tester_note": null
+  },
+  {
+   "id": "s132",
+   "slide": 132,
+   "section": "7.4 HABILLAGE DE PLAFOND",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite un habillage de plafond technique en panneaux aluminium anodisé 1,5 mm, pour une zone de 2400 mm x 1200 mm. Chaque panneau fera 600 x 600 mm, avec retour de 25 mm sur tout le périmètre, pour emboîtement.",
+   "tester_note": null
+  },
+  {
+   "id": "s133",
+   "slide": 133,
+   "section": "7.4 HABILLAGE DE PLAFOND",
+   "num": null,
+   "status": "OK",
+   "prompt": "Réaliser une collerette de Ø150mm épaisseur 2mm, ajouter une découpe circulaire de 102mm au centre, et 3 Ø4 répartis sur un Ø130 à 120° de chaque.",
+   "tester_note": null
+  },
+  {
+   "id": "s134",
+   "slide": 134,
+   "section": "7.6 HABILLAGE À ANGLES CASSÉS",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite modéliser un habillage en tôle pliée à angle cassé à 120°, pour couvrir le sommet d’une gaine verticale.\nLongueur de la pièce : 1500 mm.\nL’aile horizontale fera 250 mm, et les ailes inclinées 200 mm.\nTôle aluminium 2 mm, finition anodisée naturel. Ajouter des Ø5 dans chaque coin à 20mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s139",
+   "slide": 139,
+   "section": "7.11 PARE-CHALEUR",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite modéliser un pare-chaleur ventilé pour isoler un moteur thermique d’un coffrage voisin.\nDimensions : 700 mm x 500 mm, acier 1,5 mm.\nPrévoir découpe de ventilation : 1 rangée de 11 fentes 150 x 10 mm, espacées verticalement à 25mm au centre de la pièce.",
+   "tester_note": null
+  },
+  {
+   "id": "s140",
+   "slide": 140,
+   "section": "7.12 PANNEAU DE FAÇADE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je veux modéliser un panneau frontal pour rack 19 pouces, hauteur 2U.\nDimensions standards : 483 mm x 88 mm, en aluminium 2 mm, finition anodisée noire.\nPrévoir 2 trous Ø5 mm pour fixation dans le rack, espacement de 250mm centrés.\nPanneau plat, aucun retour plié.",
+   "tester_note": null
+  },
+  {
+   "id": "s141",
+   "slide": 141,
+   "section": "7.13 TÔLE DE FINITION",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je souhaite modéliser une tôle de finition à visser sur le flanc droit d’un coffret mural.\nDimensions : 450 mm x 300 mm, tôle acier 1 mm.\nRetours pliés de 15 mm sur les 2 côtés verticaux uniquement.\nPrévoir 4 trous de fixation Ø5 mm, un dans chaque coin à 30mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s142",
+   "slide": 142,
+   "section": "7.14 PANNEAU ARRIÈRE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "je cherche à modéliser un panneau arrière clipsable pour un coffret modulaire.\nDimensions : 400 x 400 mm, alu 1 mm, anodisé naturel.\nPas de trous, pas de fixation vissée.\nLes 4 bords sont retournés à 180° sur 8 mm pour rigidité.",
+   "tester_note": null
+  },
+  {
+   "id": "s143",
+   "slide": 143,
+   "section": "7.15 PANNEAU PERFORÉ",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Je veux une panneau perforée 200 x 200mm, épaisseur 2mm, avec des perçages Ø8mm alignés en 8 rangées de 8 trous espacés de 15 mm sur la largeur et de 15mm sur la longueur, le premier à 50mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s144",
+   "slide": 144,
+   "section": "7.16 HABILLAGE BAS DE MEUBLE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Peux tu modéliser une plinthe d'épaisseur 1.5mm sur une longueur de 1750mm pour un meuble. Il faut que cela soit en Z avec un contre pli de 30mm, un pli de 30mm sur une aile et l'autre 130mm",
+   "tester_note": null
+  },
+  {
+   "id": "s151",
+   "slide": 151,
+   "section": "8.4 CACHE VENTILATEUR",
+   "num": 1,
+   "status": "OK",
+   "prompt": "J'ai besoin d’un cache ventilateur rectangulaire, en tôle aluminium 1 mm, dimensions 500 mm de long x 300 mm de haut. Le cache est plat, sans bombage, mais avec un cadre périphérique plié de 15 mm sur les 4 côtés. La zone centrale doit comporter une ouverture Ø125 avec 4 trous Ø5 à 10mm du bord. Je souhaite 4 trous de fixation Ø 4.2 mm dans chaque coin, à 10 mm des bords.",
+   "tester_note": null
+  },
+  {
+   "id": "s152",
+   "slide": 152,
+   "section": "8.5 TÔLE AJOURÉE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "J’ai besoin d’une plaque en tôle ajourée pour une grille de ventilation.\nFormat : 400 x 250 mm, épaisseur 2 mm.\nAjourage avec des fentes oblongues de 30 x 15 mm à la verticale, disposées en 3 lignes parallèles, espacées de 50 mm en horizontal et 60 mm en vertical centré. Rajouter 4 trous Ø6 dans chaque coins à 25mm des bords.\nLa matière est de l’aluminium.",
+   "tester_note": null
+  },
+  {
+   "id": "s152",
+   "slide": 152,
+   "section": "8.5 TÔLE AJOURÉE",
+   "num": 2,
+   "status": "OK",
+   "prompt": "Je souhaite réaliser une petite grille de ventilation de dimensions 200x200x1.5 avec 4 trous Ø6 dans chaque coins à 10mm des bords.\nRéaliser un quadrillage de Ø10 au centre de la pièce de rangée 5x5 espacé de 25mm à la verticale comme à l’horizontale.",
+   "tester_note": null
+  },
+  {
+   "id": "s153",
+   "slide": 153,
+   "section": "8.6 ENCADREMENT GRILLE",
+   "num": 1,
+   "status": "OK",
+   "prompt": "Bonjour, je souhaite un encadrement en tôle pour intégrer une grille de ventilation dans une cloison.\nDimensions extérieures du cadre : 400 x 300 mm.\nLa grille intérieure fera 340 x 240 mm.\nJe veux un rebord de 30 mm plié à 90° tout autour pour rigidifier.\n4 trous de fixation Ø5 mm, un dans chaque coin, sur la face avant base? à 10mm des bords.\nÉpaisseur de la tôle : 1,5 mm en acier galvanisé.",
+   "tester_note": null
+  },
+  {
+   "id": "s157",
+   "slide": 157,
+   "section": "8.10 TRAPPE DE MAINTENANCE VENTILATION",
+   "num": null,
+   "status": "OK",
+   "prompt": "Je veux une trappe d’accès de forme oblong de dimension Ø400 x 200, d’epaisseur 3mm avec deux percages Ø20mm d’entraxe 200mm centrés sur le grand axe du oblong",
+   "tester_note": null
+  }
+ ]
+}

@@ -64,8 +64,15 @@ try:
         api_key=openai_api_key
     )
 
+    # temperature=0 for the same reason as every other LLM here. expert_llm was
+    # the only one left unpinned, and it drives unified_processing,
+    # dfm_validation and code_editing — so the pipeline's main classifier ran at
+    # the client default. Template I/O logs show the effect: the same user_text
+    # returned shape_type "Sheet" on some runs and "unknown"/"L-bracket" on
+    # others, which changes the confirm template and the generated geometry.
     expert_llm = ChatOpenAI(
         model=MODELS["expert"],
+        temperature=0,
         api_key=openai_api_key
     )
 
