@@ -42,21 +42,35 @@ sys.path.insert(0, str(ROOT))
 
 FIXTURE = ROOT / "tests" / "fixtures" / "pptx_ok_cases.json"
 
-# Fields the pipeline branches on. shape_type picks the confirm template and the
-# FreeCAD builder; missing_info decides whether we ask the user or proceed;
-# complexity_level gates the step planner. A flip in any of these is a real
-# behaviour change, not phrasing noise.
 COMPARED = ("shape_type", "missing_info", "complexity_level",
             "skip_questions_requested", "step_by_step_requested", "design_type")
 
-# Fields whose value actually changes what the pipeline does. complexity_level is
-# NOT here: the only branch on it is `== 0` (pure-information request), so a flip
-# between 1 and 2 takes the identical path — see text_to_cad_agent.py:2363 and
-# :4938. The "complexity_level >= threshold" in agent_chains.py's step-planner
-# docstring describes a check that does not exist in code.
-# A flip in these fields is a regression; a flip only outside them is cosmetic.
-BEHAVIOURAL = ("shape_type", "missing_info",
-               "skip_questions_requested", "step_by_step_requested", "design_type")
+# What the (OK) label in the source deck actually certifies: the GEOMETRY the
+# pipeline produced was correct. It says nothing about whether the chain asked
+# the right clarifying questions along the way. So only the fields that select
+# what gets built count as a regression against that baseline.
+#
+# shape_type picks both the description_confirm template (build_confirm_template)
+# and the FreeCAD builder, so a flip here changes the part. design_type splits
+# part vs assembly.
+GEOMETRY = ("shape_type", "design_type")
+
+# Conversation-flow fields. Deliberately NOT treated as regressions:
+#  - The (OK) label does not certify them (see above).
+#  - This harness cannot reproduce their production values anyway: it passes
+#    rules_context="" and does not run the DFM chain, whereas in production
+#    _invoke_unified_with_rag injects retrieved rules and the DFM agent merges
+#    violations into questions/missing_info afterwards. So missing_info measured
+#    here is not the value a user would see.
+#  - They are known to be unstable in the product already, independent of any
+#    prompt change.
+FLOW = ("missing_info", "skip_questions_requested", "step_by_step_requested")
+
+# complexity_level is only ever branched on as `== 0` (pure-information request)
+# — text_to_cad_agent.py:2363 and :4938 — so 1 vs 2 vs 5 takes the identical
+# path. (agent_chains.py's step-planner docstring mentions a
+# "complexity_level >= threshold" check that does not exist in code.)
+COSMETIC = ("complexity_level",)
 
 
 def flipped_fields(fingerprints):
@@ -205,22 +219,27 @@ async def main():
     unstable = [(c, fps) for c, fps in results if len(set(fps)) > 1]
     errored = [(c, fps) for c, fps in results if any(len(fp) == 1 for fp in fps)]
 
-    regressions, cosmetic = [], []
+    geom, flow, cosmetic = [], [], []
     for c, fps in unstable:
         flips = flipped_fields(fps)
-        (regressions if any(f in BEHAVIOURAL for f in flips) else cosmetic
-         ).append((c, fps, flips))
+        if any(f in GEOMETRY for f in flips):
+            geom.append((c, fps, flips))
+        elif any(f in FLOW for f in flips):
+            flow.append((c, fps, flips))
+        else:
+            cosmetic.append((c, fps, flips))
 
     print("\n" + "=" * 78)
     print(f"STABLE      {len(results) - len(unstable)}/{len(results)}")
     print(f"UNSTABLE    {len(unstable)}/{len(results)}")
-    print(f"  behavioural (regression) {len(regressions)}")
-    print(f"  cosmetic only            {len(cosmetic)}")
+    print(f"  GEOMETRY  (real regression) {len(geom)}")
+    print(f"  flow      (not OK-certified) {len(flow)}")
+    print(f"  cosmetic  (complexity only)  {len(cosmetic)}")
     if errored:
         print(f"ERRORED     {len(errored)} case(s) had a failed/unparsed run")
     print("=" * 78)
 
-    for label, group in (("BEHAVIOURAL", regressions), ("COSMETIC", cosmetic)):
+    for label, group in (("GEOMETRY", geom), ("flow", flow), ("cosmetic", cosmetic)):
         for c, fps, flips in group:
             print(f"\n[{label}] {c['id']}  {c.get('section')}  #{c.get('num')}")
             print(f"  flipped: {', '.join(flips) or 'error/parse only'}")
@@ -237,17 +256,20 @@ async def main():
         "cases": len(results),
         "stable": len(results) - len(unstable),
         "unstable": len(unstable),
-        "behavioural_regressions": len(regressions),
+        "geometry_regressions": len(geom),
+        "flow_only": len(flow),
         "cosmetic_only": len(cosmetic),
         "compared_fields": list(COMPARED),
-        "behavioural_fields": list(BEHAVIOURAL),
+        "geometry_fields": list(GEOMETRY),
+        "flow_fields": list(FLOW),
         "unstable_detail": [
             {"id": c["id"], "section": c.get("section"), "prompt": c["prompt"],
              "flipped_fields": flips,
-             "behavioural": any(f in BEHAVIOURAL for f in flips),
+             "geometry": any(f in GEOMETRY for f in flips),
+             "flow": any(f in FLOW for f in flips),
              "variants": [dict(fp) if len(fp) > 1 else {"error": fp[0]}
                           for fp in set(fps)]}
-            for c, fps, flips in regressions + cosmetic
+            for c, fps, flips in geom + flow + cosmetic
         ],
         # Every answer, not just the unstable ones — this is what makes the
         # report usable as a before/after baseline for a prompt edit.
@@ -284,10 +306,13 @@ async def main():
                 fields = {k for d in a + b for k in d}
                 diff = {f for f in fields
                         if {d.get(f) for d in a} != {d.get(f) for d in b}}
-                tag = ("BEHAVIOUR CHANGED" if diff & set(BEHAVIOURAL)
-                       else "cosmetic drift")
-                if diff & set(BEHAVIOURAL):
+                if diff & set(GEOMETRY):
+                    tag = "GEOMETRY CHANGED"
                     changed_behaviour.append(cid)
+                elif diff & set(FLOW):
+                    tag = "flow drift (not OK-certified)"
+                else:
+                    tag = "cosmetic drift"
                 print(f"\n[{tag}] {cid}  fields: {', '.join(sorted(diff))}")
                 print(f"   before: {a}")
                 print(f"   after : {b}")
