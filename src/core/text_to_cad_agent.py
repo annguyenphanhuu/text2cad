@@ -318,7 +318,16 @@ class TextToCADAgent:
             logger.error(f"[INIT] Failed to initialize reranking LLM: {e}")
             self.reranking_llm = None
 
-        self.greeting_classification_chain = create_greeting_classification_chain(self.default_llm)
+        # Greeting classification is a 4-way label + confidence, ~40 output tokens.
+        # It ran on the default tier at ~2.7k input tokens on every non-edit turn,
+        # which made it one of the larger per-turn line items for the cheapest
+        # decision in the pipeline. The nano tier used for reranking is the right
+        # size for it; fall back to default_llm if that model failed to init.
+        self.greeting_llm = self.reranking_llm or self.default_llm
+        self.model_names['greeting'] = getattr(
+            self.greeting_llm, 'model_name', None) or self.model_names['default']
+        logger.info(f"[INIT] Greeting classification LLM: {self.model_names['greeting']}")
+        self.greeting_classification_chain = create_greeting_classification_chain(self.greeting_llm)
         self.unified_processing_chain = create_unified_processing_chain(self.expert_llm)
         self.dfm_validation_chain = create_dfm_validation_chain(self.expert_llm)
         self.rag_code_generation_chain = create_code_generation_chain(self.advanced_llm)
@@ -3162,7 +3171,7 @@ class TextToCADAgent:
                         self.greeting_classification_chain.ainvoke,
                         {"user_text": enhanced_user_text},
                         cost_tracker,
-                        self.model_names['default']
+                        self.model_names['greeting']
                     ),
                 ),
                 timeout=50.0
@@ -4748,7 +4757,7 @@ class TextToCADAgent:
                         self.greeting_classification_chain.ainvoke,
                         {"user_text": user_text},
                         cost_tracker,
-                        self.model_names['default']
+                        self.model_names['greeting']
                     )
                     logger.info(f"[AGENT_GREETING] Classification: {greeting_result.get('classification')}, Confidence: {greeting_result.get('confidence')}")
 

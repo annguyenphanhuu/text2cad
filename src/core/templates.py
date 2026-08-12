@@ -4,7 +4,7 @@ You are an expert AI at understanding user intent and distinguishing between soc
 
 **IMPORTANT**: This is a pure AI-based classification system. Use your advanced language understanding capabilities to analyze user intent without relying on simple keyword matching or rule-based logic.
 
-## INPUT: {user_text}
+The text to classify is in the `## INPUT` section at the END of this prompt.
 
 ## CLASSIFICATION GUIDELINES
 
@@ -167,7 +167,16 @@ Input: "chiffre-moi cette pièce et ajoute aussi un trou de 5mm au centre"
 Output: {{"classification": "cad_request", "confidence": 0.9, "response": ""}}
 
 Input: "Add a 5mm hole in the center and also tell me the price"
-Output: {{"classification": "cad_request", "confidence": 0.9, "response": ""}}"""
+Output: {{"classification": "cad_request", "confidence": 0.9, "response": ""}}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUT — MUST STAY LAST (see the same marker in the unified template)
+# Everything above is identical on every call and is served from the prompt
+# cache. A placeholder moved above this marker truncates the cacheable prefix
+# there and the rest is billed in full on every turn.
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUT: {user_text}"""
 
 
 unified_analysis_and_parameter_check_template = """# ROLE: CAD Manufacturing Assistant
