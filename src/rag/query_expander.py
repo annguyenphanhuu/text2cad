@@ -346,10 +346,16 @@ Output:"""
             response = await llm.ainvoke(expansion_prompt)
             response_text = response.content if hasattr(response, 'content') else str(response)
             response_text = response_text.strip()
-            
-            # Track cost if tracker provided
+
+            # Track cost if tracker provided. The model name is derived from the
+            # llm instance — it was hardcoded to "gpt-5-mini" while the caller
+            # actually passes default_llm, so spend was billed to a model that
+            # never ran.
             if cost_tracker:
-                cost_tracker.add_chain_cost("query_expansion", cb, "gpt-5-mini")
+                from src.utils.cost_tracker import resolve_model_name
+                cost_tracker.add_chain_cost(
+                    "query_expansion", cb, resolve_model_name(llm)
+                )
         
         # Try to parse JSON response
         try:

@@ -103,14 +103,23 @@ def parse_greeting_classification(raw_output):
 def create_greeting_classification_chain(default_llm):
     """Create the greeting classification chain using pure AI-based classification"""
 
-    def ai_only_classification(inputs):
-        """Pure AI-based classification - no rule-based fallback"""
+    # Built once at chain-creation time rather than per invocation.
+    greeting_prompt = ChatPromptTemplate.from_template(greeting_classification_template)
+
+    async def ai_only_classification(inputs):
+        """
+        Pure AI-based classification - no rule-based fallback.
+
+        Must be `async` + `ainvoke`. As a sync function this ran inside
+        LangChain's thread executor, which (a) broke the `get_openai_callback`
+        contextvar so the call's tokens were logged as 0 and its cost went
+        untracked, and (b) blocked a worker thread for the whole round-trip.
+        """
         user_text = inputs.get("user_text", "")
 
         # Only log first 100 chars to avoid cluttering logs with web content
         user_text_preview = user_text[:100] + "..." if len(user_text) > 100 else user_text
         print(f"[AI_CLASSIFICATION] Using pure AI classification for: '{user_text_preview}'")
-        greeting_prompt = ChatPromptTemplate.from_template(greeting_classification_template)
 
         ai_chain = (
             greeting_prompt
@@ -120,7 +129,7 @@ def create_greeting_classification_chain(default_llm):
         )
 
         try:
-            ai_result = ai_chain.invoke(inputs)
+            ai_result = await ai_chain.ainvoke(inputs)
             print(f"[AI_CLASSIFICATION] Result: {ai_result}")
             return ai_result
         except Exception as e:

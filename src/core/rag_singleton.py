@@ -350,24 +350,31 @@ async def get_rag_split_context(
     k_examples: int = 5,
     reranking_llm: Optional[Any] = None,
     cost_tracker: Optional[Any] = None,
-    session_id: str = "unknown"
+    session_id: str = "unknown",
+    pre_expanded_query: Optional[str] = None,
+    pre_detected_shape_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Single RAG retrieval with split context for both chains
-    
+
     CONTEXT ROUTING:
     - rules_context: For UNIFIED ANALYSIS ONLY (parameter validation, rule checking)
     - examples_context: For CODE GENERATION ONLY (examples + info files)
-    
+
     This function retrieves ONCE and returns separated contexts.
     Both rules and examples are reranked using GPT-4.1-nano LLM.
-    
+
     Args:
         query: User query for retrieval
         k_rules: Number of rules to return after reranking (default: 10)
         k_examples: Number of examples to return after reranking (default: 5)
         reranking_llm: GPT-4.1-nano LLM for reranking
-    
+        pre_expanded_query: Pass this when the CALLER has already run query
+            expansion, to stop the examples retriever from paying for a second,
+            near-identical expansion call. Must be paired with
+            `pre_detected_shape_type` so LLM shape detection is preserved.
+        pre_detected_shape_type: `detected_shape_type` from the caller's expansion.
+
     Returns:
         {
             'success': bool,
@@ -429,7 +436,9 @@ async def get_rag_split_context(
                 reranking_llm=reranking_llm,  # GPT-4.1-nano
                 k_examples=k_examples,
                 cost_tracker=cost_tracker,
-                session_id=session_id
+                session_id=session_id,
+                pre_expanded_query=pre_expanded_query,
+                pre_detected_shape_type=pre_detected_shape_type,
             )
         )
         

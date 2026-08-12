@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
 from langchain_community.callbacks import get_openai_callback
 
+from src.utils.cost_tracker import resolve_model_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,8 +92,9 @@ async def llm_rerank_documents(
     if doc_type != "rules" and len(documents) <= top_k:
         logger.info(f"[RERANKER] {len(documents)} docs <= {top_k}, skipping rerank")
         return documents
-    
-    logger.info(f"[RERANKER] Reranking {len(documents)} {doc_type} with GPT-5.4...")
+
+    model_name = resolve_model_name(llm)
+    logger.info(f"[RERANKER] Reranking {len(documents)} {doc_type} with {model_name}...")
     
     # Prepare documents for LLM (optimized preview based on doc type)
     docs_text = []
@@ -283,14 +286,16 @@ IMPORTANT: Focus on info files that provide TECHNICAL DATA the user needs."""
             logger.info(f"[RERANKER] LLM call attempt {attempt}/{MAX_RETRIES}")
 
             # Wrap LLM call with cost tracking
+            cost_info = None
             with get_openai_callback() as cb:
                 response = await llm.ainvoke(prompt)
                 response_text = response.content if hasattr(response, 'content') else str(response)
 
-                # Track cost if tracker provided
+                # Track cost if tracker provided — model_name derived from the
+                # actual llm instance, not hardcoded.
                 if cost_tracker:
                     chain_name = f"rag_rerank_{doc_type}"
-                    cost_tracker.add_chain_cost(chain_name, cb, "gpt-5.4-2026-03-05")
+                    cost_info = cost_tracker.add_chain_cost(chain_name, cb, model_name)
 
             # Log LLM response for debugging
             logger.debug(f"[RERANKER] LLM Response (first 500 chars): {response_text[:500]}")
@@ -376,18 +381,17 @@ IMPORTANT: Focus on info files that provide TECHNICAL DATA the user needs."""
             if doc_type == "rules":
                 reranked_docs = _ensure_rule_dependencies(reranked_docs, documents)
 
-            # Compact summary with cost
+            # Compact summary with cost.
+            # Prefer the tracker's computed cost: cb.total_cost is 0 whenever
+            # LangChain doesn't recognise the model, which is the common case here.
             retry_tag = f" (retry {attempt})" if attempt > 1 else ""
-            if doc_type == "rules":
-                logger.info(
-                    f"🔄 [RERANK-{doc_type.upper()}]{retry_tag} {len(documents)} → {len(reranked_docs)} docs (LLM-selected) | "
-                    f"Cost: ${cb.total_cost:.4f} ({cb.total_tokens}t) | ✅ Success"
-                )
-            else:
-                logger.info(
-                    f"🔄 [RERANK-{doc_type.upper()}]{retry_tag} {len(documents)} → {len(reranked_docs)} docs | "
-                    f"Cost: ${cb.total_cost:.4f} ({cb.total_tokens}t) | ✅ Success"
-                )
+            reported_cost = cost_info.total_cost if cost_info else cb.total_cost
+            selected_note = " (LLM-selected)" if doc_type == "rules" else ""
+            logger.info(
+                f"🔄 [RERANK-{doc_type.upper()}]{retry_tag} "
+                f"{len(documents)} → {len(reranked_docs)} docs{selected_note} | "
+                f"model={model_name} | Cost: ${reported_cost:.4f} ({cb.total_tokens}t) | ✅ Success"
+            )
 
             # Log top 3 for debugging
             if reranked_docs:

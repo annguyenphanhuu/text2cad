@@ -713,21 +713,33 @@ async def retrieve_examples_only(
     reranking_llm=None,
     k_examples: int = 5,
     cost_tracker=None,
-    session_id: str = "unknown"
+    session_id: str = "unknown",
+    pre_expanded_query: Optional[str] = None,
+    pre_detected_shape_type: Optional[str] = None,
 ) -> List[Document]:
     """
     Retrieve example code AND info files for code generation chain.
-    
+
     Used for generating FreeCAD Python scripts based on:
     - Similar example code patterns
     - Technical info (ISO/ANSI standards, specifications) via class detection
-    
+
     Args:
         query: The search query
         faiss_index_instance: The loaded FAISS index
         classification_llm: Optional LLM for class classification
         k_examples: Number of example code snippets to retrieve
-        
+        pre_expanded_query: Expansion result the CALLER already paid for. When
+            given, the internal expansion LLM call is skipped entirely.
+            Callers that expand the query themselves (see
+            `TextToCADAgent._invoke_unified_with_rag`) were paying for query
+            expansion twice per turn — once in the caller, then again here on
+            the already-expanded text.
+        pre_detected_shape_type: The `detected_shape_type` from that same
+            caller-side expansion. MUST be passed alongside
+            `pre_expanded_query`, otherwise skipping the internal call would
+            silently lose LLM shape detection and leave only the regex path.
+
     Returns:
         List of Document objects containing example code + info (no rules)
     """
@@ -861,32 +873,44 @@ async def retrieve_examples_only(
         logger.info(f"[RAG_FILTER] ⚡ Regex pre-extracted shape type: {detected_shape_type_regex}")
     
     # ── STEP 1b: LLM expansion for semantic enrichment ───────────────────────
-    expansion_llm = _expansion_llm if _expansion_llm else classification_llm
-    
-    if expansion_llm:
-        try:
-            expansion_result = await expand_query_with_llm(
-                query,
-                llm=expansion_llm,
-                cost_tracker=cost_tracker
-            )
-            
-            # Handle both old (string) and new (dict) return formats for backward compatibility
-            if isinstance(expansion_result, dict):
-                expanded_query = expansion_result.get("expanded_query", query)
-                detected_shape_type_llm = expansion_result.get("detected_shape_type")
-            else:
-                # Fallback for old string format
-                expanded_query = expansion_result
+    # Reuse the caller's expansion when supplied — see `pre_expanded_query` in
+    # the docstring. Without this the query gets expanded a second time (on text
+    # that already carries a "Shape type: X" suffix), costing a full extra LLM
+    # call per turn for a near-identical result.
+    if pre_expanded_query is not None:
+        expanded_query = pre_expanded_query
+        detected_shape_type_llm = pre_detected_shape_type
+        logger.info(
+            f"[RAG_EXAMPLES] ♻️  Reusing caller's query expansion "
+            f"(shape_type={detected_shape_type_llm}) — skipped duplicate LLM call"
+        )
+    else:
+        expansion_llm = _expansion_llm if _expansion_llm else classification_llm
+
+        if expansion_llm:
+            try:
+                expansion_result = await expand_query_with_llm(
+                    query,
+                    llm=expansion_llm,
+                    cost_tracker=cost_tracker
+                )
+
+                # Handle both old (string) and new (dict) return formats for backward compatibility
+                if isinstance(expansion_result, dict):
+                    expanded_query = expansion_result.get("expanded_query", query)
+                    detected_shape_type_llm = expansion_result.get("detected_shape_type")
+                else:
+                    # Fallback for old string format
+                    expanded_query = expansion_result
+                    detected_shape_type_llm = None
+            except Exception as e:
+                logger.warning(f"[RAG_EXAMPLES] Query expansion failed: {e}, using original query")
+                expanded_query = query
                 detected_shape_type_llm = None
-        except Exception as e:
-            logger.warning(f"[RAG_EXAMPLES] Query expansion failed: {e}, using original query")
+        else:
+            logger.info("[RAG_EXAMPLES] No expansion LLM available, using original query")
             expanded_query = query
             detected_shape_type_llm = None
-    else:
-        logger.info("[RAG_EXAMPLES] No expansion LLM available, using original query")
-        expanded_query = query
-        detected_shape_type_llm = None
     
     # ── STEP 1c: Merge — regex takes precedence, LLM fills gap ───────────────
     # Regex result is more reliable for structured unified-analysis format.

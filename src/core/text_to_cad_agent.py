@@ -377,6 +377,10 @@ class TextToCADAgent:
         # 🆕 EXPAND QUERY with manufacturing terminology
         _t_expand = time.time()
         logger.info(f"[TIMING] expand_query START | session={session_id}")
+        # Initialised up-front so the value survives every failure path below and
+        # can be forwarded to the retriever (which otherwise re-expands and pays
+        # for a second LLM call).
+        detected_shape_type = None
         try:
             # Expand query if LLM available (intelligent synonym addition + shape type detection)
             cost_tracker = self._get_cost_tracker(session_id) if session_id else None
@@ -387,7 +391,7 @@ class TextToCADAgent:
                     llm=self.default_llm,  # Use default_llm (same as set_expansion_llm in __init__)
                     cost_tracker=cost_tracker
                 )
-                
+
                 # Handle both old (string) and new (dict) return formats
                 if isinstance(expansion_result, dict):
                     expanded_rag_query = expansion_result.get("expanded_query", rag_query)
@@ -399,7 +403,7 @@ class TextToCADAgent:
                 else:
                     # Fallback for old string format
                     expanded_rag_query = expansion_result
-                    
+
                 if expanded_rag_query != rag_query:
                     logger.info("[QUERY_EXPAND] Query expanded for better semantic matching")
                 else:
@@ -422,7 +426,13 @@ class TextToCADAgent:
             k_examples=4,
             reranking_llm=self.reranking_llm,
             cost_tracker=self._get_cost_tracker(session_id),
-            session_id=session_id
+            session_id=session_id,
+            # Hand our expansion result down so the examples retriever doesn't
+            # run a second expansion on top of the already-expanded text.
+            # detected_shape_type must travel with it — it is the LLM half of
+            # the shape detection the retriever merges with its regex pass.
+            pre_expanded_query=expanded_rag_query,
+            pre_detected_shape_type=detected_shape_type,
         )
         logger.info(f"[TIMING] rag_split_context DONE | elapsed={time.time()-_t_rag:.2f}s | session={session_id}")
         
