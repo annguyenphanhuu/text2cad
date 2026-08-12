@@ -16,6 +16,8 @@ Strategy: SHAPE TYPE APPEND (keep original, add classification at end)
 import logging
 from typing import Optional, Dict
 import asyncio
+import json
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -99,6 +101,83 @@ def set_expansion_llm(llm):
     """Set the LLM to use for query expansion."""
     global _expansion_llm
     _expansion_llm = llm
+
+
+def _clean_shape_type(value) -> Optional[str]:
+    """
+    Normalise a detected shape type, or return None if it isn't a shape token.
+
+    The old text fallback matched `Shape type:\\s*(\\S+)`, which swallowed the
+    JSON punctuation that followed and produced values like `Sheet",`. That
+    string then reached the retriever's shape filter, matched no known shape, and
+    silently disabled example filtering for that request — it looked like a
+    detected shape while behaving like none.
+    """
+    if not isinstance(value, str):
+        return None
+    # Shape types are single tokens of letters/digits/hyphen/underscore
+    # (Sheet-Circular, CAPOT-mixed-direction, Tube-Rectangular, ...).
+    m = re.match(r'\s*["\']?\s*([A-Za-z][A-Za-z0-9_-]*)', value)
+    if not m:
+        return None
+    token = m.group(1)
+    return None if token.lower() in ("null", "none", "unknown") else token
+
+
+def _loads_lenient(raw: str) -> dict:
+    """
+    json.loads, retrying once with raw newlines inside string literals escaped.
+
+    The prompt asks for `expanded_query` to end with a `\\nShape type: X` suffix,
+    and the model frequently emits that as a real newline inside the JSON string,
+    which is invalid JSON. That was sending ~1 in 5 responses down the text
+    fallback path. Repairing it here keeps them on the structured path.
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        repaired = re.sub(
+            r'"((?:[^"\\]|\\.)*)"',
+            lambda m: '"' + m.group(1).replace('\n', '\\n').replace('\r', '') + '"',
+            raw,
+            flags=re.DOTALL,
+        )
+        return json.loads(repaired)   # still raises JSONDecodeError if hopeless
+
+
+def _salvage_from_text(response_text: str, query: str) -> Dict[str, Optional[str]]:
+    """
+    Last resort when the response is not usable JSON.
+
+    Recovers the `expanded_query` value if the field is recognisable, rather than
+    handing the whole raw JSON blob to FAISS as the search query — which is what
+    the previous fallback did, degrading retrieval on exactly the requests that
+    had already gone wrong.
+    """
+    m = re.search(r'"expanded_query"\s*:\s*"(.*?)"\s*(?:,|\})', response_text, re.DOTALL)
+    if m:
+        expanded = m.group(1).replace('\\n', '\n').strip()
+    elif '{' in response_text:
+        expanded = query          # a JSON blob is not a search query
+    else:
+        expanded = response_text.strip('"').strip("'").strip() or query
+
+    # Look for the shape in the RAW response, not in `expanded` — when the JSON
+    # was unusable `expanded` has fallen back to the original query, which never
+    # carries a "Shape type:" suffix, so searching it would always miss a shape
+    # that is sitting right there in the response.
+    shape = None
+    for pattern in (r'"detected_shape_type"\s*:\s*([^,}\n]+)',
+                    r'Shape type:\s*([^\n"]+)'):
+        found = re.search(pattern, response_text, re.IGNORECASE)
+        if found:
+            shape = _clean_shape_type(found.group(1))
+            if shape:
+                break
+
+    log_query_expansion(query, expanded, str(shape))
+    logger.info(f"[QUERY_EXPAND] salvaged from non-JSON response | shape={shape}")
+    return {"expanded_query": expanded or query, "detected_shape_type": shape}
 
 
 async def expand_query_with_llm(
@@ -362,9 +441,9 @@ Output:"""
             # Extract JSON from response (in case LLM adds extra text)
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
-                result = json.loads(json_match.group(0))
+                result = _loads_lenient(json_match.group(0))
                 expanded_query = result.get("expanded_query", query)
-                detected_shape_type = result.get("detected_shape_type")
+                detected_shape_type = _clean_shape_type(result.get("detected_shape_type"))
                 
                 # Log expansion
                 if expanded_query != query:
@@ -385,38 +464,12 @@ Output:"""
                 }
             else:
                 logger.warning("[QUERY_EXPAND] No JSON found in LLM response, using fallback")
-                # Fallback: treat response as plain text and try to extract shape type
-                expanded_query = response_text.strip('"').strip("'")
-                
-                # Try to extract shape type from "Shape type: X" pattern
-                shape_match = re.search(r'Shape type:\s*([a-zA-Z0-9_-]+)', expanded_query, re.IGNORECASE)
-                detected_shape_type = shape_match.group(1) if shape_match else None
-                
-                final_expanded = expanded_query if expanded_query else query
-                log_query_expansion(query, final_expanded, str(detected_shape_type))
-                
-                return {
-                    "expanded_query": final_expanded,
-                    "detected_shape_type": detected_shape_type
-                }
-                
+                return _salvage_from_text(response_text, query)
+
         except json.JSONDecodeError as je:
             logger.warning(f"[QUERY_EXPAND] Failed to parse JSON: {je}, using fallback")
-            # Fallback: treat entire response as expanded query
-            expanded_query = response_text.strip('"').strip("'")
-            
-            # Try to extract shape type from text
-            shape_match = re.search(r'Shape type:\s*(\S+)', expanded_query, re.IGNORECASE)
-            detected_shape_type = shape_match.group(1) if shape_match else None
-            
-            final_expanded = expanded_query if expanded_query else query
-            log_query_expansion(query, final_expanded, str(detected_shape_type))
-            
-            return {
-                "expanded_query": final_expanded,
-                "detected_shape_type": detected_shape_type
-            }
-        
+            return _salvage_from_text(response_text, query)
+
     except Exception as e:
         logger.error(f"[QUERY_EXPAND] LLM expansion failed: {e}")
         detected = _detect_triangle_shape(query)

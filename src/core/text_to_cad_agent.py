@@ -301,10 +301,6 @@ class TextToCADAgent:
         logger.info(f"[INIT] Model names: default={self.model_names['default']}, "
                    f"advanced={self.model_names['advanced']}, expert={self.model_names['expert']}")
         
-        # Initialize query expander with default LLM (after model_names is set)
-        set_expansion_llm(self.default_llm)
-        logger.info(f"[INIT] Query expander initialized with {self.model_names.get('default', 'unknown')} LLM")
-
         # Initialize GPT-4.1-nano for RAG reranking
         from langchain_openai import ChatOpenAI
         try:
@@ -317,6 +313,26 @@ class TextToCADAgent:
         except Exception as e:
             logger.error(f"[INIT] Failed to initialize reranking LLM: {e}")
             self.reranking_llm = None
+
+        # Query expansion normalises capot face synonyms and detects shape_type.
+        # STAYS ON THE DEFAULT TIER. It is the largest remaining cost in the RAG
+        # path (~4.3k input tokens per retrieval, already 95% cached), so the nano
+        # tier was measured against it over all 169 fixture prompts —
+        # tests/check_expansion.py, which is kept for re-testing this:
+        #
+        #   same detected_shape_type   133/169 (78%)
+        #   bracket/CAPOT -> "Sheet"   16 cases
+        #   no shape returned at all    6 cases
+        #
+        # detected_shape_type is load-bearing: the retriever merges it with its
+        # regex pass and filters which code examples reach the generator, so those
+        # 16 cases would feed flat-plate examples to bent parts. Unlike the
+        # greeting classifier (180/180 on nano), this task is a 15-way
+        # classification over FR/EN/VI synonyms and nano is not good enough.
+        self.expansion_llm = self.default_llm
+        self.model_names['expansion'] = self.model_names['default']
+        set_expansion_llm(self.expansion_llm)
+        logger.info(f"[INIT] Query expander LLM: {self.model_names['expansion']}")
 
         # Greeting classification is a 4-way label + confidence, ~40 output tokens.
         # It ran on the default tier at ~2.7k input tokens on every non-edit turn,
@@ -397,7 +413,7 @@ class TextToCADAgent:
             try:
                 expansion_result = await expand_query_with_llm(
                     rag_query,  # Use rag_query not user_text
-                    llm=self.default_llm,  # Use default_llm (same as set_expansion_llm in __init__)
+                    llm=self.expansion_llm,  # nano tier — see __init__
                     cost_tracker=cost_tracker
                 )
 
@@ -4861,7 +4877,7 @@ class TextToCADAgent:
                                 try:
                                     expansion_result = await expand_query_with_llm(
                                         rag_query,
-                                        llm=self.default_llm,  # Use default_llm (same as set_expansion_llm in __init__)
+                                        llm=self.expansion_llm,  # nano tier — see __init__
                                         cost_tracker=cost_tracker
                                     )
                                     
