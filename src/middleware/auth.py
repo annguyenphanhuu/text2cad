@@ -8,7 +8,6 @@ import logging
 from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
 # Configure logging
 logger = logging.getLogger("tolery-auth")
@@ -23,67 +22,6 @@ security = HTTPBearer()
 def verify_token(token: str) -> bool:
     """Simple token verification"""
     return token == API_TOKEN
-
-
-class TokenAuthMiddleware(BaseHTTPMiddleware):
-    """
-    Token-based authentication middleware for FastAPI
-
-    Checks for valid JWT token in request headers:
-    - Authorization: Bearer <JWT_TOKEN>
-
-    Excludes certain public endpoints from authentication if needed.
-    """
-
-    def __init__(self, app, exclude_paths=None):
-        super().__init__(app)
-        # Paths that don't require authentication (if any)
-        self.exclude_paths = exclude_paths or []
-
-    async def dispatch(self, request: Request, call_next):
-        """
-        Process each request and check for valid authentication token
-        """
-        # Skip authentication for excluded paths
-        if request.url.path in self.exclude_paths:
-            return await call_next(request)
-
-        # Skip authentication for OPTIONS requests (CORS preflight)
-        if request.method == "OPTIONS":
-            return await call_next(request)
-
-        # Check for token in Authorization header (Bearer token format only)
-        token = None
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-
-        # Validate token
-        if not token:
-            logger.warning(f"Missing token for {request.method} {request.url.path}")
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "error": "Authentication required",
-                    "message": "JWT token is required. Include token in 'Authorization: Bearer <token>' header",
-                    "required_token_format": "JWT token"
-                }
-            )
-
-        if token != API_TOKEN:
-            logger.warning(f"Invalid token attempt for {request.method} {request.url.path}: {token[:10]}...")
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "error": "Invalid token",
-                    "message": "The provided JWT token is invalid",
-                    "required_token_format": "JWT token"
-                }
-            )
-
-        # Token is valid, proceed with request
-        logger.info(f"Authenticated request: {request.method} {request.url.path}")
-        return await call_next(request)
 
 
 async def verify_token_dependency(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -126,19 +64,6 @@ def get_token_info():
         },
         "example_curl": f"curl -H 'Authorization: Bearer {API_TOKEN}' http://localhost:8124/api-production/sessions"
     }
-
-
-def verify_token_simple(token: str) -> bool:
-    """
-    Simple token verification function
-
-    Args:
-        token: The token to verify
-
-    Returns:
-        bool: True if token is valid, False otherwise
-    """
-    return token == API_TOKEN
 
 
 async def auth_middleware(request: Request, call_next):

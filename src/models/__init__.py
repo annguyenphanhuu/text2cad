@@ -1,8 +1,6 @@
 """
 Models package for Tolery API.
 """
-from .chat_history import ChatHistory
-# Import the session models
-from .sessions import Session, ChatHistory as SessionChatHistory
+from .sessions import Session, ChatHistory
 
-__all__ = ["ChatHistory", "Session", "SessionChatHistory"]
+__all__ = ["Session", "ChatHistory"]

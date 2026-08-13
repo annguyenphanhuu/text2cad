@@ -4,9 +4,8 @@ Database retry logic for handling connection failures and transient errors.
 import time
 import logging
 from functools import wraps
-from typing import Callable, Any, Optional
+from typing import Callable, Any
 from sqlalchemy.exc import OperationalError, DisconnectionError, TimeoutError
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -68,74 +67,6 @@ def retry_db_operation(
         return wrapper
     return decorator
 
-async def retry_db_operation_async(
-    max_retries: int = 3,
-    delay: float = 1.0,
-    backoff_factor: float = 2.0,
-    exceptions: tuple = (OperationalError, DisconnectionError, TimeoutError)
-):
-    """
-    Async version of retry decorator for database operations.
-    """
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(*args, **kwargs) -> Any:
-            import asyncio
-            last_exception = None
-            current_delay = delay
-            
-            for attempt in range(max_retries + 1):
-                try:
-                    return await func(*args, **kwargs)
-                except exceptions as e:
-                    last_exception = e
-                    
-                    if attempt == max_retries:
-                        logger.error(f"Async database operation failed after {max_retries} retries: {str(e)}")
-                        raise DatabaseRetryError(
-                            f"Operation failed after {max_retries} retries: {str(e)}",
-                            original_error=e
-                        ) from e
-                    
-                    logger.warning(f"Async database operation failed (attempt {attempt + 1}/{max_retries + 1}): {str(e)}")
-                    logger.info(f"Retrying in {current_delay} seconds...")
-                    
-                    await asyncio.sleep(current_delay)
-                    current_delay *= backoff_factor
-                    
-                except Exception as e:
-                    # Don't retry on non-transient errors
-                    logger.error(f"Non-retryable async database error: {str(e)}")
-                    raise
-            
-            # This should never be reached, but just in case
-            raise last_exception
-        
-        return wrapper
-    return decorator
-
-def execute_with_retry(db: Session, operation: Callable, *args, **kwargs):
-    """
-    Execute a database operation with retry logic.
-    
-    Args:
-        db: Database session
-        operation: Function to execute
-        *args, **kwargs: Arguments to pass to the operation
-    """
-    @retry_db_operation(max_retries=3, delay=1.0, backoff_factor=2.0)
-    def _execute():
-        try:
-            return operation(db, *args, **kwargs)
-        except Exception as e:
-            # Rollback on error
-            try:
-                db.rollback()
-            except Exception as rollback_error:
-                logger.error(f"Error during rollback: {rollback_error}")
-            raise e
-    
-    return _execute()
 
 def is_connection_error(exception: Exception) -> bool:
     """

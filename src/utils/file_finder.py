@@ -108,8 +108,3 @@ def get_cad_outputs_dir() -> Path:
     return PROJECT_ROOT / "outputs" / "code" / "cad_outputs_generated"
 
 
-def ensure_cad_outputs_dir() -> Path:
-    """Ensure CAD outputs directory exists and return its path."""
-    cad_dir = get_cad_outputs_dir()
-    cad_dir.mkdir(parents=True, exist_ok=True)
-    return cad_dir 

@@ -8,7 +8,7 @@ This module provides a singleton pattern for RAG retrieval with:
 - No complex pooling logic
 
 Key Benefits:
-- Simple interface: get_rag_context(query, k)
+- Simple interface: get_rag_split_context(query, k_rules, k_examples)
 - Automatic initialization on first use
 - Blocking RAG retrieval in executor (non-blocking for async)
 - Multi-user concurrent access support
@@ -81,75 +81,6 @@ async def initialize_rag_singleton():
             logger.error(f"[RAG] ✗ Initialization failed: {e}")
             logger.exception(e)
             return False
-
-
-async def get_rag_context(
-    query: str, 
-    k: int = 5,
-    classification_llm: Optional[Any] = None
-) -> Dict[str, Any]:
-    """
-    Get RAG context with shared FAISS index
-    
-    This function provides thread-safe access to the shared FAISS index.
-    Arguments 'k' and 'classification_llm' are kept for compatibility 
-    but mapped to the split context retrieval parameters.
-    
-    Args:
-        query: User query for context retrieval
-        k: Number of documents to retrieve (mapped to k_examples)
-        classification_llm: Optional LLM (unused in new flow)
-    
-    Returns:
-        Dictionary with retrieved context (combined rules + examples)
-    """
-    global _retrieval_count
-    
-    try:
-        # Use the split context function and combine results
-        split_result = await get_rag_split_context(
-            query=query,
-            k_rules=10,
-            k_examples=k,
-            reranking_llm=None, # Use default or None
-            session_id="legacy_context_request"
-        )
-        
-        if not split_result['success']:
-             return {
-                'success': False,
-                'context': '',
-                'documents': [],
-                'query': query,
-                'retrieval_time': 0.0,
-                'error': split_result.get('error', 'Unknown error')
-            }
-
-        # Combine contexts
-        combined_context = f"{split_result['rules_context']}\n\n{split_result['examples_context']}"
-        
-        return {
-            'success': True,
-            'context': combined_context,
-            'documents': split_result.get('rules_documents', []) + split_result.get('examples_documents', []),
-            'query': query,
-            'retrieval_time': split_result.get('retrieval_time', 0.0),
-            'error': None
-        }
-
-    except Exception as e:
-        logger.error(f"[RAG] ✗ Query failed: {str(e)}")
-        logger.debug(f"[RAG] Failed query details: {query[:50]}...")
-        logger.exception(e)
-
-        return {
-            'success': False,
-            'context': '',
-            'documents': [],
-            'query': query,
-            'retrieval_time': 0.0,
-            'error': str(e)
-        }
 
 
 async def get_rag_rules_only(
@@ -288,60 +219,6 @@ async def get_rag_rules_only(
             'retrieval_time': 0.0,
             'error': str(e)
         }
-
-
-
-async def get_rag_stats() -> Dict[str, Any]:
-    """
-    Get RAG singleton statistics
-    
-    Returns:
-        Dictionary with RAG stats:
-        {
-            'initialized': bool,
-            'initialization_time': str,
-            'retrieval_count': int,
-            'uptime_seconds': float
-        }
-    """
-    global _shared_rag_retriever, _initialization_time, _retrieval_count
-    
-    if _shared_rag_retriever is None:
-        return {
-            'initialized': False,
-            'initialization_time': None,
-            'retrieval_count': 0,
-            'uptime_seconds': 0.0
-        }
-    
-    uptime = (datetime.now() - _initialization_time).total_seconds() if _initialization_time else 0.0
-    
-    return {
-        'initialized': True,
-        'initialization_time': _initialization_time.isoformat() if _initialization_time else None,
-        'retrieval_count': _retrieval_count,
-        'uptime_seconds': uptime
-    }
-
-
-async def reset_rag_singleton():
-    """
-    Reset RAG singleton (for testing purposes)
-    
-    This will force re-initialization on next retrieval.
-    Use with caution in production.
-    """
-    global _shared_rag_retriever, _shared_faiss_index, _shared_metadata, _initialization_time, _retrieval_count
-    
-    async with _rag_lock:
-        logger.warning("[RAG] Resetting singleton...")
-        _shared_rag_retriever = None
-        _shared_faiss_index = None
-        _shared_metadata = None
-        _initialization_time = None
-        _retrieval_count = 0
-        logger.info("[RAG] Reset complete")
-
 
 
 async def get_rag_split_context(

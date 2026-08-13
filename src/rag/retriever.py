@@ -1,12 +1,9 @@
 import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
 import logging
 import re
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document # Import Document
-import hashlib
 from src.utils.rag_context_logger import log_rag_context_retrieval
 import time
 
@@ -292,59 +289,6 @@ def classify_user_query_for_info(user_query: str, detected_shape_type: Optional[
     return info_classes
 
 
-def get_available_classes() -> List[str]:
-    """Get list of available classes from both old and new directory structures."""
-    available_classes = []
-
-    # Check old structure for backward compatibility
-    old_class_dir = os.path.join(PROJECT_ROOT, "data", "Class")
-    if os.path.exists(old_class_dir):
-        for item in os.listdir(old_class_dir):
-            item_path = os.path.join(old_class_dir, item)
-            if os.path.isdir(item_path):
-                available_classes.append(item)
-
-    # Check new Materials structure
-    materials_dir = os.path.join(PROJECT_ROOT, "data", "Materials")
-    if os.path.exists(materials_dir):
-        for category in os.listdir(materials_dir):
-            category_path = os.path.join(materials_dir, category)
-            if os.path.isdir(category_path):
-                # Check if category itself has rules.json (like Materials/Tubes)
-                rules_file = os.path.join(category_path, "rules.json")
-                if os.path.exists(rules_file):
-                    available_classes.append(f"Materials/{category}")
-
-                # Check subcategories
-                for item in os.listdir(category_path):
-                    item_path = os.path.join(category_path, item)
-                    if os.path.isdir(item_path):
-                        # Check if subcategory has rules.json
-                        rules_file = os.path.join(item_path, "rules.json")
-                        if os.path.exists(rules_file):
-                            available_classes.append(f"Materials/{category}/{item}")
-
-    # Check new Manufacturing_Processes structure
-    processes_dir = os.path.join(PROJECT_ROOT, "data", "Manufacturing_Processes")
-    if os.path.exists(processes_dir):
-        for category in os.listdir(processes_dir):
-            category_path = os.path.join(processes_dir, category)
-            if os.path.isdir(category_path):
-                rules_file = os.path.join(category_path, "rules.json")
-                if os.path.exists(rules_file):
-                    available_classes.append(f"Manufacturing_Processes/{category}")
-
-                # Check subcategories
-                for item in os.listdir(category_path):
-                    item_path = os.path.join(category_path, item)
-                    if os.path.isdir(item_path):
-                        # Check if subcategory has rules.json
-                        rules_file = os.path.join(item_path, "rules.json")
-                        if os.path.exists(rules_file):
-                            available_classes.append(f"Manufacturing_Processes/{category}/{item}")
-
-    return available_classes
-
 def initialize_retriever(force_reload: bool = False):
     """
     Initializes all components of the retriever:
@@ -432,7 +376,6 @@ def initialize_retriever(force_reload: bool = False):
         else:
             
             structured_tubes_data = {}
-
 
 
     logger.debug("RAG retriever initialization complete.")
@@ -558,37 +501,6 @@ def search_info_by_class(class_name: str, faiss_index_instance, query: str = "",
     
     logger.info(f"[RAG_INFO] Total info found for {class_name}: {len(class_info)}")
     return class_info
-
-def simple_keyword_param_extraction(query: str, class_data: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    A very simple keyword-based parameter extractor for structured data.
-    Looks for keys from the class_data dictionary within the query.
-    This is a placeholder and would need to be more robust in a real system.
-    """
-    extracted_params = {}
-    if not class_data:
-        return extracted_params
-
-    # Iterate through all known parameter names (keys in the first item's 'Parameters' or 'Description' if available)
-    # This is a naive approach; a better way would be to have a predefined list of queryable parameters.
-
-    # For simplicity, let's assume we are looking for specific terms mentioned in the CSV 'Name' or 'Description'
-    for name_key, data_item in class_data.items():
-        if name_key.lower() in query.lower(): # If the "Name" from CSV is in query
-            extracted_params[name_key] = data_item # Return the whole data item for that name
-            # Could also try to parse 'Parameters' or 'Description' for more fine-grained matching
-            # e.g. if data_item['Parameters'] = "length,width" and query mentions "length", extract that.
-            # This is highly dependent on the CSV structure and query patterns.
-
-        description = data_item.get("Description", "")
-        if description and isinstance(description, str) and description.lower() in query.lower():
-             extracted_params[name_key] = data_item # If description matches
-
-    # This is very basic. A more advanced version would parse the query for specific parameter values.
-    # For example, if query is "Perforated sheet R12 U27.72 with length 500", it should identify "R12 U27.72"
-    # and potentially "length: 500".
-    return extracted_params
-
 
 
 async def retrieve_rules_only(

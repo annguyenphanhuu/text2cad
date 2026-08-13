@@ -1,12 +1,9 @@
 import os
-import sys
-from pathlib import Path
 from dotenv import load_dotenv
 
 # LangChain imports
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain_community.vectorstores import FAISS
 
 # Load environment variables from config directory
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
@@ -115,7 +112,7 @@ except Exception as e:
 
 # --- New RAG System Setup ---
 # RAG is now initialized lazily via RAG Singleton pattern (src/core/rag_singleton.py)
-# It will auto-initialize on first use via get_rag_context()
+# It will auto-initialize on first use via get_rag_split_context()
 # No need for explicit initialization here to avoid duplicate initialization
 
 

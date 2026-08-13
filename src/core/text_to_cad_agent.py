@@ -35,7 +35,7 @@ from src.utils import path_manager
 from src.utils.material_mapper import map_material_to_geometry_analyzer
 from src.rag.retriever import set_classification_llm
 from src.rag.query_expander import expand_query_with_llm, set_expansion_llm
-from src.utils.file_manager import save_code_file, save_metadata_file, execute_freecad_script
+from src.utils.file_manager import save_code_file, save_metadata_file
 from src.utils.path_manager import get_output_path, get_unique_filepath
 from src.utils.file_finder import find_step_file, find_obj_files
 from src.utils.cost_tracker import CostTracker
@@ -2154,19 +2154,16 @@ class TextToCADAgent:
         Returns:
             Response dict with code, message, explanation
         """
-        from src.core.async_optimizations import async_timer, AsyncLLMProcessor
+        from src.core.async_optimizations import async_timer
         from src.utils.cost_tracking_wrapper import ainvoke_with_cost_tracking
-        
+
         # Async session state loading
         @async_timer(f"session_state_load_{session_id}")
         async def load_session_state_async():
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, self._get_session_state, session_id)
-        
-        state = await load_session_state_async()
 
-        # Initialize async LLM processor for rate limiting
-        llm_processor = AsyncLLMProcessor(max_concurrent=5, rate_limit_per_minute=60)
+        state = await load_session_state_async()
 
         try:
             # Step 1: Greeting/Info Request Classification (only for new requests)
@@ -2688,7 +2685,7 @@ class TextToCADAgent:
         Args:
             current_user_message: The latest user message (not yet saved in database)
         """
-        from src.core.async_optimizations import AsyncLLMProcessor, async_timer
+        from src.core.async_optimizations import async_timer
         
         if session_id is None:
             print("ERROR: session_id is None in generate_code_from_requirements. Cannot proceed.")
@@ -4005,7 +4002,6 @@ class TextToCADAgent:
     create_freecad_client
 )
         from src.utils.path_manager import OBJ_OUTPUT_DIR, CAD_OUTPUT_DIR, PDF_OUTPUT_DIR, PROJECT_ROOT
-        from src.core.async_optimizations import AsyncFileOperations, get_async_optimizer
         import datetime
         import asyncio
 

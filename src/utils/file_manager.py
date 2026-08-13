@@ -7,17 +7,13 @@ It handles file operations like saving, loading, and converting files.
 
 import os
 import json
-import shutil
 import logging
-import subprocess
 from pathlib import Path
-from typing import Optional, Union, List, Dict, Any, Tuple
+from typing import Optional, Union, Dict
 
 from src.utils.path_manager import (
     get_output_path,
     get_unique_filepath,
-    sanitize_filename,
-    PROJECT_ROOT
 )
 
 def fix_unicode_chars(content: str) -> str:
@@ -395,163 +391,4 @@ def save_threaded_metadata_file(
             )
         )
 
-async def execute_freecad_script(script_path: Path) -> Tuple[bool, str]:
-    """
-    Execute a FreeCAD script asynchronously with automatic Unicode character cleaning.
 
-    This function automatically cleans problematic Unicode characters from the script
-    before execution and runs the FreeCAD process in a separate thread to avoid
-    blocking the asyncio event loop.
-
-    Args:
-        script_path: Path to the script
-
-    Returns:
-        Tuple of (success, message)
-    """
-    import asyncio
-
-    try:
-        # Clean the script file before execution to prevent encoding issues
-        try:
-            was_cleaned = clean_existing_file(script_path)
-            if was_cleaned:
-                logger.info(f"Cleaned Unicode characters from script: {script_path}")
-        except Exception as clean_error:
-            logger.warning(f"Could not clean script file {script_path}: {clean_error}")
-            # Continue with execution anyway
-
-        def run_subprocess():
-            # Execute FreeCAD command with explicit UTF-8 encoding
-            return subprocess.run(
-                ["freecadcmd", str(script_path)],
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',  # Replace problematic characters instead of failing
-                check=False
-            )
-
-        # Run the blocking subprocess in a separate thread
-        result = await asyncio.to_thread(run_subprocess)
-        print("SCRIPT PATH:", script_path)
-
-        # Check if execution was successful
-        # FreeCAD may return 0 even with errors, so check for "Exception" in output
-        has_exception = ("Exception" in result.stdout or
-                        "Exception" in result.stderr or
-                        "Error" in result.stderr or
-                        "Traceback" in result.stdout or
-                        "Traceback" in result.stderr)
-
-        if result.returncode == 0 and not has_exception:
-            logger.info(f"Successfully executed FreeCAD script: {script_path}")
-            return True, result.stdout
-        else:
-            error_message = result.stderr if result.stderr else result.stdout
-            logger.error(f"Error executing FreeCAD script: {error_message}")
-            return False, error_message
-    except Exception as e:
-        logger.error(f"Exception executing FreeCAD script: {e}")
-        return False, str(e)
-
-
-
-def find_output_files(
-    shape_type: str,
-    dimensions: Union[str, Dict[str, float]],
-    output_types: List[str] = ["step", "obj", "py", "json"]
-) -> Dict[str, Optional[Path]]:
-    """
-    Find output files for a specific shape.
-    
-    Args:
-        shape_type: The type of shape
-        dimensions: Key dimensions
-        output_types: Types of output files to find
-        
-    Returns:
-        Dictionary mapping output types to file paths
-    """
-    result = {}
-    
-    for output_type in output_types:
-        # Get base directory for this output type
-        base_dir = get_output_path(shape_type, dimensions, output_type).parent.parent
-        
-        # Get sanitized shape type and dimensions for pattern matching
-        sanitized_shape = sanitize_filename(shape_type)
-        sanitized_dims = sanitize_filename(str(dimensions))
-        
-        # Pattern to match
-        pattern = f"{sanitized_shape}_{sanitized_dims}_*.{output_type}"
-        
-        # Search for matching files in all date directories
-        matching_files = []
-        for date_dir in base_dir.iterdir():
-            if date_dir.is_dir():
-                matching_files.extend(date_dir.glob(pattern))
-        
-        # Sort by modification time (newest first)
-        matching_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        
-        # Get the newest file if any
-        result[output_type] = matching_files[0] if matching_files else None
-    
-    return result
-
-def move_legacy_outputs():
-    """
-    Move legacy output files from the old location to the new structure.
-    """
-    # Old output directory
-    old_output_dir = PROJECT_ROOT.parent / "cad_outputs_generated"
-    
-    if not old_output_dir.exists():
-        logger.info("No legacy output directory found.")
-        return
-    
-    logger.info(f"Moving legacy outputs from {old_output_dir}")
-    
-    # Create a directory for today
-    today = get_output_path("legacy", "migration", "step").parent
-    
-    # Process each file in the old directory
-    for file_path in old_output_dir.iterdir():
-        if not file_path.is_file():
-            continue
-        
-        # Determine file type from extension
-        extension = file_path.suffix.lower()[1:]  # Remove the dot
-        
-        if extension in ["py"]:
-            dest_dir = today.parent.parent / "code" / today.name
-        elif extension in ["json"]:
-            dest_dir = today.parent.parent / "metadata" / today.name
-        elif extension in ["step"]:
-            dest_dir = today.parent.parent / "cad" / today.name
-        elif extension in ["obj"]:
-            dest_dir = today.parent.parent / "obj" / today.name
-
-        else:
-            # Skip unknown file types
-            logger.warning(f"Skipping unknown file type: {file_path}")
-            continue
-        
-        # Ensure destination directory exists
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Destination path
-        dest_path = dest_dir / file_path.name
-        
-        # Ensure destination path is unique
-        dest_path = get_unique_filepath(dest_path)
-        
-        try:
-            # Copy the file
-            shutil.copy2(file_path, dest_path)
-            logger.info(f"Copied {file_path} to {dest_path}")
-        except Exception as e:
-            logger.error(f"Error copying {file_path}: {e}")
-    
-    logger.info("Legacy output migration completed.")

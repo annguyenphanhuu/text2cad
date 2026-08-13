@@ -24,30 +24,6 @@ load_dotenv()
 # Suppress FAISS GPU warnings
 logging.getLogger('faiss').setLevel(logging.ERROR)
 
-def log_startup_memory():
-    """Log system memory at application startup."""
-    try:
-        import psutil
-        memory = psutil.virtual_memory()
-        
-        total_ram_gb = memory.total / (1024**3)
-        available_ram_gb = memory.available / (1024**3)
-        used_ram_gb = memory.used / (1024**3)
-        ram_percent = memory.percent
-        
-        logger = logging.getLogger("dfm-shapechatbot")
-
-        
-            
-
-        
-    except ImportError:
-        logger = logging.getLogger("dfm-shapechatbot")
-        logger.warning("psutil not available - cannot monitor memory usage")
-    except Exception as e:
-        logger = logging.getLogger("dfm-shapechatbot")
-        logger.error(f"Failed to get startup memory information: {e}")
-
 # Set console encoding to UTF-8 for Windows before configuring logging
 if sys.platform.startswith('win'):
     import codecs
@@ -114,10 +90,6 @@ def main():
         db_name = os.getenv('MYSQL_DATABASE', 'local')
         logger.info(f"Database configuration: {db_user}@{db_host}:{db_port}/{db_name}")
 
-        # Log memory status before starting server
-        
-
-
         log_level = os.getenv('LOG_LEVEL', 'INFO')
         enable_flow_logging = os.getenv('ENABLE_FLOW_LOGGING', 'true').lower() == 'true'
         enable_verbose_logging = os.getenv('ENABLE_VERBOSE_LOGGING', 'false').lower() == 'true'
@@ -137,5 +109,4 @@ def main():
         sys.exit(1)
 
 if __name__ == '__main__':
-
     main()

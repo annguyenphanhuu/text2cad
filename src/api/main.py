@@ -16,16 +16,12 @@ from typing import Optional, List
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form, Depends
 from fastapi.security import HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from typing import Optional # Added import
-from fastapi import Depends # Added import
-from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from fastapi.openapi.utils import get_openapi
-from fastapi.openapi.models import Example
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1676,10 +1672,6 @@ except ImportError:
 
 app.include_router(viewer_router, prefix="/api")
 
-
-
-app.include_router(viewer_router, prefix="/api")
-
 # Custom OpenAPI schema to add Authorization button
 from fastapi.openapi.utils import get_openapi
 
@@ -1738,26 +1730,5 @@ def custom_openapi():
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
-
-# ============================================================================
-# TEST ENDPOINTS - For debugging authentication issues
-# ============================================================================
-
-@app.post("/api/test-post-simple", tags=["test"])
-async def test_post_simple(message: str):
-    """Test POST endpoint without multipart data to compare auth behavior."""
-    return {"message": f"Received: {message}", "status": "success"}
-
-@app.post("/api/test-post-multipart", tags=["test"])
-async def test_post_multipart(
-    file: UploadFile = File(..., description="Test file upload"),
-    message: str = Form("", description="Test message")
-):
-    """Test POST endpoint with multipart data to compare auth behavior."""
-    return {
-        "filename": file.filename,
-        "message": message,
-        "status": "success"
-    }
 
 app.openapi = custom_openapi
