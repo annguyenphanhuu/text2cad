@@ -295,46 +295,6 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "ja": "処理が完了しました。",
         "ko": "처리가 완료되었습니다.",
     },
-    "greeting": {
-        "fr": "Bonjour! Je suis votre assistant TextToCAD. Que souhaitez-vous concevoir aujourd'hui?",
-        "en": "Hello! I'm your TextToCAD assistant. What would you like to design today?",
-        "es": "¡Hola! Soy tu asistente TextToCAD. ¿Qué te gustaría diseñar hoy?",
-        "de": "Hallo! Ich bin Ihr TextToCAD-Assistent. Was möchten Sie heute entwerfen?",
-        "vi": "Xin chào! Tôi là trợ lý TextToCAD của bạn. Bạn muốn thiết kế gì hôm nay?",
-        "zh-cn": "您好！我是您的TextToCAD助手。今天您想设计什么？",
-        "ja": "こんにちは！私はあなたのTextToCADアシスタントです。今日は何をデザインしたいですか？",
-        "ko": "안녕하세요! 저는 당신의 TextToCAD 어시스턴트입니다. 오늘 무엇을 디자인하고 싶으신가요?",
-    },
-    "thanks": {
-        "fr": "De rien! Ravi de vous aider avec votre conception CAD. N'hésitez pas à me contacter!",
-        "en": "You're welcome! Happy to help with your CAD design. Feel free to reach out anytime!",
-        "es": "¡De nada! Encantado de ayudar con tu diseño CAD. ¡No dudes en contactarme!",
-        "de": "Gern geschehen! Freue mich, bei Ihrem CAD-Design zu helfen. Melden Sie sich jederzeit!",
-        "vi": "Không có gì! Rất vui được giúp bạn với thiết kế CAD. Hãy liên hệ bất cứ lúc nào!",
-        "zh-cn": "不客气！很高兴帮助您进行CAD设计。随时联系我！",
-        "ja": "どういたしまして！CADデザインのお手伝いができて嬉しいです。いつでもお声かけください！",
-        "ko": "천만에요! CAD 디자인을 도와드릴 수 있어서 기쁩니다. 언제든지 연락하세요!",
-    },
-    "information": {
-        "fr": "Je serais ravi de vous aider! Que souhaitez-vous savoir sur la modélisation CAD?",
-        "en": "I'd be happy to help! What would you like to know about CAD modeling?",
-        "es": "¡Estaré encantado de ayudar! ¿Qué te gustaría saber sobre el modelado CAD?",
-        "de": "Gerne helfe ich Ihnen! Was möchten Sie über CAD-Modellierung wissen?",
-        "vi": "Tôi rất vui được giúp bạn! Bạn muốn biết gì về mô hình CAD?",
-        "zh-cn": "我很乐意帮助您！您想了解CAD建模的什么内容？",
-        "ja": "喜んでお手伝いします！CADモデリングについて何を知りたいですか？",
-        "ko": "기꺼이 도와드리겠습니다! CAD 모델링에 대해 무엇을 알고 싶으신가요?",
-    },
-    "language_feedback": {
-        "fr": "Je m'excuse pour la confusion! Je répondrai en français à partir de maintenant. Comment puis-je vous aider avec la modélisation CAD?",
-        "en": "I apologize for the confusion! I will respond in English from now on. How can I help you with CAD modeling?",
-        "es": "¡Disculpe la confusión! Responderé en español a partir de ahora. ¿Cómo puedo ayudarle con el modelado CAD?",
-        "de": "Entschuldigung für die Verwirrung! Ich werde ab sofort auf Deutsch antworten. Wie kann ich Ihnen bei der CAD-Modellierung helfen?",
-        "vi": "Xin lỗi vì sự nhầm lẫn! Tôi sẽ trả lời bằng tiếng Việt từ bây giờ. Tôi có thể giúp gì cho bạn về mô hình CAD?",
-        "zh-cn": "为混乱道歉！我将从现在开始用中文回复。我如何帮助您进行CAD建模？",
-        "ja": "混乱を招いて申し訳ありません！今後は日本語で回答いたします。CADモデリングでどのようにお手伝いできますか？",
-        "ko": "혼란을 드려 죄송합니다! 이제부터 한국어로 답변드리겠습니다. CAD 모델링에서 어떻게 도와드릴까요?",
-    },
     # Perforated sheet — user asked for a named/branded hole pattern (e.g. "motif AUBE
     # de chez ACIANOV") that has no equivalent in our supported notation (R/C/LR/LC +
     # T/U/Z — see data/Info/Perforated_Sheet/info.json). Friendly redirect instead of
@@ -381,11 +341,6 @@ def _get_message(key: str, lang: str) -> str:
 # Public message API — all functions take lang CODE (not user_text)
 # ═════════════════════════════════════════════════════════════════════════════
 
-def get_message(key: str, lang: str) -> str:
-    """Generic message getter. Use for any key in _MESSAGES."""
-    return _get_message(key, lang)
-
-
 def get_success_message(lang: str) -> str:
     """
     Return success message for the given language code.
@@ -407,26 +362,6 @@ def get_error_message(lang: str, error_type: str = "general") -> str:
     if not result:
         result = _get_message("error_general", lang)
     return result
-
-
-def get_greeting_message(lang: str) -> str:
-    """Return greeting message for the given language code."""
-    return _get_message("greeting", lang)
-
-
-def get_thanks_message(lang: str) -> str:
-    """Return thank-you response for the given language code."""
-    return _get_message("thanks", lang)
-
-
-def get_information_response(lang: str) -> str:
-    """Return information/help response for the given language code."""
-    return _get_message("information", lang)
-
-
-def get_language_feedback_message(lang: str) -> str:
-    """Return language-switch acknowledgment for the given language code."""
-    return _get_message("language_feedback", lang)
 
 
 def get_perforated_unknown_pattern_message(lang: str) -> str:
@@ -455,41 +390,6 @@ def get_perforated_pitch_type_question(lang: str) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 # Utility functions (no language detection, purely rule-based)
 # ═════════════════════════════════════════════════════════════════════════════
-
-def is_language_feedback(text: str) -> bool:
-    """Check if the text is feedback about language or chatbot behaviour."""
-    text_lower = text.lower()
-    keywords = [
-        # English
-        "language", "respond in", "speak", "chatbot", "forgot", "rule",
-        "behavior", "issue", "problem", "wrong language", "not responding",
-        "should respond",
-        # French
-        "langue", "répondre", "parler", "oublié", "règle", "problème",
-        "ne répond pas", "devrait répondre", "en français",
-    ]
-    return any(kw in text_lower for kw in keywords)
-
-
-def is_greeting(text: str) -> bool:
-    """Check if the text is a greeting using word-boundary matching."""
-    text_lower = text.lower()
-    greeting_keywords = [
-        # English
-        "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
-        "thanks", "thank you", "bye", "goodbye",
-        # French
-        "bonjour", "salut", "bonsoir", "merci", "au revoir", "bonne journée",
-    ]
-    for keyword in greeting_keywords:
-        if " " in keyword:
-            if keyword in text_lower:
-                return True
-        else:
-            if re.search(r'\b' + re.escape(keyword) + r'\b', text_lower):
-                return True
-    return False
-
 
 def detect_confirm_intent(text: str) -> bool:
     """

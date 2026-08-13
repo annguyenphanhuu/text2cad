@@ -446,50 +446,6 @@ class PDFProcessor:
             # Clean up uploaded file
             await self._cleanup_openai_file(file_id)  # Added await
 
-    async def process_pdf_from_bytes(self, db: Session, session_id: str, file_bytes: bytes, filename: str,
-                             user_input: str = "") -> Tuple[bool, str]:
-        """
-        Process PDF from bytes data.
-        
-        Args:
-            db: Database session
-            session_id: Session ID
-            file_bytes: PDF file bytes
-            filename: Original filename
-            user_input: Optional user input
-            
-        Returns:
-            Tuple of (success: bool, result_message: str)
-        """
-        if not self.client:
-            return False, get_error_message("no_api_key")
-
-        temp_file = None
-        try:
-            temp_dir = Path(get_temp_dir())
-            temp_file = tempfile.NamedTemporaryFile(
-                delete=False, 
-                dir=temp_dir, 
-                suffix=".pdf", 
-                prefix=f"{filename.replace(' ', '_')}_"
-            )
-            temp_file.write(file_bytes)
-            temp_file.close()
-
-            success, result = await self.process_pdf(db, session_id, temp_file.name, user_input)
-            return success, result
-
-        except Exception as e:
-            logger.exception(f"Error processing PDF from bytes for session {session_id}: {e}")
-            return False, get_error_message("processing_failed", error=str(e))
-        finally:
-            if temp_file and os.path.exists(temp_file.name):
-                try:
-                    os.unlink(temp_file.name)
-                    logger.info(f"Deleted temporary file: {temp_file.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete temporary file: {e}")
-
     async def process_uploaded_file(self, db: Session, uploaded_file, user_input: str = "", 
                                   session_id: Optional[str] = None) -> Tuple[bool, str, Optional[str], Optional[dict]]:
         """

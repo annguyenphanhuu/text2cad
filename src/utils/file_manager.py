@@ -127,57 +127,6 @@ def sanitize_for_freecad(content: str) -> str:
         return content.encode('ascii', errors='replace').decode('ascii')
 
 
-def clean_existing_file(filepath: Union[str, Path]) -> bool:
-    """
-    Clean an existing Python file by removing problematic Unicode characters.
-
-    Args:
-        filepath: Path to the Python file to clean
-
-    Returns:
-        bool: True if file was modified, False if no changes were needed
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist
-        IOError: If there's an error reading/writing the file
-    """
-    filepath = Path(filepath)
-
-    if not filepath.exists():
-        raise FileNotFoundError(f"File not found: {filepath}")
-
-    # Read the original content
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            original_content = f.read()
-    except UnicodeDecodeError:
-        # Try with different encodings if UTF-8 fails
-        for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
-            try:
-                with open(filepath, 'r', encoding=encoding) as f:
-                    original_content = f.read()
-                break
-            except UnicodeDecodeError:
-                continue
-        else:
-            raise IOError(f"Could not read file {filepath} with any supported encoding")
-
-    # Clean the content with aggressive sanitization for FreeCAD
-    cleaned_content = sanitize_for_freecad(original_content)
-
-    # Check if any changes were made
-    if cleaned_content == original_content:
-        return False
-
-    # Write the cleaned content back
-    try:
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(cleaned_content)
-        return True
-    except Exception as e:
-        raise IOError(f"Error writing cleaned content to {filepath}: {e}")
-
-
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -350,45 +299,5 @@ async def save_threaded_metadata_file_async(
     except Exception as e:
         logger.warning(f"Failed to generate threaded metadata: {e}")
         return None
-
-def save_threaded_metadata_file(
-    code_path: Path,
-    shape_type: str,
-    dimensions: Union[str, Dict[str, float]],
-    design_requirements: Optional[Dict] = None,
-    cost_tracker = None
-) -> Optional[Path]:
-    """
-    Analyze FreeCAD code and save feature metadata (sync wrapper).
-    
-    This is a synchronous wrapper around save_threaded_metadata_file_async.
-    For better performance in async contexts, use the async version directly.
-    """
-    import asyncio
-    
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Already in async context - this shouldn't happen
-            # but handle it gracefully
-            import nest_asyncio
-            nest_asyncio.apply()
-            return loop.run_until_complete(
-                save_threaded_metadata_file_async(
-                    code_path, shape_type, dimensions, design_requirements, cost_tracker
-                )
-            )
-        else:
-            return loop.run_until_complete(
-                save_threaded_metadata_file_async(
-                    code_path, shape_type, dimensions, design_requirements, cost_tracker
-                )
-            )
-    except RuntimeError:
-        return asyncio.run(
-            save_threaded_metadata_file_async(
-                code_path, shape_type, dimensions, design_requirements, cost_tracker
-            )
-        )
 
 

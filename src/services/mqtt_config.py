@@ -65,14 +65,6 @@ class MQTTConfig:
         
         return host, port
     
-    def get_progress_topic(self, user_id: str) -> str:
-        """Get progress topic for specific user"""
-        return f"freecad/progress/{user_id}"
-    
-    def get_status_topic(self, user_id: str) -> str:
-        """Get status topic for specific user"""
-        return f"freecad/status/{user_id}"
-    
     def __repr__(self) -> str:
         return (
             f"MQTTConfig(broker={self.broker_host}:{self.broker_port}, "

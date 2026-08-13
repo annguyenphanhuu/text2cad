@@ -3883,64 +3883,7 @@ Return JSON only, no explanation."""
         return expr.strip()
     
     # Old _enrich_oblong removed - use the one defined earlier in class
-    
-    def _calculate_oblong_bbox(self, pnt: Dict, length: float, width: float, 
-                                height: float, direction: Dict) -> Dict[str, Dict[str, float]]:
-        """
-        Calculate bounding box from makeOblong parameters.
-        
-        makeBox(length, width, height, pnt, dir) creates a box where:
-        - pnt is the corner position
-        - length, width, height are dimensions
-        - dir is the extrusion direction
-        """
-        dx, dy, dz = direction['x'], direction['y'], direction['z']
-        
-        # Standard case: dir = (0, 0, 1) - vertical extrusion (XY plane)
-        if abs(dz) > 0.9:
-            return {
-                "min": {"x": pnt['x'], "y": pnt['y'], "z": pnt['z']},
-                "max": {
-                    "x": pnt['x'] + length,
-                    "y": pnt['y'] + width,
-                    "z": pnt['z'] + height
-                }
-            }
-        
-        # Horizontal X: dir = (1, 0, 0) - extrusion along X (YZ plane)
-        elif abs(dx) > 0.9:
-            return {
-                "min": {"x": pnt['x'], "y": pnt['y'], "z": pnt['z']},
-                "max": {
-                    "x": pnt['x'] + height,
-                    "y": pnt['y'] + length,
-                    "z": pnt['z'] + width
-                }
-            }
-        
-        # Horizontal Y: dir = (0, 1, 0) - extrusion along Y (XZ plane)
-        elif abs(dy) > 0.9:
-            return {
-                "min": {"x": pnt['x'], "y": pnt['y'], "z": pnt['z']},
-                "max": {
-                    "x": pnt['x'] + length,
-                    "y": pnt['y'] + height,
-                    "z": pnt['z'] + width
-                }
-            }
-        
-        # Custom direction - use standard case as fallback
-        else:
-            logger.warning(f"[FeatureAnalyzer] Custom direction vector {direction}, using standard bbox calculation")
-            return {
-                "min": {"x": pnt['x'], "y": pnt['y'], "z": pnt['z']},
-                "max": {
-                    "x": pnt['x'] + length,
-                    "y": pnt['y'] + width,
-                    "z": pnt['z'] + height
-                }
-            }
-    
+
     def _extract_positions(self, code_content: str) -> List[Dict[str, float]]:
         """Extract hole positions from code."""
         positions = []

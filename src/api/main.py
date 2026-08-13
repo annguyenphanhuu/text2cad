@@ -174,32 +174,6 @@ except ImportError:
     from src.schemas.sessions import ChatRequest
 
 
-class PDFProcessingRequest(BaseModel):
-    """Request model for PDF processing endpoint."""
-    user_input: str = Field("", description="Optional text prompt to guide PDF processing", example="Analyze this technical drawing and generate CAD code")
-    session_id: Optional[str] = Field(None, description="Optional session ID for conversation continuity", example="session_abc123_456789")
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "user_input": "Analyze this technical drawing and generate CAD code for the part shown",
-                "session_id": "session_abc123_456789"
-            }
-        }
-
-class ImageProcessingRequest(BaseModel):
-    """Request model for image processing endpoint."""
-    user_input: str = Field("", description="Optional text prompt to guide image processing", example="Generate CAD code from this technical drawing")
-    session_id: Optional[str] = Field(None, description="Optional session ID for conversation continuity", example="session_xyz789_123456")
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "user_input": "Generate CAD code from this technical drawing or sketch",
-                "session_id": "session_xyz789_123456"
-            }
-        }
-
 class PDFProcessingResponse(BaseModel):
     """Response model for PDF processing."""
     success: bool
@@ -1614,13 +1588,6 @@ except ImportError:
 app.include_router(download_router)
 
 
-# Import and mount viewer router for 3D file viewing
-try:
-    from .routes.cad import viewer_router
-except ImportError:
-    from src.api.routes.cad import viewer_router
-
-app.include_router(viewer_router, prefix="/api")
 
 # Custom OpenAPI schema to add Authorization button
 from fastapi.openapi.utils import get_openapi

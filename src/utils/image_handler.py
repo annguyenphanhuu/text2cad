@@ -319,61 +319,6 @@ class ImageProcessor:
                     logger.error(f"Failed to save error to chat history for session {session_id}: {db_e}")
             return False, f"Error processing image: {str(e)}", None
     
-    async def process_image_from_bytes(self, db: Session, session_id: str, file_bytes: bytes, filename: str,
-                               user_input: str = "") -> Tuple[bool, str, Optional[dict]]:
-        """
-        Process an image from bytes data using OpenAI's Vision API and save to chat history.
-        
-        Args:
-            db: SQLAlchemy database session.
-            session_id: The session ID for this interaction.
-            file_bytes: Raw bytes of the image file.
-            filename: Name to use for the temporary file.
-            user_input: Optional user input to send along with the default prompt.
-            
-        Returns:
-            Tuple of (success: bool, result_message_for_user: str, agent_result: Optional[dict])
-        """
-        if not self.client:
-            return False, "OpenAI client not initialized. Check API key."
-        
-        temp_file = None
-        try:
-            # Create a temporary file
-            temp_dir = Path("temp_uploads")
-            temp_dir.mkdir(exist_ok=True)
-            
-            # Get file extension from filename
-            file_extension = Path(filename).suffix.lower()
-            if file_extension not in self.SUPPORTED_FORMATS:
-                return False, f"Unsupported image format: {file_extension}", None
-            
-            temp_file = tempfile.NamedTemporaryFile(delete=False, 
-                                                 dir=temp_dir,
-                                                 suffix=file_extension,
-                                                 prefix=f"{filename.replace(' ', '_')}_")
-            
-            # Write bytes to the temporary file
-            temp_file.write(file_bytes)
-            temp_file.close()
-            
-            # Process the temporary file
-            success, result, agent_result = await self.process_image(db, session_id, temp_file.name, user_input)
-            return success, result, agent_result
-            
-        except Exception as e:
-            logger.exception(f"Error processing image from bytes for session {session_id}: {e}")
-            return False, f"Error processing image from bytes: {str(e)}", None
-        
-        finally:
-            # Clean up temporary file
-            if temp_file and os.path.exists(temp_file.name):
-                try:
-                    os.unlink(temp_file.name)
-                    logger.info(f"Deleted temporary image file: {temp_file.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete temporary image file: {e}")
-                    
     async def process_uploaded_file(self, db: Session, uploaded_file, user_input: str = "", session_id: Optional[str] = None) -> Tuple[bool, str, Optional[str], Optional[dict]]:
         """
         Process an uploaded image file from FastAPI's UploadFile and save to chat history.

@@ -447,34 +447,6 @@ class CostTracker:
 
         return "\n".join(lines)
     
-    def get_summary_dict(self) -> Dict[str, Any]:
-        """
-        Get cost summary as a dictionary for API responses.
-        
-        Returns:
-            Dictionary with cost summary
-        """
-        return {
-            "session_id": self.session_id,
-            "total_chains": len(self.chain_costs),
-            "total_prompt_tokens": self.get_total_prompt_tokens(),
-            "total_completion_tokens": self.get_total_completion_tokens(),
-            "total_tokens": self.get_total_tokens(),
-            "total_cost_usd": round(self.get_total_cost(), 6),
-            "chain_breakdown": [
-                {
-                    "chain_name": cost.chain_name,
-                    "model_name": cost.model_name,
-                    "prompt_tokens": cost.prompt_tokens,
-                    "completion_tokens": cost.completion_tokens,
-                    "total_tokens": cost.total_tokens,
-                    "cost_usd": round(cost.total_cost, 6),
-                    "timestamp": cost.timestamp
-                }
-                for cost in self.chain_costs
-            ]
-        }
-    
     def reset(self):
         """Reset the tracker for a new request"""
         self.chain_costs = []
@@ -495,14 +467,6 @@ class CostTracker:
             f"[COST_TRACKER] New request turn started at index {self._request_start_index} "
             f"for session {self.session_id}"
         )
-
-    def get_request_cost(self) -> float:
-        """
-        Get total cost for the CURRENT request turn only
-        (since the last start_request() call).
-        """
-        idx = getattr(self, '_request_start_index', 0)
-        return sum(cost.total_cost for cost in self.chain_costs[idx:])
 
     def get_request_summary(self) -> Dict[str, Any]:
         """

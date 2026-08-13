@@ -87,19 +87,6 @@ class SessionLogTracker:
             self._session_logs[session_id][log_key] = current_count + 1
             return True
         return False
-    
-    def reset_session(self, session_id: str):
-        """Reset log tracking for a session."""
-        if session_id in self._session_logs:
-            del self._session_logs[session_id]
-    
-    def cleanup_old_sessions(self, keep_recent: int = 100):
-        """Keep only the most recent N sessions to prevent memory bloat."""
-        if len(self._session_logs) > keep_recent:
-            # Keep only the last 'keep_recent' sessions
-            session_ids = list(self._session_logs.keys())
-            for old_session in session_ids[:-keep_recent]:
-                del self._session_logs[old_session]
 
 # Global session log tracker
 _session_log_tracker = SessionLogTracker()
@@ -753,7 +740,7 @@ class TextToCADAgent:
         """
         Log and return cost for the CURRENT request turn only.
 
-        Unlike the old _log_session_cost, this:
+        This:
         - Is NEVER suppressed (no _logged flag).
         - Always reports only the cost since the last start_request() call.
         - Returns the summary dict so callers can embed it in final_result.
@@ -764,53 +751,6 @@ class TextToCADAgent:
             tracker = self._session_cost_trackers[session_id]
             return tracker.log_request_cost(label=label)
         return {}
-
-    # Keep legacy wrapper for backward-compat — delegates to new method
-    def _log_session_cost(self, session_id, force=False):
-        """
-        Deprecated: use _log_request_cost instead.
-        Legacy callers still get a summary dict; the _logged suppression
-        is intentionally removed so every turn is logged correctly.
-        """
-        return self._log_request_cost(session_id)
-
-
-    def reset_conversation(self, session_id: Optional[str] = None):
-        if session_id:
-            if session_id in self._session_states:
-                print(f"[PROCESS] Resetting conversation state for session {session_id}")
-                self._session_states[session_id] = {
-                    'latest_code': None,
-                    'latest_title': None,
-                    'latest_requirements': None,
-                    'pending_questions': [],
-                    'edit_request_history': [],
-                    'edit_context': {},
-                    # Reset confirm state
-                    'confirm_count': 0,
-                    'awaiting_confirm': False,
-                    'confirmed_description': '',
-                    'last_confirmed_description': '',
-                    'edit_history_since_confirm': [],
-                    'edit_running_summary': '',
-                    'awaiting_edit_ack': False,
-                    'pending_edit_text': '',
-                    # Reset confirm fast-path cache
-                    'cached_raw_unified_json': '',
-                    'cached_retrieved_context': '',
-                    'cached_unified_obj_snapshot': None,
-                    'cached_expanded_user_text': '',
-                    'cached_perf_calc_result': None,
-                    'perf_calc_result': None,
-                    'perf_extracted_params': None,
-                }
-                print(f"[SUCCESS] Conversation reset complete for session {session_id}")
-            else:
-                print(f"[WARNING] Attempted to reset non-existent session: {session_id}")
-        else:
-            print("[PROCESS] Resetting all session states.")
-            self._session_states.clear()
-            print("[SUCCESS] All session states reset complete.")
 
     # ── Description Confirm ─────────────────────────────────────────────────
     # Max confirm rounds before auto-generating code
@@ -3573,30 +3513,6 @@ class TextToCADAgent:
 
 
 
-
-    def _extract_override_parameter(self, user_text):
-        """Extract parameter from override intent (e.g., 'continue use M1.2' -> 'M1.2')"""
-        import re
-
-        # Common patterns for parameter extraction
-        patterns = [
-            r'continue use\s+([A-Za-z0-9.]+)',      # "continue use M1.2"
-            r'proceed with\s+([A-Za-z0-9.]+)',      # "proceed with M1.2"
-            r'proceed anyway.*?([A-Za-z0-9.]+)',    # "proceed anyway with M1.2"
-            r'go with\s+([A-Za-z0-9.]+)',           # "go with M1.2"
-            r'keep\s+([A-Za-z0-9.]+)',              # "keep M1.2"
-            r'use\s+([A-Za-z0-9.]+)\s+anyway',      # "use M1.2 anyway"
-            r'anyway.*?([A-Za-z0-9.]+)',            # "anyway use M1.2"
-            r'ignore warning.*?([A-Za-z0-9.]+)',    # "ignore warning and use M1.2"
-            r'tiếp tục dùng\s+([A-Za-z0-9.]+)',     # Vietnamese
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, user_text, re.IGNORECASE)
-            if match:
-                return match.group(1)
-
-        return None
 
     async def _execute_freecad_remote(self, code_filepath, session_id, threaded_metadata_path=None, priority: int = 0, shape_type=None):
         """Execute a FreeCAD script on the remote server via MQTT workflow.

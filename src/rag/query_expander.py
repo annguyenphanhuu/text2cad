@@ -480,39 +480,3 @@ Output:"""
         return {"expanded_query": query, "detected_shape_type": None}
 
 
-def expand_query_with_synonyms(query: str, max_synonyms: int = 5) -> str:
-    """
-    Synchronous wrapper for LLM-based query expansion.
-    
-    Falls back to original query if LLM is not available.
-    
-    Args:
-        query: Original user query
-        max_synonyms: Maximum number of synonyms to add
-        
-    Returns:
-        Expanded query string (extracts from dict if needed)
-    """
-    if _expansion_llm is None:
-        logger.debug("[QUERY_EXPAND] No LLM available, returning original query")
-        return query
-    
-    try:
-        # Run async expansion in sync context
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import asyncio
-            future = asyncio.ensure_future(expand_query_with_llm(query, max_synonyms=max_synonyms))
-            logger.warning("[QUERY_EXPAND] Already in async context, skipping expansion")
-            return query
-        else:
-            result = loop.run_until_complete(expand_query_with_llm(query, max_synonyms=max_synonyms))
-            
-            # Handle both old (string) and new (dict) return format
-            if isinstance(result, dict):
-                return result.get("expanded_query", query)
-            else:
-                return result
-    except Exception as e:
-        logger.error(f"[QUERY_EXPAND] Sync expansion failed: {e}")
-        return query

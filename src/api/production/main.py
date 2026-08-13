@@ -93,12 +93,6 @@ async def get_version():
 #     }
 
 # 1. SESSIONS MANAGEMENT
-class SessionResponse(BaseModel):
-    session_id: str = Field(..., description="Session ID")
-    session_name: str = Field(..., description="Session name")
-    created_at: str = Field(..., description="Creation timestamp")
-    updated_at: Optional[str] = Field(None, description="Last update timestamp")
-
 class SessionListResponse(BaseModel):
     sessions: List[Dict[str, Any]] = Field(..., description="List of sessions")
 

@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 
 # LangChain imports
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 
 # Load environment variables from config directory
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
@@ -23,21 +22,12 @@ MODELS = {
     "confirm": "gpt-5.4-2026-03-05",  # Model for description_confirm (high accuracy)
 }
 
-# Claude model for code generation (temporarily replacing advanced_llm)
-CLAUDE_MODEL = "claude-opus-4-6"  # or "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"
-
-
-
-
 # Get API keys from environment variables
 openai_api_key = os.getenv("OPENAI_API_KEY")
-deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
-anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 
 # Initialize models
 default_llm = None
-advanced_llm = None  # OpenAI advanced (kept as backup)
-claude_llm = None    # Claude model - used as advanced_llm for code generation
+advanced_llm = None
 expert_llm = None
 confirm_llm = None   # gpt-5.4 for description_confirm (high accuracy)
 
@@ -79,24 +69,7 @@ try:
         api_key=openai_api_key
     )
 
-    # Initialize Claude LLM for code generation (temporarily replacing advanced_llm)
-    if not anthropic_api_key:
-        print("[WARNING] ANTHROPIC_API_KEY not set. Falling back to OpenAI advanced_llm for code generation.")
-        claude_llm = advanced_llm
-    else:
-        print(f"[INIT] Initializing Claude model for code generation: {CLAUDE_MODEL}")
-        claude_llm = ChatAnthropic(
-            model=CLAUDE_MODEL,
-            temperature=0,
-            api_key=anthropic_api_key,
-            max_tokens=8192,
-        )
-        print(f"[SUCCESS] Claude model initialized: {CLAUDE_MODEL}")
-
-    # Test connection with a simple query
-    print("[TEST] Testing connection to OpenAI API...")
-    test_result = default_llm.invoke("Test connection")
-    print("[SUCCESS] Successfully connected to OpenAI API")
+    print("[SUCCESS] Language models initialized")
 
 except ValueError as ve:
     print(f"[ERROR] Configuration Error: {ve}")
@@ -122,7 +95,7 @@ print("\n--- RAG System will initialize on first use (lazy loading via singleton
 # Pass the initialized LLMs and the new RAG's retrieve_context function
 text_to_cad_agent = TextToCADAgent(
     default_llm=default_llm,
-    advanced_llm=advanced_llm,  # Using Claude as advanced_llm for code generation (temporary)
+    advanced_llm=advanced_llm,
     expert_llm=expert_llm,
     confirm_llm=confirm_llm,    # gpt-5.4 for description_confirm
 )

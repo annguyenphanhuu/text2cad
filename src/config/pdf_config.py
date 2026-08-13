@@ -106,33 +106,3 @@ def get_success_message(message_type: str) -> str:
     """Get success message."""
     return SUCCESS_MESSAGES.get(message_type, f"Operation completed: {message_type}")
 
-# Configuration validation
-def validate_config() -> Dict[str, Any]:
-    """Validate configuration settings and return status."""
-    issues = []
-    
-    # Check required environment variables
-    if not os.getenv("OPENAI_API_KEY"):
-        issues.append("OPENAI_API_KEY environment variable not set")
-    
-    # Check temp directory accessibility
-    try:
-        temp_dir = get_temp_dir()
-        test_file = os.path.join(temp_dir, "test_write.tmp")
-        with open(test_file, "w") as f:
-            f.write("test")
-        os.remove(test_file)
-    except Exception as e:
-        issues.append(f"Temp directory not accessible: {e}")
-    
-    return {
-        "valid": len(issues) == 0,
-        "issues": issues,
-        "config": {
-            "openai_model": OPENAI_MODEL,
-            "cad_model": CAD_MODEL,
-            "temp_dir": get_temp_dir(),
-            "max_file_size_mb": MAX_FILE_SIZE_MB,
-            "allowed_extensions": ALLOWED_EXTENSIONS
-        }
-    }

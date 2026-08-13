@@ -119,14 +119,6 @@ def chunk_script_files(base_dir: str = "data/Example") -> list[dict[str, str]]:
 
     return all_chunks
 
-def chunk_example_txt(file_path: str = "data/example.txt") -> list[dict[str, str]]:
-    """
-    Backward compatibility wrapper for chunk_script_files.
-    Chunks a single example.txt file by individual script examples.
-    """
-    return chunk_script_files([file_path])
-
-
 def chunk_class_rules(class_name: str) -> list[dict[str, str]]:
     """
     Chunks the rules.json file for a specific class.
