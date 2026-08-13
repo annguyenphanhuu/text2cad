@@ -10,3 +10,4 @@
 *.index binary
 *.ttf binary
 *.otf binary
+*.wasm binary

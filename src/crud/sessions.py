@@ -331,7 +331,7 @@ def get_exports_by_session_id(db: Session, session_id: str, export_format: str =
             
             # Try to find date directory in path (format: outputs/format/YYYY-MM-DD/filename)
             for i, part in enumerate(parts):
-                if part in ['obj', 'step', 'cad', 'json', 'pdf', 'dxf', 'technical_drawings']:
+                if part in ['obj', 'step', 'cad', 'pdf', 'dxf', 'technical_drawings']:
                     format_dir = part
                     if i+1 < len(parts) and re.match(r'\d{4}-\d{2}-\d{2}', parts[i+1]):
                         date_dir = parts[i+1]
@@ -355,15 +355,6 @@ def get_exports_by_session_id(db: Session, session_id: str, export_format: str =
                 downloadable_urls.append({"format": "step", "url": url})
                 logger.info(f"STEP Export URL: {url}")
 
-        # Process JSON exports
-        if hasattr(export, 'json_export') and export.json_export:
-            # Auto-detect json type from path (json or json_latest)
-            json_type = "json_latest" if "json_latest" in export.json_export else "json"
-            url = create_url_from_path(export.json_export, json_type)
-            if url:
-                downloadable_urls.append({"format": "json", "url": url})
-                logger.info(f"JSON Export URL: {url}")
-
 
     return downloadable_urls
 
@@ -375,7 +366,6 @@ def add_chat_history_entry(
     agent_result: dict,
     chat_request_obj=None,
     obj_export_path: Optional[str] = None,
-    json_export_path: Optional[str] = None,
     created_at=None,
     response_at=None
 ):
@@ -431,10 +421,6 @@ def add_chat_history_entry(
         # Get STEP export path from agent_result if available
         step_export_path = agent_result.get("step_path")
 
-        # Get JSON export path from agent_result if available
-        if not json_export_path:
-            json_export_path = agent_result.get("json_path")
-
         # Get technical drawing (PDF) export path from agent_result.
         # PDF is optional — missing/failed PDF just leaves this None, no error.
         technical_drawing_export_path = agent_result.get("pdf_path")
@@ -458,7 +444,6 @@ def add_chat_history_entry(
             lasted_code=lasted_code,
             obj_export=obj_export_path,
             step_export=step_path,
-            json_export=json_export_path,
             technical_drawing_export=technical_drawing_export_path,
             image_path=image_path,
             part_file_name=part_file_name,

@@ -814,8 +814,6 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log('📦 [processFiles] Available fields:', {
           obj_export: data.obj_export,
           obj_path: data.obj_path,
-          json_export: data.json_export,
-          json_path: data.json_path,
           step_export: data.step_export,
           step_path: data.step_path,
           technical_drawing_export: data.technical_drawing_export,
@@ -830,19 +828,19 @@ document.addEventListener("DOMContentLoaded", function () {
           window.pdfViewer.loadPDF(pdfPath, pdfFilename);
         }
 
-        // Load 3D viewers if OBJ/JSON files are available
+        // Load 3D viewers if OBJ/STEP files are available
         const objPath = data.obj_export || data.obj_path;
-        const jsonPath = data.json_export || data.json_path;
+        const stepPath = data.step_export || data.step_path;
 
-        console.log('🔍 [processFiles] Checking 3D files:', { objPath, jsonPath });
+        console.log('🔍 [processFiles] Checking 3D files:', { objPath, stepPath });
 
-        if (objPath || jsonPath) {
-          console.log('🎯 3D model files detected:', { objPath, jsonPath });
+        if (objPath || stepPath) {
+          console.log('🎯 3D model files detected:', { objPath, stepPath });
 
           // Use DualViewerManager if available (preferred)
           if (window.dualViewer && typeof window.dualViewer.loadModelsProgressively === 'function') {
             console.log('✅ Using DualViewerManager for progressive loading');
-            window.dualViewer.loadModelsProgressively(objPath, jsonPath)
+            window.dualViewer.loadModelsProgressively(objPath, stepPath)
               .then(results => {
                 console.log('✅ 3D models loaded successfully:', results);
               })
@@ -862,14 +860,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 .catch(error => console.error('❌ Error loading OBJ:', error));
             }
 
-            // Load JSON model
-            if (jsonPath) {
-              const jsonViewer = window.jsonViewer || window.dualViewer?.jsonViewer;
-              if (jsonViewer && typeof jsonViewer.loadModel === 'function') {
-                const jsonFilename = jsonPath.split('/').pop() || 'model.json';
-                console.log('🎯 Loading JSON model:', jsonPath);
-                jsonViewer.loadModel(jsonPath, jsonFilename)
-                  .catch(error => console.error('❌ Error loading JSON:', error));
+            // Load STEP model
+            if (stepPath) {
+              const stepViewer = window.stepViewer || window.dualViewer?.stepViewer;
+              if (stepViewer && typeof stepViewer.loadModel === 'function') {
+                const stepFilename = stepPath.split('/').pop() || 'model.step';
+                console.log('🎯 Loading STEP model:', stepPath);
+                stepViewer.loadModel(stepPath, stepFilename)
+                  .catch(error => console.error('❌ Error loading STEP:', error));
               }
             }
           }
@@ -1004,11 +1002,11 @@ document.addEventListener("DOMContentLoaded", function () {
           displayError("No results received from file processing");
         }
 
-        // Check for JSON viewer integration in image results
-        if (data.image_result && data.image_result.json_viewer_ready && data.image_result.json_viewer_url) {
-          console.log("JSON Viewer integration detected from image processing:", data.image_result.json_viewer_url);
-          // Automatically load the 3D model using json-viewer
-          loadJsonViewer(data.image_result.json_viewer_url);
+        // Check for STEP viewer integration in image results
+        if (data.image_result && data.image_result.step_viewer_ready && data.image_result.step_viewer_url) {
+          console.log("STEP Viewer integration detected from image processing:", data.image_result.step_viewer_url);
+          // Automatically load the 3D model using step-viewer
+          loadStepViewer(data.image_result.step_viewer_url);
         }
 
         return data;
@@ -2291,18 +2289,18 @@ document.addEventListener("DOMContentLoaded", function () {
                 .catch(error => console.error("❌ Error loading OBJ:", error));
             }
 
-            // Load JSON model
-            const jsonPath = finalData.json_export || finalData.json_path;
-            if (jsonPath && (window.jsonViewer || window.dualViewer?.jsonViewer)) {
-              const jsonViewer = window.jsonViewer || window.dualViewer?.jsonViewer;
-              console.log("🎯 [Fallback] Loading JSON model:", jsonPath);
+            // Load STEP model
+            const stepPath = finalData.step_export || finalData.step_path;
+            if (stepPath && (window.stepViewer || window.dualViewer?.stepViewer)) {
+              const stepViewer = window.stepViewer || window.dualViewer?.stepViewer;
+              console.log("🎯 [Fallback] Loading STEP model:", stepPath);
 
-              let jsonUrl = jsonPath.startsWith('/api/json-viewer/')
-                ? jsonPath
-                : `/api/json-viewer/${jsonPath}`;
+              let stepUrl = stepPath.startsWith('/api/step-viewer/')
+                ? stepPath
+                : `/api/step-viewer/${stepPath}`;
 
-              jsonViewer.loadModel(jsonUrl, jsonPath.split("/").pop() || "model.json")
-                .catch(error => console.error("❌ Error loading JSON:", error));
+              stepViewer.loadModel(stepUrl, stepPath.split("/").pop() || "model.step")
+                .catch(error => console.error("❌ Error loading STEP:", error));
             }
           }
 
@@ -3429,14 +3427,6 @@ document.addEventListener("DOMContentLoaded", function () {
         awaitingConfirmReply = false;
       }
 
-      // NEW: Inject face and edge selection context if available
-      let enhancedMessage = message;
-      const manager = window.selectionManager || window.faceSelectionManager;
-      if (manager && manager.hasSelections()) {
-        enhancedMessage = manager.interceptChatSubmission(message);
-        console.log("🎯 Selection context injected into message");
-      }
-
       // Add user message to chat (display original clean message)
       console.log("Adding user message to chat");
       addChatMessage(message, "user");
@@ -3448,12 +3438,6 @@ document.addEventListener("DOMContentLoaded", function () {
       userInput.value = "";
       userInput.style.height = "auto";
       if (charCount) charCount.textContent = "0";
-
-      // Clear selections after sending (optional - can be kept for multiple operations)
-      if (manager && manager.hasSelections()) {
-        // Optionally clear selections after sending
-        // manager.clearAllSelections();
-      }
 
       // Clear previous code output and hide results section if it's not for parameters
       if (codeOutput) codeOutput.innerHTML = "";
@@ -3467,7 +3451,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Show processing progress
       showProcessingProgress();
       // ✅ startRealtimeProgress sẽ tự gọi setUILocked(true) bên trong
-      startRealtimeProgress(enhancedMessage, isEditMode, currentSessionId);
+      startRealtimeProgress(message, isEditMode, currentSessionId);
     }
   }
 
@@ -3718,45 +3702,45 @@ document.addEventListener("DOMContentLoaded", function () {
   window.processMultiFile = processMultiFile;
   window.toggleSuggestions = toggleSuggestions;
 
-  // Function to load JSON viewer with 3D model
-  function loadJsonViewer(jsonViewerUrl) {
-    console.log("🎯 Loading JSON viewer with URL:", jsonViewerUrl);
+  // Function to load STEP viewer with 3D model
+  function loadStepViewer(stepViewerUrl) {
+    console.log("🎯 Loading STEP viewer with URL:", stepViewerUrl);
 
-    // Try to get JSON viewer instance from different sources
-    const jsonViewer = window.jsonViewer || window.dualViewer?.jsonViewer;
+    // Try to get STEP viewer instance from different sources
+    const stepViewer = window.stepViewer || window.dualViewer?.stepViewer;
 
-    if (jsonViewer && typeof jsonViewer.loadModel === 'function') {
-      console.log("✅ JSON viewer instance found, loading model...");
+    if (stepViewer && typeof stepViewer.loadModel === 'function') {
+      console.log("✅ STEP viewer instance found, loading model...");
 
       // Extract filename from URL for display
-      const fileName = jsonViewerUrl.split('/').pop() || 'model.json';
+      const fileName = stepViewerUrl.split('/').pop() || 'model.step';
 
-      jsonViewer.loadModel(jsonViewerUrl, fileName)
+      stepViewer.loadModel(stepViewerUrl, fileName)
         .then((success) => {
           if (success) {
-            console.log("✅ 3D JSON model loaded successfully");
-            // Show JSON viewer panel if it exists
-            const jsonPanel = document.getElementById('json-viewer-panel');
-            if (jsonPanel) {
-              jsonPanel.classList.remove('hidden');
+            console.log("✅ 3D STEP model loaded successfully");
+            // Show STEP viewer panel if it exists
+            const stepPanel = document.getElementById('step-viewer-panel');
+            if (stepPanel) {
+              stepPanel.classList.remove('hidden');
             }
           } else {
-            console.warn("⚠️ Failed to load 3D JSON model in viewer");
+            console.warn("⚠️ Failed to load 3D STEP model in viewer");
           }
         })
         .catch((error) => {
-          console.error("❌ Error loading JSON model:", error);
+          console.error("❌ Error loading STEP model:", error);
         });
     } else {
-      console.warn("⚠️ JSON viewer instance not available");
+      console.warn("⚠️ STEP viewer instance not available");
       console.log("Available viewers:", {
-        jsonViewer: !!window.jsonViewer,
+        stepViewer: !!window.stepViewer,
         dualViewer: !!window.dualViewer,
-        dualViewerJsonViewer: !!window.dualViewer?.jsonViewer
+        dualViewerStepViewer: !!window.dualViewer?.stepViewer
       });
     }
   }
 
-  // Expose loadJsonViewer globally
-  window.loadJsonViewer = loadJsonViewer;
+  // Expose loadStepViewer globally
+  window.loadStepViewer = loadStepViewer;
 });

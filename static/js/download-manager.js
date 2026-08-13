@@ -1,6 +1,6 @@
 /**
  * Download Manager
- * Handles file downloads for STEP, OBJ, JSON, and PDF files
+ * Handles file downloads for STEP, OBJ, and PDF files
  */
 
 class DownloadManager {
@@ -13,7 +13,6 @@ class DownloadManager {
     this.downloadButtons = {
       step: document.getElementById('download-step-btn'),
       obj: document.getElementById('download-obj-btn'),
-      json: document.getElementById('download-json-btn'),
       pdf: document.getElementById('download-pdf-btn')
     };
     
@@ -21,7 +20,6 @@ class DownloadManager {
     this.filePaths = {
       step: null,
       obj: null,
-      json: null,
       pdf: null
     };
     
@@ -57,7 +55,6 @@ class DownloadManager {
     const filePaths = {
       step: response.step_export || response.step_path,
       obj: response.obj_export || response.obj_path,
-      json: response.json_export || response.json_path,
       pdf: response.technical_drawing_export || response.technical_drawing_path
     };
     
@@ -86,7 +83,7 @@ class DownloadManager {
   
   /**
    * Update individual file button
-   * @param {string} fileType - Type of file (step, obj, json, pdf)
+   * @param {string} fileType - Type of file (step, obj, pdf)
    * @param {string} filePath - Path to the file
    */
   updateFileButton(fileType, filePath) {
@@ -387,10 +384,9 @@ class DownloadManager {
     this.filePaths = {
       step: null,
       obj: null,
-      json: null,
       pdf: null
     };
-    
+
     // Reset all buttons
     Object.keys(this.downloadButtons).forEach(fileType => {
       const btn = this.downloadButtons[fileType];

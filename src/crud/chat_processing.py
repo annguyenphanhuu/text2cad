@@ -408,7 +408,7 @@ def _process_agent_result(
     agent_result["response"] = chat_response_content
 
     # Handle export paths (summary already logged in text_to_cad_agent.py)
-    obj_export_path, step_export_path, json_export_path, pdf_export_path = _handle_export_paths(chat_req, agent_result)
+    obj_export_path, step_export_path, pdf_export_path = _handle_export_paths(chat_req, agent_result)
 
     logger.info(f"[HISTORY] Adding entry to chat history for session {session_id}")
     
@@ -422,7 +422,6 @@ def _process_agent_result(
             agent_result,
             obj_export_path,
             step_export_path,
-            json_export_path,
             request_received_at,
             response_generated_at
         )
@@ -432,7 +431,6 @@ def _process_agent_result(
     # Create download URLs (summary already logged above)
     obj_url = _create_download_url(obj_export_path) if obj_export_path else None
     step_url = _create_download_url(step_export_path) if step_export_path else None
-    json_url = _create_download_url(json_export_path) if json_export_path else None
     # PDF is optional (visualization only) — a missing/failed PDF must never
     # affect the response, so any URL-building error here is swallowed.
     try:
@@ -457,7 +455,6 @@ def _process_agent_result(
         session_id=session_id,
         obj_export=obj_url,
         step_export=step_url,
-        json_export=json_url,
         technical_drawing_export=pdf_url,
         tessellated_export=None,
         attribute_and_transientid_map=None,
@@ -474,19 +471,18 @@ def _handle_export_paths(chat_req: ChatRequest, agent_result: dict) -> tuple:
     export_format = chat_req.export_format
     obj_path = agent_result.get("obj_path")
     step_path = agent_result.get("step_path")
-    json_path = agent_result.get("json_path")
     # PDF is optional (visualization only) — not affected by export_format filtering below.
     pdf_path = agent_result.get("pdf_path")
 
     logger.info(f"[EXPORT_PATHS] Processing export format: {export_format}")
-    logger.info(f"[EXPORT_PATHS] Available paths - OBJ: {obj_path}, STEP: {step_path}, JSON: {json_path}")
+    logger.info(f"[EXPORT_PATHS] Available paths - OBJ: {obj_path}, STEP: {step_path}")
 
     # Only search for recent files if code was actually generated AND no error occurred.
     # This prevents serving old files from a previous session when FreeCAD execution fails.
     code_generated = agent_result.get("code") is not None
     has_error = bool(agent_result.get("error"))
 
-    if not obj_path and not step_path and not json_path and code_generated and not has_error:
+    if not obj_path and not step_path and code_generated and not has_error:
         logger.info(f"[EXPORT_PATHS] No paths in agent result but code was generated, searching for recent files")
         try:
             from src.utils.file_finder import find_step_file, find_obj_files
@@ -511,16 +507,16 @@ def _handle_export_paths(chat_req: ChatRequest, agent_result: dict) -> tuple:
 
     if export_format is None or export_format == "":
         logger.info(f"[EXPORT_PATHS] No specific format requested, returning both paths")
-        return obj_path, step_path, json_path, pdf_path
+        return obj_path, step_path, pdf_path
     elif export_format.lower() == "obj":
         logger.info(f"[EXPORT_PATHS] OBJ format requested, returning OBJ path only")
-        return obj_path, None, json_path, pdf_path
+        return obj_path, None, pdf_path
     elif export_format.lower() == "step":
         logger.info(f"[EXPORT_PATHS] STEP format requested, returning STEP path only")
-        return None, step_path, json_path, pdf_path
+        return None, step_path, pdf_path
     else:
         logger.warning(f"[EXPORT_PATHS] Unknown export format '{export_format}', returning both paths")
-        return obj_path, step_path, json_path, pdf_path
+        return obj_path, step_path, pdf_path
 
 
 def _add_to_chat_history(
@@ -530,7 +526,6 @@ def _add_to_chat_history(
     agent_result: dict,
     obj_export_path: Optional[str],
     step_export_path: Optional[str],
-    json_export_path: Optional[str] = None,
     request_received_at: Optional[datetime] = None,
     response_generated_at: Optional[datetime] = None
 ):
@@ -565,7 +560,6 @@ def _add_to_chat_history(
             agent_result=agent_result,
             chat_request_obj=chat_req,
             obj_export_path=obj_export_path,
-            json_export_path=json_export_path,
             created_at=request_received_at,
             response_at=response_generated_at
         )
@@ -618,15 +612,6 @@ def _create_download_url(file_path: str) -> str:
                 date_dir = path_parts[2]
                 filename = path_parts[3]
                 download_url = f"{BASE_URL}/download/outputs/obj/{date_dir}/{filename}"
-            else:
-                download_url = f"{BASE_URL}/download/{relative_path}"
-        elif relative_path.startswith('outputs/json/') or relative_path.startswith('outputs/json_latest/'):
-            path_parts = relative_path.split('/')
-            if len(path_parts) >= 4:  # outputs/json/date/filename or outputs/json_latest/date/filename
-                json_type = path_parts[1]  # 'json' or 'json_latest'
-                date_dir = path_parts[2]
-                filename = path_parts[3]
-                download_url = f"{BASE_URL}/download/outputs/{json_type}/{date_dir}/{filename}"
             else:
                 download_url = f"{BASE_URL}/download/{relative_path}"
         elif relative_path.startswith('outputs/cad/'):

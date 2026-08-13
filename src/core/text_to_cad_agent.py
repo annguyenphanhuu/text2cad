@@ -107,36 +107,6 @@ class SessionLogTracker:
 # Global session log tracker
 _session_log_tracker = SessionLogTracker()
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FEATURE ENRICHER — Singleton cache to avoid dynamic import on every request
-# Prevents race condition when multiple users call exec_module() concurrently
-# ═══════════════════════════════════════════════════════════════════════════
-_enricher_instance = None
-_enricher_lock = asyncio.Lock()
-
-async def _get_feature_enricher(project_root):
-    """Return a cached FeatureEnricher instance (load module only once)."""
-    global _enricher_instance
-    if _enricher_instance is not None:
-        return _enricher_instance
-    async with _enricher_lock:
-        # Double-check inside the lock
-        if _enricher_instance is not None:
-            return _enricher_instance
-        import importlib.util as _iutil
-        from pathlib import Path as _Path
-        enricher_path = _Path(project_root) / "src" / "utils" / "Export_JSON_Lastest" / "enrich_features.py"
-        if not enricher_path.exists():
-            raise FileNotFoundError(f"[ENRICHER] Enricher script not found: {enricher_path}")
-        spec = _iutil.spec_from_file_location("enrich_features", enricher_path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"[ENRICHER] Cannot load spec from: {enricher_path}")
-        mod = _iutil.module_from_spec(spec)
-        spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        _enricher_instance = mod.FeatureEnricher()
-        logger.info(f"[ENRICHER] ✅ FeatureEnricher loaded and cached (singleton)")
-    return _enricher_instance
-
 # Define model choices (kept for reference, actual models passed in)
 MODELS = {
     "default": "o4-mini-2025-04-16",
@@ -2987,13 +2957,12 @@ class TextToCADAgent:
                 try:
                     # Execute file saving
                     save_task = self.save_outputs(generated_code, design_requirements_obj, user_text=user_text, session_id=session_id)
-                    obj_path, step_path, json_path, pdf_path = await save_task
+                    obj_path, step_path, pdf_path = await save_task
 
                     return {
                         "code": generated_code,
                         "obj_path": obj_path,
                         "step_path": step_path,
-                        "json_path": json_path,
                         "pdf_path": pdf_path,
                         "message": "Code generated successfully."
                     }
@@ -3556,7 +3525,7 @@ class TextToCADAgent:
         user_text_for_save   = self._extract_user_text_from_state(state, session_id)
 
         try:
-            obj_path, step_path, json_path, pdf_path = await self.save_outputs(
+            obj_path, step_path, pdf_path = await self.save_outputs(
                 edited_code, current_requirements,
                 base_filename=sanitized_title, user_text=user_text_for_save, session_id=session_id,
                 priority=priority
@@ -3566,7 +3535,6 @@ class TextToCADAgent:
                 "code": edited_code,
                 "obj_path": obj_path,
                 "step_path": step_path,
-                "json_path": json_path,
                 "pdf_path": pdf_path,
             }
         except Exception as save_error:
@@ -4141,7 +4109,6 @@ class TextToCADAgent:
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         obj_dir = OBJ_OUTPUT_DIR / today
         step_dir = CAD_OUTPUT_DIR / today
-        json_dir = Path(PROJECT_ROOT) / "outputs" / "json" / today
         pdf_dir = PDF_OUTPUT_DIR / today
 
         # Create directories in parallel
@@ -4152,7 +4119,6 @@ class TextToCADAgent:
         await asyncio.gather(
             create_dir_async(obj_dir),
             create_dir_async(step_dir),
-            create_dir_async(json_dir),
             create_dir_async(pdf_dir),
             return_exceptions=True
         )
@@ -4289,13 +4255,8 @@ class TextToCADAgent:
             copy_tasks.append(copy_file_async("step", downloaded_files["step"], step_path))
             file_mappings["step"] = step_path
 
-        if "json" in downloaded_files:
-            json_path = json_dir / f"{base_filename}.json"
-            copy_tasks.append(copy_file_async("json", downloaded_files["json"], json_path))
-            file_mappings["json"] = json_path
-
         # PDF is optional (visualization only) — copy it when the server produced
-        # one, but a missing/failed PDF must never affect STEP/OBJ/JSON handling.
+        # one, but a missing/failed PDF must never affect STEP/OBJ handling.
         if "pdf" in downloaded_files:
             pdf_path = pdf_dir / f"{base_filename}.pdf"
             copy_tasks.append(copy_file_async("pdf", downloaded_files["pdf"], pdf_path))
@@ -4308,7 +4269,6 @@ class TextToCADAgent:
             # Map results back to file types
             obj_path_to_return = None
             step_path_to_return = None
-            json_path_to_return = None
             pdf_path_to_return = None
 
             result_index = 0
@@ -4318,121 +4278,13 @@ class TextToCADAgent:
             if "step" in downloaded_files:
                 step_path_to_return = copy_results[result_index] if not isinstance(copy_results[result_index], Exception) else None
                 result_index += 1
-            if "json" in downloaded_files:
-                json_path_to_return = copy_results[result_index] if not isinstance(copy_results[result_index], Exception) else None
-                result_index += 1
             if "pdf" in downloaded_files:
                 pdf_path_to_return = copy_results[result_index] if not isinstance(copy_results[result_index], Exception) else None
                 result_index += 1
         else:
             obj_path_to_return = None
             step_path_to_return = None
-            json_path_to_return = None
             pdf_path_to_return = None
-
-        # 🔥 Feature Enrichment Pipeline (before summary)
-        # Enrich JSON with geometric features (fillet, cylindrical, rectangular, square)
-        # ⚠️ CRITICAL: JSON Enriched is MANDATORY - no fallback to old JSON
-        json_latest_path = None
-        
-        # ============================================================
-        # PRE-CHECK: Verify JSON file copy succeeded WITH RETRY
-        # ============================================================
-        # CRITICAL: Use validate_json_file_ready() to handle race conditions
-        # This prevents failures when file is still being written to disk
-        if not json_path_to_return:
-            logger.error("[JSON_VALIDATION] ❌ JSON file copy returned None - file was not copied")
-            raise Exception(ERROR_CODES["104.5"])
-        
-        # Import validation utility with retry logic
-        from src.utils.file_utils import validate_json_file_ready
-        from pathlib import Path as PathLib  # For enrichment section
-        
-        # Validate JSON file with retry logic (waits up to 15 seconds for file to be ready)
-        # This handles race conditions in multi-user scenarios where file might not be
-        # immediately visible after asyncio.gather() completes
-        # Also validates required keys to avoid duplicate validation later
-        logger.info(f"[JSON_VALIDATION] Validating JSON file with retry logic: {json_path_to_return}")
-        validation_start = time.time()
-        loop = asyncio.get_running_loop()
-
-        is_valid, validation_error, json_data = await loop.run_in_executor(
-            None,
-            lambda: validate_json_file_ready(
-                str(json_path_to_return),
-                required_keys=['faces'],  # Ensure basic structure exists for enrichment
-                max_wait_seconds=15  # Allow up to 15 seconds for file to appear and be written
-            )
-        )
-        
-        if not is_valid:
-            logger.error(
-                f"[JSON_VALIDATION] ❌ JSON file validation failed: {validation_error}\n"
-                f"File path: {json_path_to_return}\n"
-                f"This indicates the file copy failed or file is corrupted."
-            )
-            raise Exception(ERROR_CODES["104.5"])
-        
-        logger.info(
-            f"[JSON_VALIDATION] ✅ JSON file validated successfully in {time.time() - validation_start:.2f}s: "
-            f"{json_path_to_return}"
-        )
-        
-        # ============================================================
-        # Start Enrichment Pipeline
-        # ============================================================
-        if json_path_to_return:
-            try:
-                
-                # ============================================================
-                # STEP 1: ENRICH JSON WITH FEATURES
-                # ============================================================
-                # Note: JSON file already validated above with required keys check
-                # No need for duplicate validation here
-
-                # Use cached singleton enricher — avoids dynamic import race condition
-                # when multiple users call exec_module() concurrently
-                logger.debug(f"[FEATURE_ENRICHMENT] Loading FeatureEnricher (singleton)...")
-                enricher = await _get_feature_enricher(PROJECT_ROOT)
-                
-                # Run sync CPU/I/O-heavy enrichment off the event loop so other requests can continue.
-                enrichment_timeout_seconds = int(os.getenv("FEATURE_ENRICHMENT_TIMEOUT_SECONDS", "900"))
-                enrichment_start = time.time()
-                logger.info(
-                    f"[FEATURE_ENRICHMENT] Starting enrichment in executor | "
-                    f"timeout={enrichment_timeout_seconds}s | json={json_path_to_return}"
-                )
-                json_latest_path = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        None,
-                        lambda: enricher.process_file(PathLib(json_path_to_return), json_data=json_data)
-                    ),
-                    timeout=enrichment_timeout_seconds
-                )
-                logger.info(
-                    f"[FEATURE_ENRICHMENT] Enrichment executor completed in {time.time() - enrichment_start:.2f}s"
-                )
-                
-                # 🔥 CRITICAL CHECK: Enrichment must succeed
-                if not json_latest_path or not PathLib(json_latest_path).exists():
-                    error_msg = f"[FEATURE_ENRICHMENT] ❌ Enrichment failed - no output file created at: {json_latest_path}"
-                    logger.error(error_msg)
-                    raise Exception(error_msg)
-                
-                logger.info(f"[FEATURE_ENRICHMENT] ✅ Enriched JSON: {json_latest_path}")
-            except asyncio.TimeoutError:
-                logger.error(
-                    f"[FEATURE_ENRICHMENT] ❌ TIMEOUT after "
-                    f"{os.getenv('FEATURE_ENRICHMENT_TIMEOUT_SECONDS', '900')}s: {json_path_to_return}"
-                )
-                # Timeout prevents this request from waiting forever. The work is run off the
-                # event loop, so other requests are not blocked while the timeout is enforced.
-                raise Exception(ERROR_CODES["104.4"])
-            except Exception as enrich_error:
-                logger.error(f"[FEATURE_ENRICHMENT] ❌ CRITICAL ERROR during feature enrichment: {enrich_error}")
-                logger.error(f"[FEATURE_ENRICHMENT] Traceback: {traceback.format_exc()}")
-                # 🔥 FAIL THE ENTIRE PROCESS - enrichment is mandatory
-                raise Exception(ERROR_CODES["104.4"])
 
         # Summary of generated files (always display on every conversation)
         session_info = f" [Session: {session_id}]" if session_id else ""
@@ -4449,8 +4301,6 @@ class TextToCADAgent:
             print(f"  - OBJ Model: {obj_path_to_return}")
         if pdf_path_to_return:
             print(f"  - PDF: {pdf_path_to_return}")
-        if json_latest_path:
-            print(f"  - JSON Enriched: {json_latest_path}")
         print("")
 
         # Check if required output files were created
@@ -4463,20 +4313,9 @@ class TextToCADAgent:
         if _session_log_tracker.should_log(session_id or "unknown", f"save_outputs_complete_{session_id}", max_count=1):
             logger.info("save_outputs completed successfully")
         
-        # Return paths - JSON is ALWAYS enriched version (no fallback)
-        # 🔥 CRITICAL: json_latest_path is guaranteed to exist (or error was raised above)
-        # Convert Path to string for database compatibility
-        if not json_latest_path:
-            logger.error("[FEATURE_ENRICHMENT] ❌ JSON Enriched path is None - this should never happen")
-            raise Exception(ERROR_CODES["104.5"])
-        
-        final_json_path = str(json_latest_path)
-        # Log export only once per session
-        if _session_log_tracker.should_log(session_id or "unknown", f"json_export_{session_id}", max_count=1):
-            logger.info(f"[EXPORT] ✅ Returning JSON Enriched: {final_json_path}")
         # PDF is optional — pdf_path_to_return may be None (not generated/failed to copy)
-        # without affecting STEP/OBJ/JSON, which are the required outputs.
-        return obj_path_to_return, step_path_to_return, final_json_path, pdf_path_to_return
+        # without affecting STEP/OBJ, which are the required outputs.
+        return obj_path_to_return, step_path_to_return, pdf_path_to_return
 
     async def process_request_with_progress(self, user_text, is_edit_request=False, session_id=None, request_origin='api', material_choice=None, priority: int = 0):
         import asyncio
@@ -4732,7 +4571,7 @@ class TextToCADAgent:
                                     ))
                                     while True:
                                         try:
-                                            obj_path_fp, step_path_fp, json_path_fp, pdf_path_fp = await asyncio.wait_for(
+                                            obj_path_fp, step_path_fp, pdf_path_fp = await asyncio.wait_for(
                                                 asyncio.shield(fp_export_task),
                                                 timeout=15,
                                             )
@@ -4749,7 +4588,6 @@ class TextToCADAgent:
                                     fp_result.update({
                                         "obj_path":  obj_path_fp,
                                         "step_path": step_path_fp,
-                                        "json_path": json_path_fp,
                                         "pdf_path": pdf_path_fp,
                                     })
                             except Exception as export_exc:
@@ -5536,7 +5374,7 @@ class TextToCADAgent:
                         ))
                         while True:
                             try:
-                                obj_path, step_path, json_path, pdf_path = await asyncio.wait_for(
+                                obj_path, step_path, pdf_path = await asyncio.wait_for(
                                     asyncio.shield(export_task),
                                     timeout=15,
                                 )
@@ -5556,7 +5394,6 @@ class TextToCADAgent:
                         result.update({
                             "obj_path": obj_path,
                             "step_path": step_path,
-                            "json_path": json_path,
                             "pdf_path": pdf_path,
                         })
                 except Exception as e:

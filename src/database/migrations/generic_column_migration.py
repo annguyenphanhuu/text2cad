@@ -218,17 +218,8 @@ def list_columns():
         }
 
 # Convenience functions for specific columns
-def add_json_export_column():
-    """Add json_export column specifically."""
-    return add_column(
-        column_name="json_export",
-        column_type="VARCHAR(255)",
-        nullable=True,
-        comment="Path to json export file"
-    )
-
 def remove_json_export_column():
-    """Remove json_export column specifically."""
+    """Drop the legacy json_export column (the STEP->JSON pipeline was removed)."""
     return remove_column("json_export")
 
 def add_technical_drawing_export_column():

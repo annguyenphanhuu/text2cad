@@ -93,7 +93,7 @@ async def auth_middleware(request: Request, call_next):
 
     # Allow access to viewer endpoints without a token
     if (request.url.path.startswith("/api/3d-viewer/") or
-        request.url.path.startswith("/api/json-viewer/") or
+        request.url.path.startswith("/api/step-viewer/") or
         request.url.path.startswith("/api/pdf-viewer/")):
         response = await call_next(request)
         return response

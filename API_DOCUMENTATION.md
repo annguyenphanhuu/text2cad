@@ -25,7 +25,7 @@ Tolery API allows you to generate 3D CAD models from text descriptions using AI.
 - 📄 **PDF Processing**: Extract design information from PDF files and generate CAD models
 - 🖼️ **Image Processing**: Analyze images (photos, sketches) and create 3D models from visual content
 - ✏️ **Edit Mode**: Modify models with face selection
-- 📦 **Multiple Export Formats**: OBJ, STEP, JSON, Technical Drawing
+- 📦 **Multiple Export Formats**: OBJ, STEP, Technical Drawing
 - 🔄 **Real-time Streaming**: Track generation progress
 
 ### 🌐 Base URL
@@ -83,7 +83,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/chat_to
   "session_id": "auto_session_123",
   "obj_export": "https://.../my_box.obj",
   "step_export": "https://.../my_box.step",
-  "json_export": "https://.../my_box.json",
   "technical_drawing_export": "https://.../my_box.pdf"
 }
 ```
@@ -171,7 +170,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/chat_to
   "session_id": "session_001",
   "obj_export": "https://.../box_v2_filleted.obj",
   "step_export": "https://.../box_v2_filleted.step",
-  "json_export": "https://.../box_v2_filleted.json",
   "technical_drawing_export": "https://.../box_v2_filleted.pdf",
   "manufacturing_errors": [],
   "attribute_and_transientid_map": {
@@ -384,7 +382,7 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/session
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `session_id` | string | ✅ | Session identifier |
-| `export_format` | string | ❌ | Filter by format: `obj`, `step`, `json`, `pdf` |
+| `export_format` | string | ❌ | Filter by format: `obj`, `step`, `pdf` |
 
 **Example 1: Get All Formats (PowerShell)**
 
@@ -425,12 +423,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/get
     },
     {
       "session_id": "session_410fb3_198626",
-      "export_format": "json",
-      "export_link": "https://dfm-api-preprod.tolery.io/download/outputs/json/2025-12-04/box_20251204_033415.json",
-      "export_time": "2025-12-04 02:34:16.000000"
-    },
-    {
-      "session_id": "session_410fb3_198626",
       "export_format": "pdf",
       "export_link": "https://dfm-api-preprod.tolery.io/download/outputs/pdf/2025-12-04/box_20251204_033415.pdf",
       "export_time": "2025-12-04 02:34:16.000000"
@@ -445,7 +437,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/get
 |--------|-----------|----------|
 | `obj` | .obj | 3D visualization, web viewers |
 | `step` | .step | Professional CAD software |
-| `json` | .json | Custom processing, web apps |
 | `pdf` | .pdf | Manufacturing documentation |
 
 ---
@@ -469,7 +460,7 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/get
 1. **PDF Analysis**: The system extracts text, dimensions, and technical information from the PDF
 2. **AI Processing**: OpenAI analyzes the content to understand design requirements
 3. **CAD Generation**: Automatically generates 3D CAD models based on extracted information
-4. **Export Files**: Returns download links for OBJ, STEP, JSON, and technical drawing formats
+4. **Export Files**: Returns download links for OBJ, STEP, and technical drawing formats
 
 **Example (PowerShell):**
 
@@ -499,7 +490,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/pro
   "session_id": "session_abc123",
   "obj_export": "https://.../model.obj",
   "step_export": "https://.../model.step",
-  "json_export": "https://.../model.json",
   "technical_drawing_export": "https://.../model.pdf"
 }
 ```
@@ -513,7 +503,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/pro
 | `session_id` | string | Session identifier (provided or auto-generated) |
 | `obj_export` | string (optional) | URL to download OBJ file |
 | `step_export` | string (optional) | URL to download STEP file |
-| `json_export` | string (optional) | URL to download JSON file |
 | `technical_drawing_export` | string (optional) | URL to download technical drawing PDF |
 
 **Use Cases:**
@@ -553,7 +542,7 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/pro
 1. **Image Analysis**: OpenAI Vision API analyzes the image to extract visual information
 2. **Design Recognition**: Identifies dimensions, shapes, features, and design elements
 3. **CAD Generation**: Automatically generates 3D CAD models based on visual analysis
-4. **Export Files**: Returns download links for OBJ, STEP, JSON, and technical drawing formats
+4. **Export Files**: Returns download links for OBJ, STEP, and technical drawing formats
 
 **Example (PowerShell):**
 
@@ -583,7 +572,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/pro
   "session_id": "session_xyz789",
   "obj_export": "https://.../model.obj",
   "step_export": "https://.../model.step",
-  "json_export": "https://.../model.json",
   "technical_drawing_export": "https://.../model.pdf"
 }
 ```
@@ -597,7 +585,6 @@ Invoke-RestMethod -Uri "https://dfm-api-preprod.tolery.io/api-production/api/pro
 | `session_id` | string | Session identifier (provided or auto-generated) |
 | `obj_export` | string (optional) | URL to download OBJ file |
 | `step_export` | string (optional) | URL to download STEP file |
-| `json_export` | string (optional) | URL to download JSON file |
 | `technical_drawing_export` | string (optional) | URL to download technical drawing PDF |
 
 **Use Cases:**

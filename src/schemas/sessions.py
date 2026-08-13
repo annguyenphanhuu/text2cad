@@ -37,7 +37,6 @@ class ChatResponse(BaseModel):
     session_id: str
     obj_export: Optional[str] = None
     step_export: Optional[str] = None  # Path to STEP export file
-    json_export: Optional[str] = None  # Path to JSON export file
     technical_drawing_export: Optional[str] = None  # PDF export URL — optional, may be None if not generated
     tessellated_export: Optional[Dict[str, Any]] = None
     attribute_and_transientid_map: Optional[Dict[str, Any]] = None

@@ -428,60 +428,51 @@ class ImageProcessor:
             except Exception as e:
                 logger.warning(f"Failed to delete temporary image file: {e}")
                 
-            # Add json-viewer integration if CAD generation was successful and all required files are created
+            # Add step-viewer integration if CAD generation was successful and all required files are created
             if agent_result and agent_result.get("code"):
                 try:
                     # Check for all required files (PDF output removed from FreeCAD server)
-                    json_path = agent_result.get("json_file_path") or agent_result.get("json_path")
                     step_path = agent_result.get("step_file_path") or agent_result.get("step_path")
                     obj_path = agent_result.get("obj_file_path") or agent_result.get("obj_path")
-                    
-                    if json_path and step_path and obj_path:
+
+                    if step_path and obj_path:
                         logger.info(f"All required files created successfully for session {session_id}:")
                         logger.info(f"  - STEP: {step_path}")
                         logger.info(f"  - OBJ: {obj_path}")
-                        logger.info(f"  - JSON: {json_path}")
-                        
-                        # Prepare JSON viewer URL for frontend integration
+
+                        # Prepare STEP viewer URL for frontend integration
                         # Convert absolute path to relative path for API endpoint
                         project_root = Path.cwd()
                         try:
-                            json_relative_path = Path(json_path).relative_to(project_root)
-                            json_viewer_url = f"/api/json-viewer/{json_relative_path}"
-                            
-                            # Add JSON viewer URL to agent result for frontend consumption
-                            agent_result["json_viewer_url"] = json_viewer_url
-                            agent_result["json_viewer_ready"] = True
-                            
-                            logger.info(f"JSON Viewer integration ready for session {session_id}: {json_viewer_url}")
-                            logger.info("Frontend can now automatically load 3D model using json-viewer API")
-                            
+                            step_relative_path = Path(step_path).relative_to(project_root)
+                            step_viewer_url = f"/api/step-viewer/{step_relative_path}"
                         except ValueError as e:
-                            logger.warning(f"Could not create relative path for JSON viewer: {e}")
+                            logger.warning(f"Could not create relative path for STEP viewer: {e}")
                             # Fallback: use filename only
-                            json_filename = Path(json_path).name
-                            json_viewer_url = f"/api/json-viewer/outputs/json/{json_filename}"
-                            agent_result["json_viewer_url"] = json_viewer_url
-                            agent_result["json_viewer_ready"] = True
-                            logger.info(f"JSON Viewer integration ready (fallback) for session {session_id}: {json_viewer_url}")
+                            step_viewer_url = f"/api/step-viewer/outputs/step/{Path(step_path).name}"
+
+                        # Add STEP viewer URL to agent result for frontend consumption
+                        agent_result["step_viewer_url"] = step_viewer_url
+                        agent_result["step_viewer_ready"] = True
+
+                        logger.info(f"STEP Viewer integration ready for session {session_id}: {step_viewer_url}")
                     else:
-                        logger.info(f"Not all required files were created for session {session_id}, skipping JSON viewer integration")
+                        logger.info(f"Not all required files were created for session {session_id}, skipping STEP viewer integration")
                         missing_files = []
-                        if not json_path: missing_files.append("JSON")
-                        if not step_path: missing_files.append("STEP") 
+                        if not step_path: missing_files.append("STEP")
                         if not obj_path: missing_files.append("OBJ")
                         logger.info(f"Missing files: {', '.join(missing_files)}")
-                        agent_result["json_viewer_ready"] = False
-                        
+                        agent_result["step_viewer_ready"] = False
+
                 except Exception as e:
-                    logger.error(f"Error in JSON viewer integration for session {session_id}: {e}")
-                    # Don't fail the entire process if JSON viewer integration fails
+                    logger.error(f"Error in STEP viewer integration for session {session_id}: {e}")
+                    # Don't fail the entire process if STEP viewer integration fails
                     if agent_result:
-                        agent_result["json_viewer_ready"] = False
+                        agent_result["step_viewer_ready"] = False
             else:
                 if agent_result:
-                    agent_result["json_viewer_ready"] = False
-            
+                    agent_result["step_viewer_ready"] = False
+
             return success, result, session_id, agent_result
             
         except Exception as e:

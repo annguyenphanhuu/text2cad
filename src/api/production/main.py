@@ -343,11 +343,6 @@ def create_download_url(file_path, base_url):
     elif '/cad/' in clean_path or '\\cad\\' in clean_path:
         # STEP files are actually stored in outputs/cad/ directory
         format_dir = 'cad'
-    elif '/json_latest/' in clean_path or '\\json_latest\\' in clean_path:
-        # JSON Enriched files are stored in outputs/json_latest/ directory
-        format_dir = 'json_latest'
-    elif '/json/' in clean_path or '\\json\\' in clean_path:
-        format_dir = 'json'
     elif '/dxf/' in clean_path or '\\dxf\\' in clean_path:
         format_dir = 'dxf'
     elif '/technical_drawings/' in clean_path or '\\technical_drawings\\' in clean_path:
@@ -358,8 +353,6 @@ def create_download_url(file_path, base_url):
             format_dir = 'obj'
         elif ext == 'step' or ext == 'stp':
             format_dir = 'step'
-        elif ext == 'json':
-            format_dir = 'json'
         elif ext == 'dxf':
             format_dir = 'dxf'
         elif ext == 'pdf' or ext == 'svg':
@@ -381,13 +374,12 @@ def create_download_url(file_path, base_url):
 async def get_export(session_id: str, export_format: Optional[str] = None, db: Session = Depends(get_db), token: str = Depends(verify_token)):
     """Get export files for a session.
 
-    If export_format is not provided, returns all export files available (obj, step, json, dxf).
-    If export_format is provided, returns only exports of that format (obj, step, json, or dxf).
-    
+    If export_format is not provided, returns all export files available (obj, step, dxf).
+    If export_format is provided, returns only exports of that format (obj, step, or dxf).
+
     Supported formats:
     - obj: 3D object file
     - step: STEP CAD file
-    - json: JSON data export
     - dxf: DXF CAD file
     """
     try:
@@ -404,7 +396,7 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
         if export_format:
             
             # Validate export format
-            valid_formats = ["obj", "step", "dxf", "json"]
+            valid_formats = ["obj", "step", "dxf"]
             if export_format_lower not in valid_formats:
                 raise HTTPException(
                     status_code=400, 
@@ -416,13 +408,6 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
                 query = query.filter(ChatHistory.obj_export.isnot(None))
             elif export_format_lower == "step":
                 query = query.filter(ChatHistory.step_export.isnot(None))
-            elif export_format_lower == "json":
-                # Check if json_export column exists before filtering
-                if hasattr(ChatHistory, 'json_export'):
-                    query = query.filter(ChatHistory.json_export.isnot(None))
-                else:
-                    logger.warning("json_export column not found in ChatHistory model")
-                    raise HTTPException(status_code=400, detail="JSON export not supported in this version")
             elif export_format_lower == "dxf":
                 # Only filter by dxf_export if the column exists
                 if hasattr(ChatHistory, 'dxf_export'):
@@ -435,11 +420,7 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
             filters = []
             filters.append(ChatHistory.obj_export.isnot(None))
             filters.append(ChatHistory.step_export.isnot(None))
-            
-            # Add JSON export filter
-            if hasattr(ChatHistory, 'json_export'):
-                filters.append(ChatHistory.json_export.isnot(None))
-            
+
             # Check if dxf_export attribute exists
             try:
                 if hasattr(ChatHistory, 'dxf_export'):
@@ -485,22 +466,6 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
                     export_time=entry.created_at.strftime("%Y-%m-%d %H:%M:%S.%f")
                 ))
                 
-            # Check for JSON export
-            try:
-                if hasattr(entry, 'json_export') and entry.json_export:
-                    # Only include if no specific format requested, or if json was requested
-                    if export_format_lower is None or export_format_lower == "json":
-                        export_link = create_download_url(entry.json_export, BASE_URL)
-                        export_items.append(ExportResponseItem(
-                            session_id=session_id,
-                            export_format="json",
-                            export_link=export_link,
-                            export_time=entry.created_at.strftime("%Y-%m-%d %H:%M:%S.%f")
-                        ))
-            except Exception as e:
-                # Just log the error and continue, don't break the entire endpoint
-                logger.error(f"Error processing JSON export: {e}")
-
             # Check for DXF export - carefully check if attribute exists
             try:
                 if hasattr(entry, 'dxf_export') and entry.dxf_export:

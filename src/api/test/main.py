@@ -586,14 +586,10 @@ def execute_migration(migration_name: str):
                 # Try specific add functions first
                 if hasattr(migration_module, 'add_technical_drawing_export_column'):
                     result = migration_module.add_technical_drawing_export_column()
-                elif hasattr(migration_module, 'add_json_export_column'):
-                    result = migration_module.add_json_export_column()
                 elif hasattr(migration_module, 'add_column'):
                     # Generic column addition - try to determine column name from filename
                     if 'technical_drawing' in migration_name.lower():
                         result = migration_module.add_column('technical_drawing_export', 'VARCHAR(255)', True, 'Path to technical drawing export file')
-                    elif 'json_export' in migration_name.lower():
-                        result = migration_module.add_column('json_export', 'VARCHAR(255)', True, 'Path to json export file')
                     else:
                         result = {"success": False, "error": f"Cannot determine column name from migration file: {migration_name}"}
                 elif hasattr(migration_module, 'main'):
@@ -2332,9 +2328,9 @@ async def migration_help(token: str = Depends(verify_token)):
                     "description": "Adds technical_drawing_export column for PDF file paths"
                 },
                 {
-                    "operation": "Add JSON export column",
-                    "endpoint": "POST /api/migrations/quick/add-json-export",
-                    "description": "Adds json_export column for JSON file paths"
+                    "operation": "Drop the legacy JSON export column",
+                    "endpoint": "POST /api/migrations/quick/remove-json-export",
+                    "description": "Drops json_export — the STEP->JSON pipeline was removed"
                 },
                 {
                     "operation": "List all columns",
@@ -2378,8 +2374,7 @@ async def migration_help(token: str = Depends(verify_token)):
                 "available_actions": [
                     "add-technical-drawing - Add technical_drawing_export column",
                     "remove-technical-drawing - Remove technical_drawing_export column",
-                    "add-json-export - Add json_export column",
-                    "remove-json-export - Remove json_export column",
+                    "remove-json-export - Drop the legacy json_export column",
                     "list-columns - Show all columns"
                 ]
             },

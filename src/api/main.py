@@ -148,6 +148,13 @@ async def stop_runtime_monitor_sampler():
 templates_dir = project_root / 'templates'
 static_dir = project_root / 'static'
 
+# The vendored OpenCascade build (static/vendor/occt) is instantiated with
+# WebAssembly.instantiateStreaming, which rejects anything that isn't served as
+# application/wasm. Python only learned this mapping in 3.11 and the runtime
+# image is 3.10-slim, so register it explicitly rather than relying on the
+# platform mimetypes database.
+mimetypes.add_type('application/wasm', '.wasm')
+
 try:
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     templates = Jinja2Templates(directory=str(templates_dir))
@@ -200,7 +207,6 @@ class PDFProcessingResponse(BaseModel):
     session_id: Optional[str] = None
     obj_export: Optional[str] = None
     step_export: Optional[str] = None
-    json_export: Optional[str] = None
 
 class ImageProcessingResponse(BaseModel):
     """Response model for image processing"""
@@ -209,7 +215,6 @@ class ImageProcessingResponse(BaseModel):
     session_id: Optional[str] = None
     obj_export: Optional[str] = None
     step_export: Optional[str] = None
-    json_export: Optional[str] = None
 
 
 
@@ -382,7 +387,6 @@ async def chat(
             "session_id": user_id,
             "obj_export": response.get('obj_export') or response.get('obj_path'),
             "step_export": response.get('step_export') or response.get('step_path'),
-            "json_export": response.get('json_path') or response.get('json_export'),
             "success": True
         }
 
@@ -458,8 +462,6 @@ async def process_pdf(
             logger.info(f"[PROCESS-PDF] File paths in agent_result:")
             logger.info(f"  - obj_export: {agent_result.get('obj_export')}")
             logger.info(f"  - obj_path: {agent_result.get('obj_path')}")
-            logger.info(f"  - json_export: {agent_result.get('json_export')}")
-            logger.info(f"  - json_path: {agent_result.get('json_path')}")
             logger.info(f"  - step_export: {agent_result.get('step_export')}")
             logger.info(f"  - step_path: {agent_result.get('step_path')}")
 
@@ -468,8 +470,7 @@ async def process_pdf(
                 response=analysis_result,
                 session_id=session_id,
                 obj_export=agent_result.get("obj_export") or agent_result.get("obj_path"),
-                step_export=agent_result.get("step_export") or agent_result.get("step_path"),
-                json_export=agent_result.get("json_path") or agent_result.get("json_export")
+                step_export=agent_result.get("step_export") or agent_result.get("step_path")
             )
 
         # If CAD generation is needed, use Agent Pool Manager
@@ -496,8 +497,7 @@ async def process_pdf(
                 response=response.get('message', ''),
                 session_id=session_id,
                 obj_export=response.get('obj_export') or response.get('obj_path'),
-                step_export=response.get('step_export') or response.get('step_path'),
-                json_export=response.get('json_path') or response.get('json_export')
+                step_export=response.get('step_export') or response.get('step_path')
             )
 
         except Exception as pool_error:
@@ -511,19 +511,16 @@ async def process_pdf(
                 # Extract export files from agent_result if available
                 obj_export = None
                 step_export = None
-                json_export = None
                 if agent_result:
                     obj_export = agent_result.get("obj_export") or agent_result.get("obj_path")
                     step_export = agent_result.get("step_export") or agent_result.get("step_path")
-                    json_export = agent_result.get("json_path") or agent_result.get("json_export")
 
                 return PDFProcessingResponse(
                     success=success,
                     response=message,
                     session_id=final_session_id,
                     obj_export=obj_export,
-                    step_export=step_export,
-                    json_export=json_export
+                    step_export=step_export
                 )
             except Exception as fallback_error:
                 logger.exception(f"Both pooled and legacy methods failed: {str(fallback_error)}")
@@ -565,8 +562,7 @@ async def process_image(
                 response=analysis_result,
                 session_id=session_id,
                 obj_export=agent_result.get("obj_export") or agent_result.get("obj_path"),
-                step_export=agent_result.get("step_export") or agent_result.get("step_path"),
-                json_export=agent_result.get("json_path") or agent_result.get("json_export")
+                step_export=agent_result.get("step_export") or agent_result.get("step_path")
             )
 
         if not success:
@@ -601,8 +597,7 @@ async def process_image(
                 response=response.get('message', ''),
                 session_id=session_id,
                 obj_export=response.get('obj_export') or response.get('obj_path'),
-                step_export=response.get('step_export') or response.get('step_path'),
-                json_export=response.get('json_path') or response.get('json_export')
+                step_export=response.get('step_export') or response.get('step_path')
             )
 
         except Exception as pool_error:
@@ -643,19 +638,16 @@ async def process_image(
                 # Extract export files from agent_result if available
                 obj_export = None
                 step_export = None
-                json_export = None
                 if agent_result:
                     obj_export = agent_result.get("obj_export") or agent_result.get("obj_path")
                     step_export = agent_result.get("step_export") or agent_result.get("step_path")
-                    json_export = agent_result.get("json_path") or agent_result.get("json_export")
 
                 return ImageProcessingResponse(
                     success=success,
                     response=message,
                     session_id=final_session_id,
                     obj_export=obj_export,
-                    step_export=step_export,
-                    json_export=json_export
+                    step_export=step_export
                 )
             except Exception as fallback_error:
                 logger.exception(f"Both pooled and legacy methods failed: {str(fallback_error)}")
@@ -721,8 +713,8 @@ async def process_multi_file(
             success, message, final_session_id, agent_result = await image_processor.process_uploaded_file(db, image_file, user_input, session_id)
             results["image"] = {"success": success, "message": message, "session_id": final_session_id}
             if agent_result:
-                results["image"]["json_viewer_url"] = agent_result.get("json_viewer_url")
-                results["image"]["json_viewer_ready"] = agent_result.get("json_viewer_ready")
+                results["image"]["step_viewer_url"] = agent_result.get("step_viewer_url")
+                results["image"]["step_viewer_ready"] = agent_result.get("step_viewer_ready")
             if success:
                 image_analysis = message
         except Exception as e:
@@ -1336,26 +1328,29 @@ async def serve_3d_file_head(file_path: str, request: Request):
     return await serve_3d_file(file_path, request)
 
 
-# --- JSON Viewer File Serving Endpoint ---
+# --- STEP Viewer File Serving Endpoint ---
 
-@app.get("/api/json-viewer/{file_path:path}", tags=["cad"])
-async def serve_json_file(file_path: str, request: Request):
+@app.get("/api/step-viewer/{file_path:path}", tags=["cad"])
+async def serve_step_file(file_path: str, request: Request):
     """
-    Serve a JSON file for JSON viewer (without download headers).
+    Serve a STEP file for the 3D viewer (without download headers).
+
+    The browser tessellates the B-rep itself (occt-import-js), so this endpoint
+    only has to hand back the raw .step/.stp bytes.
 
     Args:
-        file_path (str): Path to the JSON file relative to the project root
+        file_path (str): Path to the STEP file relative to the project root
         request (Request): The incoming request
 
     Returns:
-        FileResponse: The requested JSON file for viewing
+        FileResponse: The requested STEP file for viewing
 
     Raises:
         HTTPException: If the file is not found
     """
     try:
         # Log the request method and path
-        logger.debug(f"JSON viewer request: {request.method} {file_path}")
+        logger.debug(f"STEP viewer request: {request.method} {file_path}")
 
         # Handle HEAD requests
         if request.method == "HEAD":
@@ -1364,86 +1359,80 @@ async def serve_json_file(file_path: str, request: Request):
         # Normalize file path - handle various input formats
         file_path = _normalize_viewer_path(file_path, {
             'outputs': 'outputs',
-            'json': 'outputs/json'
+            'step': 'outputs/step'
         })
 
         # Construct the full file path
         project_root = Path.cwd()
         full_path = project_root / file_path
 
-        logger.debug(f"Looking for JSON file at: {full_path}")
+        logger.debug(f"Looking for STEP file at: {full_path}")
 
         # Check if the file exists
         if not full_path.exists():
             # Try to find file in recent outputs as fallback
-            if 'json' in file_path.lower() and '/' in file_path:
+            if 'step' in file_path.lower() and '/' in file_path:
                 filename = file_path.split('/')[-1]
 
-                # Check outputs/json directory
-                json_dir = project_root / 'outputs' / 'json'
-                if not json_dir.exists():
-                    logger.warning(f"outputs/json directory does not exist, creating it")
-                    json_dir.mkdir(parents=True, exist_ok=True)
+                # Check outputs/step directory
+                step_dir = project_root / 'outputs' / 'step'
+                if not step_dir.exists():
+                    logger.warning(f"outputs/step directory does not exist, creating it")
+                    step_dir.mkdir(parents=True, exist_ok=True)
 
                 # Check only the 2 most recent date directories for the file
-                for recent_dir in _recent_date_dirs(json_dir):
+                for recent_dir in _recent_date_dirs(step_dir):
                     possible_path = recent_dir / filename
                     if possible_path.exists():
-                        logger.info(f"Found JSON file in recent outputs: {possible_path}")
+                        logger.info(f"Found STEP file in recent outputs: {possible_path}")
                         full_path = possible_path
                         break
 
-                # Also check root outputs directory for JSON files
+                # Also check root outputs directory for STEP files
                 if not full_path.exists():
-                    root_json_path = project_root / 'outputs' / filename
-                    if root_json_path.exists():
-                        logger.info(f"Found JSON file in root outputs: {root_json_path}")
-                        full_path = root_json_path
+                    root_step_path = project_root / 'outputs' / filename
+                    if root_step_path.exists():
+                        logger.info(f"Found STEP file in root outputs: {root_step_path}")
+                        full_path = root_step_path
 
             # If still not found, raise 404
             if not full_path.exists():
-                raise HTTPException(status_code=404, detail=f"JSON file not found: {file_path}")
+                raise HTTPException(status_code=404, detail=f"STEP file not found: {file_path}")
 
-        # Verify it's actually a JSON file
-        if not full_path.suffix.lower() == '.json':
-            raise HTTPException(status_code=400, detail=f"File is not a JSON file: {file_path}")
+        # Verify it's actually a STEP file
+        if full_path.suffix.lower() not in ('.step', '.stp'):
+            raise HTTPException(status_code=400, detail=f"File is not a STEP file: {file_path}")
 
-        # Get the filename
-        filename = full_path.name
-
-        # Set media type for JSON
-        media_type = 'application/json'
-
-        logger.debug(f"Serving JSON file: {full_path} (media type: {media_type})")
+        logger.debug(f"Serving STEP file: {full_path}")
 
         # Return the file for viewing (not download)
         return FileResponse(
             path=str(full_path),
-            media_type=media_type,
+            media_type='application/step',
             headers=_viewer_response_headers()
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error serving JSON file {file_path}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error serving JSON file: {str(e)}")
+        logger.error(f"Error serving STEP file {file_path}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error serving STEP file: {str(e)}")
 
-# Add OPTIONS handler for the JSON viewer endpoint to support CORS preflight requests
-@app.options("/api/json-viewer/{file_path:path}", tags=["cad"])
-async def serve_json_file_options(file_path: str):
+# Add OPTIONS handler for the STEP viewer endpoint to support CORS preflight requests
+@app.options("/api/step-viewer/{file_path:path}", tags=["cad"])
+async def serve_step_file_options(file_path: str):
     """
-    Handle OPTIONS requests for the JSON viewer endpoint.
+    Handle OPTIONS requests for the STEP viewer endpoint.
     """
     return _VIEWER_PREFLIGHT_RESPONSE
 
-# Add HEAD handler for the JSON viewer endpoint
-@app.head("/api/json-viewer/{file_path:path}", tags=["cad"])
-async def serve_json_file_head(file_path: str, request: Request):
+# Add HEAD handler for the STEP viewer endpoint
+@app.head("/api/step-viewer/{file_path:path}", tags=["cad"])
+async def serve_step_file_head(file_path: str, request: Request):
     """
-    Handle HEAD requests for the JSON viewer endpoint.
+    Handle HEAD requests for the STEP viewer endpoint.
     Same as GET but only returns headers.
     """
-    return await serve_json_file(file_path, request)
+    return await serve_step_file(file_path, request)
 
 
 # --- PDF Viewer File Serving Endpoint ---

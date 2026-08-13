@@ -85,7 +85,7 @@ class AsyncFreeCADClient:
 
     async def __aenter__(self):
         """Async context manager entry"""
-        # Set timeout for file downloads (5 minutes for large JSON files)
+        # Set timeout for file downloads (5 minutes for large STEP files)
         timeout = aiohttp.ClientTimeout(total=300, connect=10, sock_read=60)
         self.session = aiohttp.ClientSession(
             timeout=timeout,
@@ -1095,7 +1095,7 @@ class AsyncFreeCADClient:
         Args:
             download_url: URL to download file from
             local_path: Local path to save file to
-            file_type: Type of file (step, obj, json, pdf)
+            file_type: Type of file (step, obj, pdf)
             filename: Original filename
             user_id: User ID for logging context
             max_retries: Maximum number of retry attempts
@@ -1121,11 +1121,6 @@ class AsyncFreeCADClient:
                     expected_size = response.headers.get('Content-Length')
                     if expected_size:
                         expected_size = int(expected_size)
-
-                    # Log for JSON files (important for debugging timeout issues)
-                    if file_type == 'json' and expected_size:
-                        size_mb = expected_size / (1024 * 1024)
-                        logger.info(f"[DOWNLOAD] {user_context}Starting {file_type.upper()} download | size={size_mb:.1f}MB | timeout=300s")
 
                     # Download file in chunks
                     downloaded_size = 0
@@ -1164,10 +1159,7 @@ class AsyncFreeCADClient:
                     except:
                         pass
 
-                # Log timeout/large file issues
                 is_timeout = any(kw in error_str for kw in ['timeout', 'timed out', 'read timed out', 'connection timeout'])
-                if is_timeout and file_type == 'json':
-                    logger.warning(f"[DOWNLOAD] {user_context}⏱️ JSON download timeout (attempt {attempt+1}/{max_retries}) | May be too large or network issue")
 
                 # If not the last attempt, wait before retrying (exponential backoff)
                 if attempt < max_retries - 1:
@@ -1195,7 +1187,7 @@ class AsyncFreeCADClient:
         - Retry logic with exponential backoff for each file download
         - Content-Length validation to detect truncated downloads
         - File integrity checks (existence, non-zero size)
-        - Validation that required CAD files (step, obj) are downloaded. JSON/PDF are optional
+        - Validation that required CAD files (step, obj) are downloaded. PDF is optional
         - Immediate error raising if any file fails after retries
 
         Args:
@@ -1320,63 +1312,18 @@ class AsyncFreeCADClient:
                     if file_type in ['step', 'obj']:
                         logger.error(f"[FILE_DOWNLOAD] user_id={user_id} | Failed to download critical file {file_type.upper()}: {e}")
                         raise
-                    # Optional files (JSON, PDF) - log and continue
+                    # Optional files (PDF) - log and continue
                     else:
                         logger.warning(f"[FILE_DOWNLOAD] user_id={user_id} | Failed to download optional file {file_type.upper()} (will continue): {e}")
 
-            # JSON can take longer to generate on the server when it's large. If it wasn't
-            # in the initial file listing, poll the result endpoint a few times before
-            # giving up, instead of failing immediately.
-            if 'json' not in downloaded_files:
-                max_json_checks = 3
-                for attempt in range(1, max_json_checks + 1):
-                    logger.info(f"[FILE_DOWNLOAD] user_id={user_id} | JSON not ready yet, re-checking ({attempt}/{max_json_checks}) in 5s...")
-                    await asyncio.sleep(5)
-                    try:
-                        retry_result = await self.get_job_result_async(user_id, auto_download=True, raw=True, expect_obj=expect_obj)
-                        json_file_info = next(
-                            (f for f in retry_result.get('files', []) if f.get('type', '').lower() == 'json'),
-                            None
-                        )
-                        if not json_file_info:
-                            continue
-
-                        filename = json_file_info.get('filename')
-                        download_url = json_file_info.get('download_url', '').strip()
-                        if not download_url and filename:
-                            download_url = f"{self.base_url}/freecad/download/{user_id}/{filename}"
-                        if 'localhost' in download_url:
-                            import re
-                            if download_url.startswith('http://localhost') or download_url.startswith('https://localhost'):
-                                download_url = re.sub(r'https?://localhost:\d+', self.base_url, download_url)
-                            else:
-                                download_url = download_url.replace('localhost', self.base_url.replace('http://', '').replace('https://', ''))
-
-                        downloaded_path = await self._download_file_with_retry(
-                            download_url=download_url,
-                            local_path=output_dir / filename,
-                            file_type='json',
-                            filename=filename,
-                            user_id=user_id,
-                            max_retries=3
-                        )
-                        downloaded_files['json'] = downloaded_path
-                        file_size = os.path.getsize(downloaded_path) if os.path.exists(downloaded_path) else 0
-                        file_sizes['json'] = file_size
-                        total_size += file_size
-                        logger.info(f"[FILE_DOWNLOAD] user_id={user_id} | ✅ JSON became available on check {attempt}/{max_json_checks}")
-                        break
-                    except Exception as e:
-                        logger.warning(f"[FILE_DOWNLOAD] user_id={user_id} | JSON check {attempt}/{max_json_checks} failed: {e}")
-
-            # Validate required FreeCAD output files. STEP and JSON are always
-            # mandatory. OBJ is mandatory too UNLESS the caller told us this job
-            # is a Perforated Sheet (expect_obj=False) -- Perforated Sheet jobs
+            # Validate required FreeCAD output files. STEP is always mandatory.
+            # OBJ is mandatory too UNLESS the caller told us this job is a
+            # Perforated Sheet (expect_obj=False) -- Perforated Sheet jobs
             # intentionally skip OBJ generation (see templates.py). Every OTHER
             # shape type keeps the old hard requirement, so a real OBJ-generation
             # bug for a non-perforated shape still fails the job loudly instead
             # of silently succeeding without it.
-            required_file_types = {'step', 'json'} | ({'obj'} if expect_obj else set())
+            required_file_types = {'step'} | ({'obj'} if expect_obj else set())
             optional_file_types = {'pdf'} | (set() if expect_obj else {'obj'})
             downloaded_types = set(downloaded_files.keys())
             missing_required = required_file_types - downloaded_types

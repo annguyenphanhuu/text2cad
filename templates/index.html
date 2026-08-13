@@ -20,10 +20,8 @@
   <link rel="stylesheet" href="/static/css/styles.css" />
   <link rel="stylesheet" href="/static/css/geometric_analysis.css" />
   <link rel="stylesheet" href="/static/css/geometry-tooltip.css" />
-  <link rel="stylesheet" href="/static/css/json_viewer.css" />
+  <link rel="stylesheet" href="/static/css/step_viewer.css" />
   <link rel="stylesheet" href="/static/css/viewer-fix.css" />
-  <!-- Face Selection Chips CSS -->
-  <link rel="stylesheet" href="/static/css/face-selection-chips.css" />
   <!-- Token Authentication CSS -->
   <link rel="stylesheet" href="/static/css/token-auth.css" />
   <!-- Download Panel CSS -->
@@ -33,7 +31,7 @@
   <!-- Token Debug Helper -->
   <script src="/static/js/token-debug.js"></script>
   <!-- Download Manager -->
-  <script src="/static/js/download-manager.js"></script>
+  <script src="/static/js/download-manager.js?v=20260813_step"></script>
   <!-- PDF Viewer Manager -->
   <script src="/static/js/pdf-viewer.js"></script>
 
@@ -431,8 +429,8 @@
       justify-content: flex-end;
     }
 
-    /* JSON viewer controls: cột dọc bên TRÁI, không bị ViewCube (bên phải) che */
-    #json-viewer-controls {
+    /* STEP viewer controls: cột dọc bên TRÁI, không bị ViewCube (bên phải) che */
+    #step-viewer-controls {
       left: 10px !important;
       right: auto !important;
       top: 10px !important;
@@ -449,16 +447,10 @@
     }
 
     /* Active state cho các nút toggle */
-    #json-viewer-controls .viewer-control-btn.btn-active {
+    #step-viewer-controls .viewer-control-btn.btn-active {
       background: rgba(59, 130, 246, 0.9) !important;
       color: white !important;
       box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
-    }
-
-    #json-viewer-controls .viewer-control-btn.btn-danger-active {
-      background: rgba(239, 68, 68, 0.85) !important;
-      color: white !important;
-      box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
     }
 
     .viewer-control-btn.select-face-active {
@@ -858,9 +850,9 @@
     }
 
     /* Fullscreen viewer adjustments */
-    :fullscreen #json-viewer-panel,
-    :-webkit-full-screen #json-viewer-panel,
-    :-moz-full-screen #json-viewer-panel {
+    :fullscreen #step-viewer-panel,
+    :-webkit-full-screen #step-viewer-panel,
+    :-moz-full-screen #step-viewer-panel {
       height: 100vh !important;
       margin: 0 !important;
       border-radius: 0 !important;
@@ -869,9 +861,9 @@
     }
 
     /* Fullscreen viewer content */
-    :fullscreen #json-viewer-panel .p-4,
-    :-webkit-full-screen #json-viewer-panel .p-4,
-    :-moz-full-screen #json-viewer-panel .p-4 {
+    :fullscreen #step-viewer-panel .p-4,
+    :-webkit-full-screen #step-viewer-panel .p-4,
+    :-moz-full-screen #step-viewer-panel .p-4 {
       flex: 1 !important;
       display: flex !important;
       flex-direction: column !important;
@@ -879,9 +871,9 @@
     }
 
     /* Fullscreen 3D viewer */
-    :fullscreen #json-viewer-3d,
-    :-webkit-full-screen #json-viewer-3d,
-    :-moz-full-screen #json-viewer-3d {
+    :fullscreen #step-viewer-3d,
+    :-webkit-full-screen #step-viewer-3d,
+    :-moz-full-screen #step-viewer-3d {
       height: 100% !important;
       border-radius: 0 !important;
     }
@@ -1305,59 +1297,59 @@
           </div>
         </div>
 
-        <!-- JSON Viewer Panel -->
-        <div id="json-viewer-panel" class="bg-white rounded-2xl shadow-lg overflow-hidden mb-6">
+        <!-- STEP Viewer Panel -->
+        <div id="step-viewer-panel" class="bg-white rounded-2xl shadow-lg overflow-hidden mb-6">
           <div class="bg-gradient-to-r from-orange-500 to-red-600 text-white p-4">
             <div class="flex items-center justify-between">
               <div class="flex items-center">
-                <i class="fas fa-file-code mr-3"></i>
+                <i class="fas fa-cube mr-3"></i>
                 <div>
-                  <h3 class="font-semibold">3D JSON Viewer</h3>
+                  <h3 class="font-semibold">3D STEP Viewer</h3>
                   <p class="text-orange-100 text-sm">
-                    FreeCAD & OnShape JSON formats
+                    STEP (AP203 / AP214) B-rep, tessellated in the browser
                   </p>
                 </div>
               </div>
               <div class="flex items-center space-x-2">
-                <button id="fullscreen-json-viewer-btn"
+                <button id="fullscreen-step-viewer-btn"
                   class="px-3 py-1 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors text-sm"
                   title="Fullscreen">
                   <i class="fas fa-expand mr-1"></i>Fullscreen
                 </button>
-                <button id="load-json-btn"
+                <button id="load-step-btn"
                   class="px-3 py-1 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors text-sm">
-                  <i class="fas fa-upload mr-1"></i>Load JSON File
+                  <i class="fas fa-upload mr-1"></i>Load STEP File
                 </button>
-                <!-- Hidden file input for JSON files -->
-                <input type="file" id="json-file-input" accept=".json" style="display: none;" />
+                <!-- Hidden file input for STEP files -->
+                <input type="file" id="step-file-input" accept=".step,.stp" style="display: none;" />
               </div>
             </div>
           </div>
 
           <div class="p-4 flex-grow flex flex-col">
 
-            <div id="json-viewer-3d-container" class="mb-4 flex-grow fullscreen-container" style="height: 320px;">
-              <div class="viewer-3d" id="json-viewer-3d">
+            <div id="step-viewer-3d-container" class="mb-4 flex-grow fullscreen-container" style="height: 320px;">
+              <div class="viewer-3d" id="step-viewer-3d">
                 <div class="viewer-placeholder">
-                  <i class="fas fa-file-code"></i>
-                  <p class="text-sm">JSON 3D model will appear here</p>
+                  <i class="fas fa-cube"></i>
+                  <p class="text-sm">STEP 3D model will appear here</p>
                   <p class="text-xs opacity-75 mt-1">
-                    Load a FreeCAD or OnShape JSON file to preview
+                    Load a .step or .stp file to preview
                   </p>
                 </div>
 
                 <!-- Loading indicator -->
-                <div id="json-viewer-loading" class="viewer-loading hidden">
+                <div id="step-viewer-loading" class="viewer-loading hidden">
                   <div class="spinner"></div>
-                  <p class="text-sm">Loading JSON model...</p>
+                  <p class="text-sm viewer-loading-text">Loading STEP model...</p>
                 </div>
 
-                <!-- JSON Viewer controls — hiện sau khi load model, vị trí LEFT -->
-                <div id="json-viewer-controls" class="viewer-controls hidden"
+                <!-- STEP Viewer controls — hiện sau khi load model, vị trí LEFT -->
+                <div id="step-viewer-controls" class="viewer-controls hidden"
                   style="left: 10px; right: auto; top: 10px; flex-direction: column; max-width: 40px; gap: 4px;">
 
                   <!-- Nhóm 1: Điều hướng ViewCube -->
-                  <button class="viewer-control-btn" id="json-toggle-viewcube-btn" title="Bật/Tắt ViewCube Navigation">
+                  <button class="viewer-control-btn" id="step-toggle-viewcube-btn" title="Bật/Tắt ViewCube Navigation">
                     <i class="fas fa-cube"></i>
                   </button>
 
@@ -1365,24 +1357,24 @@
                   <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
 
                   <!-- Nhóm 2: Camera & View -->
-                  <button class="viewer-control-btn" id="json-reset-camera-btn"
+                  <button class="viewer-control-btn" id="step-reset-camera-btn"
                     title="Reset Camera về góc nhìn mặc định">
                     <i class="fas fa-home"></i>
-                  </button>
-                  <button class="viewer-control-btn" id="json-select-face-btn"
-                    title="Chọn Face: click vào bất kỳ mặt nào trên model">
-                    <i class="fas fa-hand-pointer"></i>
                   </button>
 
                   <!-- Separator -->
                   <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
 
                   <!-- Nhóm 3: Hiển thị -->
-                  <button class="viewer-control-btn" id="json-wireframe-toggle-btn"
+                  <button class="viewer-control-btn" id="step-wireframe-toggle-btn"
                     title="Bật/Tắt Wireframe (hiển thị khung lưới)">
                     <i class="fas fa-draw-polygon"></i>
                   </button>
-                  <button class="viewer-control-btn" id="json-color-picker-btn" title="Đổi màu model">
+                  <button class="viewer-control-btn btn-active" id="step-edges-toggle-btn"
+                    title="Bật/Tắt đường biên của model">
+                    <i class="fas fa-border-all"></i>
+                  </button>
+                  <button class="viewer-control-btn" id="step-color-picker-btn" title="Đổi màu model">
                     <i class="fas fa-palette"></i>
                   </button>
 
@@ -1390,73 +1382,40 @@
                   <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
 
                   <!-- Nhóm 4: Xuất -->
-                  <button class="viewer-control-btn" id="json-screenshot-btn" title="Chụp ảnh viewer">
+                  <button class="viewer-control-btn" id="step-screenshot-btn" title="Chụp ảnh viewer">
                     <i class="fas fa-camera"></i>
                   </button>
-
-                  <!-- Separator -->
-                  <div style="height:1px; background: rgba(0,0,0,0.15); margin: 2px 4px;"></div>
-
-                  <!-- Nhóm 5: Debug -->
-                  <button class="viewer-control-btn" id="json-toggle-debug-dot-btn"
-                    title="Bật/Tắt chấm debug tâm hướng mặt">
-                    <i class="fas fa-crosshairs"></i>
-                  </button>
                 </div>
 
-                <!-- JSON Model info -->
-                <div id="json-viewer-info" class="viewer-info hidden">
-                  <div id="json-model-info-text">No JSON model loaded</div>
-                </div>
-
-                <!-- JSON Face Info Tooltip -->
-                <div id="json-face-tooltip" class="face-tooltip hidden">
-                  <div class="tooltip-header">
-                    <span class="face-id">JSON Face</span>
-                    <button class="tooltip-close" onclick="window.jsonModelViewer?.hideFaceTooltip()">×</button>
-                  </div>
-                  <div class="tooltip-body">
-                    <div>Face ID: <span class="json-face-id"></span></div>
-                    <div>Mesh: <span class="json-mesh-name"></span></div>
-                    <div>Format: <span class="json-format"></span></div>
-                  </div>
+                <!-- STEP Model info -->
+                <div id="step-viewer-info" class="viewer-info hidden">
+                  <div id="step-model-info-text">No STEP model loaded</div>
                 </div>
               </div>
-              <!-- Floating Info Panel for JSON Viewer -->
-              <div id="json-info-panel"
+              <!-- Floating Info Panel for STEP Viewer -->
+              <div id="step-info-panel"
                 class="absolute bottom-2 left-2 bg-gray-800 bg-opacity-80 text-white text-xs rounded-lg p-3 max-w-xs pointer-events-auto">
-                <h4 id="json-model-filename" class="font-bold mb-2"></h4>
+                <h4 id="step-model-filename" class="font-bold mb-2"></h4>
 
                 <!-- Model Info -->
                 <div class="grid grid-cols-2 gap-x-4 gap-y-1">
                   <div>Vertices:</div>
-                  <div id="json-vertices-count" class="font-mono text-right">-</div>
-                  <div>Faces:</div>
-                  <div id="json-faces-count" class="font-mono text-right">-</div>
-                  <div>Objects:</div>
-                  <div id="json-objects-count" class="font-mono text-right">-</div>
-                  <div>Format:</div>
-                  <div id="json-format-type" class="font-mono text-right">-</div>
+                  <div id="step-vertices-count" class="font-mono text-right">-</div>
+                  <div>Triangles:</div>
+                  <div id="step-triangles-count" class="font-mono text-right">-</div>
+                  <div>Solids:</div>
+                  <div id="step-solids-count" class="font-mono text-right">-</div>
                 </div>
 
-                <!-- Geometry Info -->
-                <div id="json-geometry-info" class="mt-3 pt-2 border-t border-gray-600 hidden">
+                <!-- Geometry Info (measured off the tessellated mesh) -->
+                <div id="step-geometry-info" class="mt-3 pt-2 border-t border-gray-600 hidden">
                   <div class="font-semibold mb-1 text-blue-300">Geometry</div>
                   <div class="grid grid-cols-2 gap-x-4 gap-y-1">
                     <div>Surface Area:</div>
-                    <div id="json-surface-area" class="font-mono text-right">-</div>
+                    <div id="step-surface-area" class="font-mono text-right">-</div>
                     <div>Volume:</div>
-                    <div id="json-volume" class="font-mono text-right">-</div>
-                    <div>Mass:</div>
-                    <div id="json-mass" class="font-mono text-right">-</div>
-                    <div>Material:</div>
-                    <div id="json-material" class="font-mono text-right capitalize">-</div>
+                    <div id="step-volume" class="font-mono text-right">-</div>
                   </div>
-                </div>
-
-                <!-- Selected Face Info -->
-                <div class="mt-3 pt-2 border-t border-gray-600">
-                  <div id="json-selected-face-info">Click on a face to select</div>
                 </div>
               </div>
             </div>
@@ -1504,18 +1463,6 @@
                 <div class="download-file-info">
                   <div class="download-file-name">OBJ File</div>
                   <div class="download-file-size" id="obj-file-size">-</div>
-                </div>
-              </button>
-
-              <!-- JSON File -->
-              <button class="download-btn json-btn disabled" id="download-json-btn" data-file-type="json">
-                <span class="download-status unavailable">Unavailable</span>
-                <div class="download-icon">
-                  <i class="fas fa-code"></i>
-                </div>
-                <div class="download-file-info">
-                  <div class="download-file-name">JSON File</div>
-                  <div class="download-file-size" id="json-file-size">-</div>
                 </div>
               </button>
 
@@ -2004,7 +1951,7 @@
 
     <!-- Main application files -->
     <!-- All complex selection algorithms removed - simple mesh selection mode active -->
-    <script src="/static/js/legacy/3d-viewer.js"></script>
+    <script src="/static/js/legacy/3d-viewer.js?v=20260813_step"></script>
     <script>
       window.getCadPriorityForSSE = function () {
         const priorityInput = document.getElementById("priority-input");
@@ -2037,7 +1984,7 @@
         window.__priorityEventSourceGuardInstalled = true;
       })();
     </script>
-    <script src="/static/js/legacy/main.js?v=export-eta-two-times-20260623"></script>
+    <script src="/static/js/legacy/main.js?v=20260813_step"></script>
     <script>
       // Debug panel functionality
       document.addEventListener("DOMContentLoaded", () => {
@@ -3016,13 +2963,9 @@
       });
     </script>
 
-    <!-- Face Selection Manager -->
-    <script src="/static/js/face-selection-manager.js"></script>
-
-    <!-- JSON 3D Viewer JavaScript -->
-    <script src="/static/js/geometric_analysis_JSON/face_analyzer.js"></script>
-    <script src="/static/js/json_viewer.js?v=20260223_debug"></script>
-    <script src="/static/js/viewer_manager.js"></script>
+    <!-- STEP 3D Viewer JavaScript -->
+    <script src="/static/js/step_viewer.js?v=20260813_step"></script>
+    <script src="/static/js/viewer_manager.js?v=20260813_step"></script>
 
 
     <!-- Progressive Info Panel -->

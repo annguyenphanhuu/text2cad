@@ -49,7 +49,6 @@ class ChatHistory(Base):
     output = Column(Text, nullable=True)  # Output (if any)
     obj_export = Column(String(255), nullable=True)  # Path to obj export file
     step_export = Column(String(255), nullable=True)  # Path to step export file
-    json_export = Column(String(255), nullable=True)  # Path to json export file
     technical_drawing_export = Column(String(255), nullable=True)  # Path to technical drawing PDF file
     lasted_code = Column(Text, nullable=True)  # Store latest generated FreeCAD code for edit mode
     response = Column(Text, nullable=True)  # Store chat response from the chatbot

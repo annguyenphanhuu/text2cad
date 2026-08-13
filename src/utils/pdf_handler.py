@@ -280,59 +280,50 @@ class PDFProcessor:
         except Exception as e:
             logger.error(get_error_message("database_error", error=str(e)))
 
-    def _trigger_json_viewer_integration(self, agent_result: dict) -> None:
+    def _trigger_step_viewer_integration(self, agent_result: dict) -> None:
         """
-        Trigger JSON viewer integration when all required files are successfully created.
-        
+        Trigger STEP viewer integration when all required files are successfully created.
+
         Args:
             agent_result: Agent processing result containing file paths
         """
         try:
             # Check if all required files are present (PDF output removed from FreeCAD server)
-            json_path = agent_result.get("json_path")
-            step_path = agent_result.get("step_path") 
+            step_path = agent_result.get("step_path")
             obj_path = agent_result.get("obj_path")
-            
-            if json_path and step_path and obj_path:
+
+            if step_path and obj_path:
                 logger.info(f"All required files created successfully:")
                 logger.info(f"  - STEP: {step_path}")
                 logger.info(f"  - OBJ: {obj_path}")
-                logger.info(f"  - JSON: {json_path}")
-                
-                # Prepare JSON viewer URL for frontend integration
+
+                # Prepare STEP viewer URL for frontend integration
                 # Convert absolute path to relative path for API endpoint
                 from pathlib import Path
                 project_root = Path.cwd()
                 try:
-                    json_relative_path = Path(json_path).relative_to(project_root)
-                    json_viewer_url = f"/api/json-viewer/{json_relative_path}"
-                    
-                    # Add JSON viewer URL to agent result for frontend consumption
-                    agent_result["json_viewer_url"] = json_viewer_url
-                    agent_result["json_viewer_ready"] = True
-                    
-                    logger.info(f"JSON Viewer integration ready: {json_viewer_url}")
-                    logger.info("Frontend can now automatically load 3D model using json-viewer API")
-                    
+                    step_relative_path = Path(step_path).relative_to(project_root)
+                    step_viewer_url = f"/api/step-viewer/{step_relative_path}"
                 except ValueError as e:
-                    logger.warning(f"Could not create relative path for JSON viewer: {e}")
+                    logger.warning(f"Could not create relative path for STEP viewer: {e}")
                     # Fallback: use filename only
-                    json_filename = Path(json_path).name
-                    json_viewer_url = f"/api/json-viewer/outputs/json/{json_filename}"
-                    agent_result["json_viewer_url"] = json_viewer_url
-                    agent_result["json_viewer_ready"] = True
-                    logger.info(f"JSON Viewer integration ready (fallback): {json_viewer_url}")
+                    step_viewer_url = f"/api/step-viewer/outputs/step/{Path(step_path).name}"
+
+                # Add STEP viewer URL to agent result for frontend consumption
+                agent_result["step_viewer_url"] = step_viewer_url
+                agent_result["step_viewer_ready"] = True
+
+                logger.info(f"STEP Viewer integration ready: {step_viewer_url}")
             else:
-                logger.info("Not all required files were created, skipping JSON viewer integration")
+                logger.info("Not all required files were created, skipping STEP viewer integration")
                 missing_files = []
-                if not json_path: missing_files.append("JSON")
-                if not step_path: missing_files.append("STEP") 
+                if not step_path: missing_files.append("STEP")
                 if not obj_path: missing_files.append("OBJ")
                 logger.info(f"Missing files: {', '.join(missing_files)}")
-                
+
         except Exception as e:
-            logger.error(f"Error in JSON viewer integration: {e}")
-            # Don't fail the entire process if JSON viewer integration fails
+            logger.error(f"Error in STEP viewer integration: {e}")
+            # Don't fail the entire process if STEP viewer integration fails
 
     async def _cleanup_openai_file(self, file_id: str) -> None:
         """
@@ -430,7 +421,7 @@ class PDFProcessor:
                     final_user_message = f"PDF Analysis: {pdf_analysis_text}\n\nCAD Generation: {cad_agent_output_dict.get('message', 'Code generated successfully.')}"
                     
                     # Trigger JSON viewer integration after successful CAD generation
-                    self._trigger_json_viewer_integration(cad_agent_output_dict)
+                    self._trigger_step_viewer_integration(cad_agent_output_dict)
                 else:
                     final_user_message = f"PDF Analysis: {pdf_analysis_text}"
                     if cad_agent_output_dict and cad_agent_output_dict.get("message"):

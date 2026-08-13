@@ -1,17 +1,17 @@
 class DualViewerManager {
     constructor() {
         this.objViewer = null;
-        this.jsonViewer = null;
+        this.stepViewer = null;
         this.isInitialized = false;
         this.loadingStates = {
             obj: { loading: false, loaded: false, error: null },
-            json: { loading: false, loaded: false, error: null }
+            step: { loading: false, loaded: false, error: null }
         };
         this.progressCallbacks = [];
         // Track currently loading paths to prevent duplicates
         this.currentLoadingPaths = {
             obj: null,
-            json: null
+            step: null
         };
     }
 
@@ -19,7 +19,7 @@ class DualViewerManager {
         if (this.isInitialized) return;
 
         this.initObjViewer();
-        this.initJsonViewer();
+        this.initStepViewer();
 
         this.isInitialized = true;
         console.log('✅ Dual viewer system initialized');
@@ -36,21 +36,19 @@ class DualViewerManager {
         }
     }
 
-    initJsonViewer() {
-        if (typeof JsonModelViewer3D !== 'undefined') {
-            try {
-                this.jsonViewer = new JsonModelViewer3D("json-viewer-3d");
-                // Expose globally for backward compatibility
-                window.jsonViewer = this.jsonViewer;
-                console.log('✅ JSON Viewer Initialized');
-            } catch (e) {
-                console.error('❌ Failed to initialize JSON Viewer:', e);
-            }
-        } else {
-            // Fallback to old initialization method
-            if (typeof initJsonViewer === 'function') {
-                initJsonViewer();
-            }
+    initStepViewer() {
+        if (typeof StepModelViewer3D === 'undefined') {
+            console.error('❌ StepModelViewer3D class not found');
+            return;
+        }
+
+        try {
+            this.stepViewer = new StepModelViewer3D("step-viewer-3d");
+            // Expose globally for the viewer's own control listeners
+            window.stepViewer = this.stepViewer;
+            console.log('✅ STEP Viewer Initialized');
+        } catch (e) {
+            console.error('❌ Failed to initialize STEP Viewer:', e);
         }
     }
 
@@ -72,7 +70,7 @@ class DualViewerManager {
 
     // Show viewer panel immediately when content is ready
     showViewerPanel(type) {
-        const panelId = type === 'obj' ? 'obj-viewer-panel' : 'json-viewer-panel';
+        const panelId = type === 'obj' ? 'obj-viewer-panel' : 'step-viewer-panel';
         const panel = document.getElementById(panelId);
         if (panel) {
             panel.classList.remove('hidden');
@@ -81,8 +79,8 @@ class DualViewerManager {
     }
 
     // Progressive loading - load each viewer independently
-    async loadModelsProgressively(objPath, jsonPath) {
-        console.log(`[DualViewerManager] Starting progressive loading: OBJ='${objPath}', JSON='${jsonPath}'`);
+    async loadModelsProgressively(objPath, stepPath) {
+        console.log(`[DualViewerManager] Starting progressive loading: OBJ='${objPath}', STEP='${stepPath}'`);
 
         const loadingTasks = [];
 
@@ -90,24 +88,24 @@ class DualViewerManager {
         // DUPLICATE PREVENTION - Skip if same file is already loading
         // ═══════════════════════════════════════════════════════════
         let skipOBJ = false;
-        let skipJSON = false;
+        let skipSTEP = false;
 
         if (objPath && this.currentLoadingPaths.obj === objPath && this.loadingStates.obj.loading) {
             console.warn(`[DualViewerManager] ⚠️ Skipping duplicate OBJ load: ${objPath} (already loading)`);
             skipOBJ = true;
         }
 
-        if (jsonPath && this.currentLoadingPaths.json === jsonPath && this.loadingStates.json.loading) {
-            console.warn(`[DualViewerManager] ⚠️ Skipping duplicate JSON load: ${jsonPath} (already loading)`);
-            skipJSON = true;
+        if (stepPath && this.currentLoadingPaths.step === stepPath && this.loadingStates.step.loading) {
+            console.warn(`[DualViewerManager] ⚠️ Skipping duplicate STEP load: ${stepPath} (already loading)`);
+            skipSTEP = true;
         }
 
         // If both are duplicates, return current states
-        if (skipOBJ && skipJSON) {
+        if (skipOBJ && skipSTEP) {
             console.log('[DualViewerManager] All models are already loading, returning current states');
             return {
                 obj: this.loadingStates.obj.loaded,
-                json: this.loadingStates.json.loaded
+                step: this.loadingStates.step.loaded
             };
         }
 
@@ -115,8 +113,8 @@ class DualViewerManager {
         if (objPath && !skipOBJ) {
             this.loadingStates.obj = { loading: false, loaded: false, error: null };
         }
-        if (jsonPath && !skipJSON) {
-            this.loadingStates.json = { loading: false, loaded: false, error: null };
+        if (stepPath && !skipSTEP) {
+            this.loadingStates.step = { loading: false, loaded: false, error: null };
         }
 
         // Load OBJ model independently
@@ -125,8 +123,7 @@ class DualViewerManager {
             this.currentLoadingPaths.obj = objPath; // Track loading path
             this.notifyProgress('obj', { ...this.loadingStates.obj, status: 'Loading OBJ model...' });
 
-            const objTask = this.loadObjModel(objPath);
-            loadingTasks.push(objTask);
+            loadingTasks.push(this.loadObjModel(objPath));
         } else if (objPath && !skipOBJ) {
             console.error('[DualViewerManager] OBJ viewer or loadOBJFile method is not available.');
             this.loadingStates.obj.error = 'OBJ viewer not available';
@@ -134,33 +131,32 @@ class DualViewerManager {
             this.notifyProgress('obj', this.loadingStates.obj);
         }
 
-        // Load JSON model independently
-        if (jsonPath && !skipJSON && this.jsonViewer && typeof this.jsonViewer.loadModel === 'function') {
-            this.loadingStates.json.loading = true;
-            this.currentLoadingPaths.json = jsonPath; // Track loading path
-            this.notifyProgress('json', { ...this.loadingStates.json, status: 'Loading JSON model...' });
+        // Load STEP model independently
+        if (stepPath && !skipSTEP && this.stepViewer && typeof this.stepViewer.loadModel === 'function') {
+            this.loadingStates.step.loading = true;
+            this.currentLoadingPaths.step = stepPath; // Track loading path
+            this.notifyProgress('step', { ...this.loadingStates.step, status: 'Loading STEP model...' });
 
-            const jsonTask = this.loadJsonModel(jsonPath);
-            loadingTasks.push(jsonTask);
-        } else if (jsonPath && !skipJSON) {
-            console.error('[DualViewerManager] JSON viewer or loadModel method is not available.');
-            this.loadingStates.json.error = 'JSON viewer not available';
-            this.currentLoadingPaths.json = null; // Clear path on error
-            this.notifyProgress('json', this.loadingStates.json);
+            loadingTasks.push(this.loadStepModel(stepPath));
+        } else if (stepPath && !skipSTEP) {
+            console.error('[DualViewerManager] STEP viewer or loadModel method is not available.');
+            this.loadingStates.step.error = 'STEP viewer not available';
+            this.currentLoadingPaths.step = null; // Clear path on error
+            this.notifyProgress('step', this.loadingStates.step);
         }
 
         if (loadingTasks.length === 0) {
             console.warn('[DualViewerManager] No models to load.');
-            return { obj: false, json: false };
+            return { obj: false, step: false };
         }
 
         // Wait for all tasks to complete (but don't block individual viewers)
-        const results = await Promise.allSettled(loadingTasks);
+        await Promise.allSettled(loadingTasks);
 
         console.log('✅ [DualViewerManager] Progressive loading completed');
         return {
             obj: this.loadingStates.obj.loaded,
-            json: this.loadingStates.json.loaded
+            step: this.loadingStates.step.loaded
         };
     }
 
@@ -171,14 +167,14 @@ class DualViewerManager {
 
             const success = await this.objViewer.loadOBJFile(objPath);
 
-            if (success) {
-                this.loadingStates.obj = { loading: false, loaded: true, error: null };
-                this.notifyProgress('obj', { ...this.loadingStates.obj, status: 'OBJ model loaded successfully' });
-                this.showViewerPanel('obj');
-                console.log('✅ [DualViewerManager] OBJ model loaded and displayed');
-            } else {
+            if (!success) {
                 throw new Error('Failed to load OBJ model');
             }
+
+            this.loadingStates.obj = { loading: false, loaded: true, error: null };
+            this.notifyProgress('obj', { ...this.loadingStates.obj, status: 'OBJ model loaded successfully' });
+            this.showViewerPanel('obj');
+            console.log('✅ [DualViewerManager] OBJ model loaded and displayed');
 
             return success;
         } catch (error) {
@@ -192,47 +188,47 @@ class DualViewerManager {
         }
     }
 
-    // Load JSON model with immediate feedback
-    async loadJsonModel(jsonPath) {
+    // Load STEP model with immediate feedback
+    async loadStepModel(stepPath) {
         try {
-            console.log(`[DualViewerManager] Loading JSON model: ${jsonPath}`);
+            console.log(`[DualViewerManager] Loading STEP model: ${stepPath}`);
 
-            const success = await this.jsonViewer.loadModel(jsonPath);
+            const success = await this.stepViewer.loadModel(stepPath);
 
-            if (success) {
-                this.loadingStates.json = { loading: false, loaded: true, error: null };
-                this.notifyProgress('json', { ...this.loadingStates.json, status: 'JSON model loaded successfully' });
-                this.showViewerPanel('json');
-                console.log('✅ [DualViewerManager] JSON model loaded and displayed');
-            } else {
-                throw new Error('Failed to load JSON model');
+            if (!success) {
+                throw new Error('Failed to load STEP model');
             }
+
+            this.loadingStates.step = { loading: false, loaded: true, error: null };
+            this.notifyProgress('step', { ...this.loadingStates.step, status: 'STEP model loaded successfully' });
+            this.showViewerPanel('step');
+            console.log('✅ [DualViewerManager] STEP model loaded and displayed');
 
             return success;
         } catch (error) {
-            console.error('❌ [DualViewerManager] Error loading JSON model:', error);
-            this.loadingStates.json = { loading: false, loaded: false, error: error.message };
-            this.notifyProgress('json', this.loadingStates.json);
+            console.error('❌ [DualViewerManager] Error loading STEP model:', error);
+            this.loadingStates.step = { loading: false, loaded: false, error: error.message };
+            this.notifyProgress('step', this.loadingStates.step);
             return false;
         } finally {
             // Clear loading path when done (success or error) - prevents duplicate loads
-            this.currentLoadingPaths.json = null;
+            this.currentLoadingPaths.step = null;
         }
     }
 
     // Legacy method for backward compatibility
-    async loadModels(objPath, jsonPath) {
+    async loadModels(objPath, stepPath) {
         console.log('[DualViewerManager] Using legacy loadModels - redirecting to progressive loading');
-        return this.loadModelsProgressively(objPath, jsonPath);
+        return this.loadModelsProgressively(objPath, stepPath);
     }
 
     // Get current loading status
     getLoadingStatus() {
         return {
             obj: { ...this.loadingStates.obj },
-            json: { ...this.loadingStates.json },
-            anyLoading: this.loadingStates.obj.loading || this.loadingStates.json.loading,
-            allLoaded: this.loadingStates.obj.loaded && this.loadingStates.json.loaded
+            step: { ...this.loadingStates.step },
+            anyLoading: this.loadingStates.obj.loading || this.loadingStates.step.loading,
+            allLoaded: this.loadingStates.obj.loaded && this.loadingStates.step.loaded
         };
     }
 }
@@ -266,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         createProgressIndicator('viewer-3d-container', 'obj');
-        createProgressIndicator('json-viewer-3d', 'json');
+        createProgressIndicator('step-viewer-3d', 'step');
     };
 
     // Set up progress callback
@@ -306,26 +302,26 @@ document.addEventListener('DOMContentLoaded', () => {
     window.handleCADGenerationResponse = function (response) {
         console.log('[handleCADGenerationResponse] Processing response:', response);
 
-        // Support both obj_path/obj_export and json_path/json_export for backward compatibility
+        // Support both obj_path/obj_export and step_path/step_export for backward compatibility
         const objPath = response.obj_path || response.obj_export;
-        const jsonPath = response.json_path || response.json_export;
+        const stepPath = response.step_path || response.step_export;
 
-        if (objPath || jsonPath) {
+        if (objPath || stepPath) {
             console.log('[handleCADGenerationResponse] 🎯 Model paths found, loading 3D viewers...');
             // Start progressive loading immediately
-            dualViewer.loadModelsProgressively(objPath, jsonPath)
+            dualViewer.loadModelsProgressively(objPath, stepPath)
                 .then(results => {
                     console.log('✅ [handleCADGenerationResponse] Progressive loading completed:', results);
 
                     // Show success notification
-                    if (results.obj || results.json) {
+                    if (results.obj || results.step) {
                         const notification = document.createElement('div');
                         notification.className = 'loading-notification success';
                         notification.innerHTML = `
                             <i class="fas fa-check-circle"></i>
                             3D models loaded successfully!
                             ${results.obj ? 'OBJ ✓' : ''}
-                            ${results.json ? 'JSON ✓' : ''}
+                            ${results.step ? 'STEP ✓' : ''}
                         `;
                         document.body.appendChild(notification);
 
@@ -351,8 +347,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn('[handleCADGenerationResponse] ⚠️ No model paths provided (unexpected):', {
                     obj_path: response.obj_path,
                     obj_export: response.obj_export,
-                    json_path: response.json_path,
-                    json_export: response.json_export,
+                    step_path: response.step_path,
+                    step_export: response.step_export,
                     chat_response_preview: response.chat_response ? response.chat_response.substring(0, 100) : 'N/A'
                 });
             }
