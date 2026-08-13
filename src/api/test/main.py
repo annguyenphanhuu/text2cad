@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
+from src.api.cors import configure_cors
 from fastapi.security import HTTPBearer
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -60,25 +60,8 @@ app = FastAPI(
 )
 
 
-# CORS middleware
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://preprodv4.tolery.io",
-        "https://origin-preprod-v4.test",
-    ],
-    allow_credentials=True,
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=[
-        "Content-Type",
-        "Accept",
-        "X-CSRF-TOKEN",
-    ],
-    expose_headers=[
-        "Content-Type",
-    ],
-)
+# CORS middleware (shared policy — see src/api/cors.py)
+configure_cors(app)
 
 # Response Models
 class SessionInfo(BaseModel):
@@ -1689,22 +1672,9 @@ async def comprehensive_diagnosis(token: str = Depends(verify_token)):
             error=error_msg
         )
 
-# Migration Response Models
-class MigrationResponse(BaseModel):
-    """Migration response model."""
-    success: bool = Field(..., description="Whether the migration was successful")
-    message: str = Field(..., description="Migration result message")
-    column_exists: bool = Field(..., description="Whether the column already existed")
-    verification_passed: bool = Field(False, description="Whether column verification passed")
-    error: Optional[str] = Field(None, description="Error message if any")
-
-class RollbackResponse(BaseModel):
-    """Rollback response model."""
-    success: bool = Field(..., description="Whether the rollback was successful")
-    message: str = Field(..., description="Rollback result message")
-    column_existed: bool = Field(..., description="Whether the column existed before rollback")
-    error: Optional[str] = Field(None, description="Error message if any")
-
+# Migration response models live with the other models near the top of the file;
+# a second RollbackResponse used to be redefined here and silently shadowed it,
+# dropping five of the nine fields rollback_migration() actually returns.
 
 
 # Import and mount PDF and Image Chat routes (endpoints 7 & 8)
@@ -2196,15 +2166,9 @@ async def export_conversations_xlsx(
         )
         
         # Build download URL
-        from dotenv import load_dotenv
-        load_dotenv()
-        DOMAIN = os.getenv("DOMAIN", "http://localhost")
-        PORT = os.getenv("PORT", "8124")
-        if DOMAIN == "http://localhost" or DOMAIN == "localhost":
-            BASE_URL = f"{DOMAIN}:{PORT}"
-        else:
-            BASE_URL = DOMAIN
-        
+        from src.utils.download_url import resolve_base_url
+        BASE_URL = resolve_base_url()
+
         # Construct the standardized URL
         download_url = f"{BASE_URL}/download/outputs/xlsx/{today_date_str}/{filename}"
         download_url = download_url.replace("//download", "/download")

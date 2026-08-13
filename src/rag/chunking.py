@@ -4,6 +4,60 @@ from pathlib import Path
 
 
 
+def _build_script_chunk(script_name: str, script_lines: list[str], file_path) -> dict | None:
+    """
+    Turn one accumulated script example into a chunk dict.
+
+    The leading comment lines (everything before the first import) are the request
+    description; a '# shape type: ...' comment supplies the shape type. Only the
+    request and shape type go into text_content for embedding — never the code.
+
+    Returns None when the script has no content worth indexing.
+    """
+    script_content = '\n'.join(script_lines).strip()
+    if not script_content:
+        return None
+
+    request_lines = []
+    shape_type = None
+
+    for script_line in script_lines:
+        line_stripped = script_line.strip()
+
+        # Stop at first import statement
+        if line_stripped.startswith('import ') or line_stripped.startswith('from '):
+            break
+
+        # Extract shape type
+        if line_stripped.startswith('#') and 'shape type:' in line_stripped.lower():
+            # Extract shape type value (full value, may contain spaces)
+            match = re.search(r'#\s*shape type:\s*(.+)', line_stripped, re.IGNORECASE)
+            if match:
+                shape_type = match.group(1).strip()
+        elif line_stripped.startswith('#'):
+            # Regular comment line (part of request description)
+            request_lines.append(line_stripped.lstrip('#').strip())
+
+    request_description = ' '.join(request_lines).strip()
+
+    text_content_parts = []
+    if request_description:
+        text_content_parts.append(request_description)
+    if shape_type:
+        text_content_parts.append(f"Shape type: {shape_type}")
+
+    text_content = '\n'.join(text_content_parts) if text_content_parts else script_name
+
+    return {
+        "script_name": script_name,
+        "request_description": request_description,  # Request only
+        "shape_type": shape_type,
+        "script_content": script_content,  # Full code for generation
+        "text_content": text_content,  # Only request + shape type for embedding
+        "source": str(file_path)
+    }
+
+
 def chunk_script_files(base_dir: str = "data/Example") -> list[dict[str, str]]:
     """
     Chunks all .txt files in a directory structure by individual script examples.
@@ -41,50 +95,9 @@ def chunk_script_files(base_dir: str = "data/Example") -> list[dict[str, str]]:
             if re.match(r'^#[Ee]xample\s+(.+)', line):
                 # If we have a previous script, save it
                 if current_name and current_script:
-                    script_content = '\n'.join(current_script).strip()
-                    if script_content:
-                        # Extract request description and shape type from script_content
-                        request_lines = []
-                        shape_type = None
-                        
-                        # Parse script_content to extract request (before imports) and shape type
-                        for script_line in current_script:
-                            line_stripped = script_line.strip()
-                            
-                            # Stop at first import statement
-                            if line_stripped.startswith('import ') or line_stripped.startswith('from '):
-                                break
-                            
-                            # Extract shape type
-                            if line_stripped.startswith('#') and 'shape type:' in line_stripped.lower():
-                                # Extract shape type value (full value, may contain spaces)
-                                match = re.search(r'#\s*shape type:\s*(.+)', line_stripped, re.IGNORECASE)
-                                if match:
-                                    shape_type = match.group(1).strip()
-                            elif line_stripped.startswith('#'):
-                                # Regular comment line (part of request description)
-                                request_lines.append(line_stripped.lstrip('#').strip())
-                        
-                        # Join request lines
-                        request_description = ' '.join(request_lines).strip()
-                        
-                        # Create text_content for embedding (ONLY request + shape type, NO code)
-                        text_content_parts = []
-                        if request_description:
-                            text_content_parts.append(request_description)
-                        if shape_type:
-                            text_content_parts.append(f"Shape type: {shape_type}")
-                        
-                        text_content = '\n'.join(text_content_parts) if text_content_parts else current_name
-                        
-                        chunks.append({
-                            "script_name": current_name,
-                            "request_description": request_description,  # NEW: Request only
-                            "shape_type": shape_type,  # NEW: Shape type
-                            "script_content": script_content,  # KEEP: Full code for generation
-                            "text_content": text_content,  # NEW: Only request + shape type for embedding
-                            "source": str(file_path)
-                        })
+                    chunk = _build_script_chunk(current_name, current_script, file_path)
+                    if chunk:
+                        chunks.append(chunk)
 
                 # Start new script
                 match = re.match(r'^#[Ee]xample\s+(.+)', line)
@@ -97,50 +110,9 @@ def chunk_script_files(base_dir: str = "data/Example") -> list[dict[str, str]]:
 
         # Don't forget the last script
         if current_name and current_script:
-            script_content = '\n'.join(current_script).strip()
-            if script_content:
-                # Extract request description and shape type from script_content
-                request_lines = []
-                shape_type = None
-                
-                # Parse script_content to extract request (before imports) and shape type
-                for line in current_script:
-                    line_stripped = line.strip()
-                    
-                    # Stop at first import statement
-                    if line_stripped.startswith('import ') or line_stripped.startswith('from '):
-                        break
-                    
-                    # Extract shape type
-                    if line_stripped.startswith('#') and 'shape type:' in line_stripped.lower():
-                        # Extract shape type value (full value, may contain spaces)
-                        match = re.search(r'#\s*shape type:\s*(.+)', line_stripped, re.IGNORECASE)
-                        if match:
-                            shape_type = match.group(1).strip()
-                    elif line_stripped.startswith('#'):
-                        # Regular comment line (part of request description)
-                        request_lines.append(line_stripped.lstrip('#').strip())
-                
-                # Join request lines
-                request_description = ' '.join(request_lines).strip()
-                
-                # Create text_content for embedding (ONLY request + shape type, NO code)
-                text_content_parts = []
-                if request_description:
-                    text_content_parts.append(request_description)
-                if shape_type:
-                    text_content_parts.append(f"Shape type: {shape_type}")
-                
-                text_content = '\n'.join(text_content_parts) if text_content_parts else current_name
-                
-                chunks.append({
-                    "script_name": current_name,
-                    "request_description": request_description,  # NEW: Request only
-                    "shape_type": shape_type,  # NEW: Shape type
-                    "script_content": script_content,  # KEEP: Full code for generation
-                    "text_content": text_content,  # NEW: Only request + shape type for embedding
-                    "source": str(file_path)
-                })
+            chunk = _build_script_chunk(current_name, current_script, file_path)
+            if chunk:
+                chunks.append(chunk)
 
         # Add chunks from this file to the overall list
         all_chunks.extend(chunks)

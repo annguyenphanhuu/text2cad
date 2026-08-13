@@ -15,7 +15,7 @@ from typing import Optional, List
 
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form, Depends
 from fastapi.security import HTTPBearer
-from fastapi.middleware.cors import CORSMiddleware
+from src.api.cors import configure_cors
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -117,24 +117,8 @@ app = FastAPI(
     }
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://preprodv4.tolery.io",
-        "https://origin-preprod-v4.test",
-    ],
-    allow_credentials=True,
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=[
-        "Content-Type",
-        "Accept",
-        "X-CSRF-TOKEN",
-    ],
-    expose_headers=[
-        "Content-Type",
-    ],
-)
+# CORS middleware (shared policy — see src/api/cors.py)
+configure_cors(app)
 
 # Add authentication middleware
 app.middleware("http")(auth_middleware)
@@ -1150,6 +1134,64 @@ async def generate_cad_stream(
 
 
 
+# ============================================================================
+# SHARED PIECES FOR THE VIEWER FILE-SERVING ENDPOINTS (3D / JSON / PDF)
+# ============================================================================
+
+# Sent on every viewer response; the viewers are fetched cross-origin by the
+# frontend and these endpoints skip token auth.
+_VIEWER_CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+}
+
+# Body returned by all three OPTIONS (CORS preflight) handlers.
+_VIEWER_PREFLIGHT_RESPONSE = {
+    "headers": {
+        **_VIEWER_CORS_HEADERS,
+        "Access-Control-Max-Age": "86400",  # 24 hours
+    }
+}
+
+
+def _viewer_response_headers(**extra) -> dict:
+    """CORS headers plus the shared 1-hour cache policy, then any extras."""
+    return {
+        **_VIEWER_CORS_HEADERS,
+        "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+        **extra,
+    }
+
+
+def _normalize_viewer_path(file_path: str, known_paths: dict) -> str:
+    """
+    Normalize a viewer path: drop a leading slash, drop the 'download/' prefix
+    that _create_download_url may add, then expand shorthand directory prefixes
+    (e.g. 'obj/x.obj' -> 'outputs/obj/x.obj').
+    """
+    if file_path.startswith('/'):
+        file_path = file_path[1:]
+
+    # Handle paths with 'download' prefix that might come from _create_download_url
+    if file_path.startswith('download/'):
+        file_path = file_path[len('download/'):]
+
+    # Normalize path to use outputs directory for common shorthands
+    for prefix, replacement in known_paths.items():
+        if file_path.startswith(f"{prefix}/"):
+            file_path = f"{replacement}/{file_path[len(prefix)+1:]}"
+
+    return file_path
+
+
+def _recent_date_dirs(base_dir: Path, limit: int = 2) -> list:
+    """The newest `limit` date-named subdirectories of base_dir, newest first."""
+    if not base_dir.exists():
+        return []
+    return sorted([d for d in base_dir.iterdir() if d.is_dir()], reverse=True)[:limit]
+
+
 # --- 3D Viewer File Serving Endpoint ---
 
 @app.get("/api/3d-viewer/{file_path:path}", tags=["cad"])
@@ -1176,23 +1218,10 @@ async def serve_3d_file(file_path: str, request: Request):
             logger.info("HEAD request detected, will return headers only")
 
         # Normalize file path - handle various input formats
-        if file_path.startswith('/'):
-            file_path = file_path[1:]
-
-        # Handle paths with 'download' prefix that might come from _create_download_url
-        if file_path.startswith('download/'):
-            file_path = file_path[len('download/'):]
-
-        # Common paths that users might try
-        known_paths = {
+        file_path = _normalize_viewer_path(file_path, {
             'outputs': 'outputs',
             'obj': 'outputs/obj'
-        }
-
-        # Normalize path to use outputs directory for common shorthands
-        for prefix, replacement in known_paths.items():
-            if file_path.startswith(f"{prefix}/"):
-                file_path = f"{replacement}/{file_path[len(prefix)+1:]}"
+        })
 
         # Construct the full file path
         project_root = Path.cwd()
@@ -1229,12 +1258,9 @@ async def serve_3d_file(file_path: str, request: Request):
                         logger.warning(f"outputs/obj directory does not exist, creating it")
                         obj_dir.mkdir(parents=True, exist_ok=True)
 
-                    # Look for recent date directories
-                    if obj_dir.exists():
-                        recent_dirs = sorted([d for d in obj_dir.iterdir() if d.is_dir()], reverse=True)
-
-                    # If we have recent directories, check them for the file
-                    for recent_dir in recent_dirs[:2]:  # Check only the 2 most recent directories
+                    # Check only the 2 most recent date directories for the file
+                    recent_dirs = _recent_date_dirs(obj_dir)
+                    for recent_dir in recent_dirs:
                         possible_path = recent_dir / filename
                         if possible_path.exists():
                             logger.info(f"Found file in recent outputs: {possible_path}")
@@ -1284,12 +1310,7 @@ async def serve_3d_file(file_path: str, request: Request):
         return FileResponse(
             path=str(full_path),
             media_type=media_type,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
-                "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
-            }
+            headers=_viewer_response_headers()
         )
     except HTTPException:
         raise
@@ -1303,14 +1324,7 @@ async def serve_3d_file_options(file_path: str):
     """
     Handle OPTIONS requests for the 3D viewer endpoint.
     """
-    return {
-        "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400",  # 24 hours
-        }
-    }
+    return _VIEWER_PREFLIGHT_RESPONSE
 
 # Add HEAD handler for the 3D viewer endpoint
 @app.head("/api/3d-viewer/{file_path:path}", tags=["cad"])
@@ -1348,23 +1362,10 @@ async def serve_json_file(file_path: str, request: Request):
             logger.info("HEAD request detected, will return headers only")
 
         # Normalize file path - handle various input formats
-        if file_path.startswith('/'):
-            file_path = file_path[1:]
-
-        # Handle paths with 'download' prefix that might come from _create_download_url
-        if file_path.startswith('download/'):
-            file_path = file_path[len('download/'):]
-
-        # Common paths that users might try for JSON files
-        known_paths = {
+        file_path = _normalize_viewer_path(file_path, {
             'outputs': 'outputs',
             'json': 'outputs/json'
-        }
-
-        # Normalize path to use outputs directory for common shorthands
-        for prefix, replacement in known_paths.items():
-            if file_path.startswith(f"{prefix}/"):
-                file_path = f"{replacement}/{file_path[len(prefix)+1:]}"
+        })
 
         # Construct the full file path
         project_root = Path.cwd()
@@ -1384,13 +1385,8 @@ async def serve_json_file(file_path: str, request: Request):
                     logger.warning(f"outputs/json directory does not exist, creating it")
                     json_dir.mkdir(parents=True, exist_ok=True)
 
-                # Look for recent date directories
-                recent_dirs = []
-                if json_dir.exists():
-                    recent_dirs = sorted([d for d in json_dir.iterdir() if d.is_dir()], reverse=True)
-
-                # If we have recent directories, check them for the file
-                for recent_dir in recent_dirs[:2]:  # Check only the 2 most recent directories
+                # Check only the 2 most recent date directories for the file
+                for recent_dir in _recent_date_dirs(json_dir):
                     possible_path = recent_dir / filename
                     if possible_path.exists():
                         logger.info(f"Found JSON file in recent outputs: {possible_path}")
@@ -1424,12 +1420,7 @@ async def serve_json_file(file_path: str, request: Request):
         return FileResponse(
             path=str(full_path),
             media_type=media_type,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
-                "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
-            }
+            headers=_viewer_response_headers()
         )
     except HTTPException:
         raise
@@ -1443,14 +1434,7 @@ async def serve_json_file_options(file_path: str):
     """
     Handle OPTIONS requests for the JSON viewer endpoint.
     """
-    return {
-        "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400",  # 24 hours
-        }
-    }
+    return _VIEWER_PREFLIGHT_RESPONSE
 
 # Add HEAD handler for the JSON viewer endpoint
 @app.head("/api/json-viewer/{file_path:path}", tags=["cad"])
@@ -1485,23 +1469,10 @@ async def serve_pdf_file(file_path: str, request: Request):
         logger.debug(f"PDF viewer request: {request.method} {file_path}")
 
         # Normalize file path - handle various input formats
-        if file_path.startswith('/'):
-            file_path = file_path[1:]
-
-        # Handle paths with 'download' prefix that might come from _create_download_url
-        if file_path.startswith('download/'):
-            file_path = file_path[len('download/'):]
-
-        # Common paths that users might try for PDF files
-        known_paths = {
+        file_path = _normalize_viewer_path(file_path, {
             'outputs': 'outputs',
             'pdf': 'outputs/pdf'
-        }
-
-        # Normalize path to use outputs directory for common shorthands
-        for prefix, replacement in known_paths.items():
-            if file_path.startswith(f"{prefix}/"):
-                file_path = f"{replacement}/{file_path[len(prefix)+1:]}"
+        })
 
         # Construct the full file path
         project_root = Path.cwd()
@@ -1525,9 +1496,10 @@ async def serve_pdf_file(file_path: str, request: Request):
             # Try to find file in recent outputs/pdf date directories as fallback
             filename = os.path.basename(file_path)
             found_fallback = None
-            if filename and pdf_root.exists():
-                recent_dirs = sorted([d for d in pdf_root.iterdir() if d.is_dir()], reverse=True)
-                for recent_dir in recent_dirs[:2]:  # Check only the 2 most recent directories
+            if filename:
+                # Check only the 2 most recent date directories, still requiring
+                # containment so the fallback cannot escape outputs/pdf either.
+                for recent_dir in _recent_date_dirs(pdf_root):
                     possible_path = (recent_dir / filename).resolve()
                     if possible_path.exists() and _is_within_pdf_root(possible_path):
                         logger.info(f"Found PDF file in recent outputs: {possible_path}")
@@ -1552,13 +1524,9 @@ async def serve_pdf_file(file_path: str, request: Request):
         return FileResponse(
             path=str(full_path),
             media_type='application/pdf',
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
-                "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
-                "Content-Disposition": f"inline; filename={filename}"
-            }
+            headers=_viewer_response_headers(
+                **{"Content-Disposition": f"inline; filename={filename}"}
+            )
         )
     except HTTPException:
         raise
@@ -1572,14 +1540,7 @@ async def serve_pdf_file_options(file_path: str):
     """
     Handle OPTIONS requests for the PDF viewer endpoint.
     """
-    return {
-        "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400",  # 24 hours
-        }
-    }
+    return _VIEWER_PREFLIGHT_RESPONSE
 
 # Add HEAD handler for the PDF viewer endpoint
 @app.head("/api/pdf-viewer/{file_path:path}", tags=["cad"])

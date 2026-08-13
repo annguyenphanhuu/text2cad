@@ -855,6 +855,87 @@ class TextToCADAgent:
             f"| ctx={len(retrieved_context)} chars"
         )
 
+    async def _run_step_planner(
+        self,
+        session_id: str,
+        unified_output_obj,
+        raw_unified_json: str,
+        retrieved_context_for_code_gen: str,
+        expanded_user_text: str,
+        empty_steps_text: str,
+    ):
+        """
+        Run the Step Planner chain and set up the turn that hands the plan back.
+
+        Invokes the planner in the session's cached language, builds the user-facing
+        message (formatting the steps locally when the LLM returns no user_message),
+        primes the confirm cache so the next turn skips the unified chain, and flags
+        the session as awaiting step-plan confirmation.
+
+        Shared by _unified_request_processor() and process_request_with_progress();
+        each caller wraps the result in its own response shape.
+
+        Args:
+            empty_steps_text: placeholder for a plan that came back with no steps.
+                The two callers word this differently, so it stays a parameter.
+
+        Returns:
+            (total_steps, user_message)
+        """
+        # Use session-cached language (set on first turn by gpt-4.1-nano)
+        from src.utils.language_utils import get_session_language, lang_code_to_name
+        _user_language = lang_code_to_name(get_session_language(session_id))
+        logger.info(f"[STEP_PLAN] Using cached language: {_user_language} | session={session_id}")
+
+        # Run Step Planner — input: description derived from user request
+        cost_tracker     = self._get_cost_tracker(session_id)
+        step_plan_result = await ainvoke_with_cost_tracking(
+            "step_planner",
+            self.step_planner_chain.ainvoke,
+            {
+                "description":      unified_output_obj.description,
+                "complexity_level": unified_output_obj.complexity_level,
+                "user_language":    _user_language,
+                "session_id":       session_id,
+            },
+            cost_tracker,
+            self.model_names['default']
+        )
+
+        _total    = step_plan_result.get("total_steps", len(step_plan_result.get("steps", [])))
+        _user_msg = step_plan_result.get("user_message", "")
+
+        logger.info(f"[STEP_PLAN] Plan generated: {_total} steps | session={session_id}")
+        print(f"[STEP_PLAN] Plan: {_total} steps → {[s.get('title','?') for s in step_plan_result.get('steps',[])]}")
+
+        # Fallback message if LLM returned empty user_message
+        if not _user_msg:
+            _lang_steps = [
+                f"  Étape {i+1} — {s.get('title', 'Step')}\n  {s.get('description', '')}"
+                for i, s in enumerate(step_plan_result.get('steps', []))
+            ]
+            _steps_text = "\n\n".join(_lang_steps) if _lang_steps else empty_steps_text
+            _user_msg = (
+                f"🔧 **Plan de construction en {_total} étape(s) :**\n\n"
+                f"{_steps_text}\n\n"
+                f"---\n"
+                f"💡 **Pour générer chaque étape :**\n"
+                f"Ouvrez une **nouvelle conversation** et copiez-collez **une étape à la fois** dans le chat.\n"
+                f"Chaque étape sera générée séparément pour plus de précision."
+            )
+            logger.warning(f"[STEP_PLAN] LLM returned empty user_message, using fallback | session={session_id}")
+
+        # Prime confirm cache so next turn (user reply) skips re-running unified chain
+        self._save_confirm_cache(
+            session_id, unified_output_obj, raw_unified_json,
+            retrieved_context_for_code_gen, expanded_user_text
+        )
+        # Set flag — next turn = GATE 1 (either YES or NO → fall through to Confirm)
+        self._update_session_state(session_id, awaiting_step_plan_confirm=True)
+
+        logger.info(f"[STEP_PLAN] ↩ Returning plan to user | session={session_id}")
+        return _total, _user_msg
+
     async def _detect_confirm_intent(self, user_text: str, session_id: str) -> str:
         """
         Classify user's confirm reply as YES or CHANGE.
@@ -2477,58 +2558,12 @@ class TextToCADAgent:
                 )
                 print(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
 
-                # Use session-cached language (set on first turn by gpt-4.1-nano)
-                from src.utils.language_utils import get_session_language, lang_code_to_name
-                _user_language = lang_code_to_name(get_session_language(session_id))
-                logger.info(f"[STEP_PLAN] Using cached language: {_user_language} | session={session_id}")
-
-                # Run Step Planner — input: description derived from user request
-                cost_tracker     = self._get_cost_tracker(session_id)
-                step_plan_result = await ainvoke_with_cost_tracking(
-                    "step_planner",
-                    self.step_planner_chain.ainvoke,
-                    {
-                        "description":      unified_output_obj.description,
-                        "complexity_level": unified_output_obj.complexity_level,
-                        "user_language":    _user_language,
-                        "session_id":       session_id,
-                    },
-                    cost_tracker,
-                    self.model_names['default']
-                )
-
-                _total    = step_plan_result.get("total_steps", len(step_plan_result.get("steps", [])))
-                _user_msg = step_plan_result.get("user_message", "")
-
-                logger.info(f"[STEP_PLAN] Plan generated: {_total} steps | session={session_id}")
-                print(f"[STEP_PLAN] Plan: {_total} steps → {[s.get('title','?') for s in step_plan_result.get('steps',[])]}")
-
-                # Fallback message if LLM returned empty user_message
-                if not _user_msg:
-                    _lang_steps = [
-                        f"  Étape {i+1} — {s.get('title', 'Step')}\n  {s.get('description', '')}"
-                        for i, s in enumerate(step_plan_result.get('steps', []))
-                    ]
-                    _steps_text = "\n\n".join(_lang_steps) if _lang_steps else "  (aucune étape générée)"
-                    _user_msg = (
-                        f"🔧 **Plan de construction en {_total} étape(s) :**\n\n"
-                        f"{_steps_text}\n\n"
-                        f"---\n"
-                        f"💡 **Pour générer chaque étape :**\n"
-                        f"Ouvrez une **nouvelle conversation** et copiez-collez **une étape à la fois** dans le chat.\n"
-                        f"Chaque étape sera générée séparément pour plus de précision."
-                    )
-                    logger.warning(f"[STEP_PLAN] LLM returned empty user_message, using fallback | session={session_id}")
-
-                # Prime confirm cache so next turn (user reply) skips re-running unified chain
-                self._save_confirm_cache(
+                _total, _user_msg = await self._run_step_planner(
                     session_id, unified_output_obj, raw_unified_json,
-                    retrieved_context_for_code_gen, expanded_user_text
+                    retrieved_context_for_code_gen, expanded_user_text,
+                    empty_steps_text="  (aucune étape générée)",
                 )
-                # Set flag — next turn = GATE 1 (either YES or NO → fall through to Confirm)
-                self._update_session_state(session_id, awaiting_step_plan_confirm=True)
 
-                logger.info(f"[STEP_PLAN] ↩ Returning plan to user | session={session_id}")
                 return {
                     "code":        None,
                     "message":     _user_msg,
@@ -5372,55 +5407,12 @@ class TextToCADAgent:
                         logger.info(f"[STEP_PLAN] 🔧 User requested step plan → Running Step Planner | session={session_id}")
                         print(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
 
-                        # Use session-cached language (set on first turn by gpt-4.1-nano)
-                        from src.utils.language_utils import get_session_language, lang_code_to_name
-                        _user_language = lang_code_to_name(get_session_language(session_id))
-                        logger.info(f"[STEP_PLAN] Using cached language: {_user_language} | session={session_id}")
-
-                        cost_tracker     = self._get_cost_tracker(session_id)
-                        step_plan_result = await ainvoke_with_cost_tracking(
-                            "step_planner",
-                            self.step_planner_chain.ainvoke,
-                            {
-                                "description":      unified_output_obj.description,
-                                "complexity_level": unified_output_obj.complexity_level,
-                                "user_language":    _user_language,
-                                "session_id":       session_id,
-                            },
-                            cost_tracker,
-                            self.model_names['default']
-                        )
-
-                        _total    = step_plan_result.get("total_steps", len(step_plan_result.get("steps", [])))
-                        _user_msg = step_plan_result.get("user_message", "")
-
-                        logger.info(f"[STEP_PLAN] Plan generated: {_total} steps | session={session_id}")
-                        print(f"[STEP_PLAN] Plan: {_total} steps → {[s.get('title','?') for s in step_plan_result.get('steps',[])]}")
-
-                        if not _user_msg:
-                            _lang_steps = [
-                                f"  Étape {i+1} — {s.get('title', 'Step')}\n  {s.get('description', '')}"
-                                for i, s in enumerate(step_plan_result.get('steps', []))
-                            ]
-                            _steps_text = "\n\n".join(_lang_steps) if _lang_steps else "  (aucune étape)"
-                            _user_msg = (
-                                f"🔧 **Plan de construction en {_total} étape(s) :**\n\n"
-                                f"{_steps_text}\n\n"
-                                f"---\n"
-                                f"💡 **Pour générer chaque étape :**\n"
-                                f"Ouvrez une **nouvelle conversation** et copiez-collez **une étape à la fois** dans le chat.\n"
-                                f"Chaque étape sera générée séparément pour plus de précision."
-                            )
-                            logger.warning(f"[STEP_PLAN] LLM returned empty user_message, using fallback | session={session_id}")
-
-                        # Prime cache + set awaiting state
-                        self._save_confirm_cache(
+                        _total, _user_msg = await self._run_step_planner(
                             session_id, unified_output_obj, raw_unified_json,
-                            retrieved_context_for_code_gen, expanded_user_text
+                            retrieved_context_for_code_gen, expanded_user_text,
+                            empty_steps_text="  (aucune étape)",
                         )
-                        self._update_session_state(session_id, awaiting_step_plan_confirm=True)
 
-                        logger.info(f"[STEP_PLAN] ↩ Returning plan to user | session={session_id}")
                         yield {"final_result": {
                             "code":        None,
                             "message":     _user_msg,

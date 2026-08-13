@@ -596,19 +596,9 @@ def _create_download_url(file_path: str) -> str:
     import os
     from pathlib import Path
 
-   
+    from src.utils.download_url import resolve_base_url
 
-    # Get BASE_URL from environment or use default
-    PORT = os.getenv("PORT", "8124")
-    DOMAIN = os.getenv("DOMAIN", "http://localhost")
-
-    # Only include port in BASE_URL if DOMAIN is localhost
-    if DOMAIN == "http://localhost" or DOMAIN == "localhost":
-        BASE_URL = f"{DOMAIN}:{PORT}"
-    else:
-        BASE_URL = DOMAIN
-
-   
+    BASE_URL = resolve_base_url()
 
     # Convert to relative path first
     project_root = Path.cwd()

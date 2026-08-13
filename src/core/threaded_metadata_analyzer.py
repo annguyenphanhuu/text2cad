@@ -1132,7 +1132,51 @@ Return JSON only, no explanation."""
         }
         
         logger.debug(f"[_enrich_bending] Enriched: outer_radius={outer_radius}, bend_count={bending.get('bend_count', 1)}")
-    
+
+    @staticmethod
+    def _find_loop_body_span(code_content: str, loop_header_end: int):
+        """
+        Locate the body of the loop whose header ends at loop_header_end.
+
+        The body runs from the line after the header up to the next line whose
+        indentation is not greater than the body's first line (blank lines are
+        skipped, and the scan is capped at 2000 characters).
+
+        Returns:
+            (body_start, body_end) character offsets, or None if the header is
+            not followed by a newline.
+        """
+        loop_body_start = code_content.find('\n', loop_header_end) + 1
+        if loop_body_start == 0:
+            return None
+
+        loop_body_end = loop_body_start
+        indent_level = None
+        for i in range(loop_body_start, min(loop_body_start + 2000, len(code_content))):
+            if code_content[i] == '\n':
+                line_start = i + 1
+                if line_start >= len(code_content):
+                    loop_body_end = len(code_content)
+                    break
+                line_end = code_content.find('\n', line_start)
+                if line_end == -1:
+                    line_end = len(code_content)
+                line = code_content[line_start:line_end]
+
+                if not line.strip():
+                    continue
+
+                leading = len(line) - len(line.lstrip())
+                if indent_level is None:
+                    indent_level = leading
+
+                # Same or less indentation on a non-blank line ends the body
+                if leading <= indent_level and line.strip() and not (line.startswith(' ') or line.startswith('\t')):
+                    loop_body_end = i
+                    break
+
+        return loop_body_start, loop_body_end
+
     def _analyze_threaded_with_regex(self, code_content: str) -> List[Dict[str, Any]]:
         """
         Detect threaded holes by finding Part.makeThreaded() calls.
@@ -1265,37 +1309,11 @@ Return JSON only, no explanation."""
                 loop_header_pattern1 = r'for\s*\(([^,]+),\s*([^)]+)\)\s+in\s+([a-zA-Z_]\w*)\s*:'
                 
                 for loop_match in re.finditer(loop_header_pattern1, context_before):
-                    loop_start = loop_match.end()
-                    loop_body_start = code_content.find('\n', loop_start) + 1
-                    if loop_body_start == 0:
+                    span = self._find_loop_body_span(code_content, loop_match.end())
+                    if span is None:
                         continue
-                    
-                    # Find loop body end
-                    loop_body_end = loop_body_start
-                    indent_level = None
-                    for i in range(loop_body_start, min(loop_body_start + 2000, len(code_content))):
-                        if code_content[i] == '\n':
-                            line_start = i + 1
-                            if line_start >= len(code_content):
-                                loop_body_end = len(code_content)
-                                break
-                            line_end = code_content.find('\n', line_start)
-                            if line_end == -1:
-                                line_end = len(code_content)
-                            line = code_content[line_start:line_end]
-                            
-                            if not line.strip():
-                                continue
-                            
-                            leading = len(line) - len(line.lstrip())
-                            if indent_level is None:
-                                indent_level = leading
-                            
-                            if leading <= indent_level and line.strip() and not (line.startswith(' ') or line.startswith('\t')):
-                                loop_body_end = i
-                                break
-                    
-                    if loop_body_start <= call_pos <= loop_body_end:
+
+                    if span[0] <= call_pos <= span[1]:
                         is_in_loop = True
                         logger.debug(f"[ThreadedAnalyzer] Skipping call in loop body (line {line_num})")
                         break
@@ -1611,81 +1629,30 @@ Return JSON only, no explanation."""
                 # Pattern 2: for i in range(N):
                 loop_header_pattern2 = r'for\s+(\w+)\s+in\s+range\s*\(\s*([^)]+)\s*\)\s*:'
                 
-                # Check each loop header to see if this call is in its body
+                # Check each loop header to see if this call is in its body.
+                # NOTE: the `continue` below advances this inner header scan, not the
+                # outer per-call loop, so a call inside a loop body is logged but not
+                # actually skipped here. Behaviour preserved as-is on purpose — see the
+                # T1 notes; changing it would alter which threaded holes get reported.
                 for loop_match in re.finditer(loop_header_pattern1, context_before):
-                    loop_start = loop_match.end()
-                    # Find the end of this loop body (next unindented line)
-                    loop_body_start = code_content.find('\n', loop_start) + 1
-                    if loop_body_start == 0:
+                    span = self._find_loop_body_span(code_content, loop_match.end())
+                    if span is None:
                         continue
-                    
-                    # Find end of loop body - look for next line with same or less indentation
-                    loop_body_end = loop_body_start
-                    indent_level = None
-                    for i in range(loop_body_start, min(loop_body_start + 2000, len(code_content))):
-                        if code_content[i] == '\n':
-                            line_start = i + 1
-                            if line_start >= len(code_content):
-                                loop_body_end = len(code_content)
-                                break
-                            line_end = code_content.find('\n', line_start)
-                            if line_end == -1:
-                                line_end = len(code_content)
-                            line = code_content[line_start:line_end]
-                            
-                            if not line.strip():
-                                continue
-                            
-                            leading = len(line) - len(line.lstrip())
-                            if indent_level is None:
-                                indent_level = leading
-                            
-                            # If line has same or less indentation and is not empty, we've reached end of loop
-                            if leading <= indent_level and line.strip() and not (line.startswith(' ') or line.startswith('\t')):
-                                loop_body_end = i
-                                break
-                    
-                    # Check if match_pos is within this loop body
-                    # match_pos is the character position, loop_body_start/end are also character positions
-                    if loop_body_start <= match_pos <= loop_body_end:
-                        logger.debug(f"[ThreadedAnalyzer] Skipping makeThreaded call in loop body (char pos {match_pos} is in range {loop_body_start}-{loop_body_end})")
+
+                    if span[0] <= match_pos <= span[1]:
+                        logger.debug(f"[ThreadedAnalyzer] Skipping makeThreaded call in loop body (char pos {match_pos} is in range {span[0]}-{span[1]})")
                         continue
-                
-                # Check range loops too
+
+                # Check range loops too (same caveat about `continue` as above)
                 for loop_match in re.finditer(loop_header_pattern2, context_before):
-                    loop_start = loop_match.end()
-                    loop_body_start = code_content.find('\n', loop_start) + 1
-                    if loop_body_start == 0:
+                    span = self._find_loop_body_span(code_content, loop_match.end())
+                    if span is None:
                         continue
-                    
-                    loop_body_end = loop_body_start
-                    indent_level = None
-                    for i in range(loop_body_start, min(loop_body_start + 2000, len(code_content))):
-                        if code_content[i] == '\n':
-                            line_start = i + 1
-                            if line_start >= len(code_content):
-                                loop_body_end = len(code_content)
-                                break
-                            line_end = code_content.find('\n', line_start)
-                            if line_end == -1:
-                                line_end = len(code_content)
-                            line = code_content[line_start:line_end]
-                            
-                            if not line.strip():
-                                continue
-                            
-                            leading = len(line) - len(line.lstrip())
-                            if indent_level is None:
-                                indent_level = leading
-                            
-                            if leading <= indent_level and line.strip() and not (line.startswith(' ') or line.startswith('\t')):
-                                loop_body_end = i
-                                break
-                    
-                    if loop_body_start <= match_pos <= loop_body_end:
-                        logger.debug(f"[ThreadedAnalyzer] Skipping makeThreaded call in range loop body (pos {match_pos} is in range {loop_body_start}-{loop_body_end})")
+
+                    if span[0] <= match_pos <= span[1]:
+                        logger.debug(f"[ThreadedAnalyzer] Skipping makeThreaded call in range loop body (pos {match_pos} is in range {span[0]}-{span[1]})")
                         continue
-                
+
                 radius_expr, depth_expr, pos_expr, dir_expr = match.groups()
                 
                 # Evaluate expressions
@@ -2135,36 +2102,11 @@ Return JSON only, no explanation."""
                 i_var = i_var.strip()
                 
                 # Find the loop body
-                loop_start = range_match.end()
-                loop_body_start = code_content.find('\n', loop_start) + 1
-                if loop_body_start == 0:
+                span = self._find_loop_body_span(code_content, range_match.end())
+                if span is None:
                     continue
-                
-                # Find end of loop body
-                loop_body_end = loop_body_start
-                indent_level = None
-                for i in range(loop_body_start, min(loop_body_start + 2000, len(code_content))):
-                    if code_content[i] == '\n':
-                        line_start = i + 1
-                        if line_start >= len(code_content):
-                            loop_body_end = len(code_content)
-                            break
-                        line_end = code_content.find('\n', line_start)
-                        if line_end == -1:
-                            line_end = len(code_content)
-                        line = code_content[line_start:line_end]
-                        
-                        if not line.strip():
-                            continue
-                        
-                        leading = len(line) - len(line.lstrip())
-                        if indent_level is None:
-                            indent_level = leading
-                        
-                        if leading <= indent_level and line.strip() and not (line.startswith(' ') or line.startswith('\t')):
-                            loop_body_end = i
-                            break
-                
+                loop_body_start, loop_body_end = span
+
                 loop_body = code_content[loop_body_start:loop_body_end]
                 
                 # Check if loop body contains Part.makeThreaded
@@ -4241,82 +4183,6 @@ Return JSON only, no explanation."""
             pass
         
         return 0.0
-    
-    def _safe_eval_with_math(self, expr: str, code_content: str, local_vars: Dict[str, Any] = None) -> float:
-        """
-        Safely evaluate expressions with math functions support.
-        
-        Args:
-            expr: Expression to evaluate (may contain math.sin, math.cos, etc.)
-            code_content: Full code content for variable lookup
-            local_vars: Dictionary of local variables (e.g., {i: 0})
-            
-        Returns:
-            Evaluated float value
-        """
-        import math
-        
-        if local_vars is None:
-            local_vars = {}
-        
-        expr = expr.strip()
-        
-        # Direct number
-        try:
-            return float(expr)
-        except:
-            pass
-        
-        # Try to resolve variables from code_content first
-        # Replace variables in expression with their values
-        eval_expr = expr
-        
-        # First, resolve variables from code_content
-        variables = re.findall(r'[a-zA-Z_]\w*(?:\.[xyz])?', expr)
-        for var in variables:
-            # Skip Python keywords and functions
-            if var in ['App', 'Vector', 'Part', 'min', 'max', 'abs', 'round', 'math', 'sin', 'cos', 'radians']:
-                continue
-            
-            # Skip if it's a math function call (e.g., math.sin)
-            if '.' in var:
-                continue
-            
-            # Get variable value from code_content
-            var_value = self._safe_eval(var, code_content)
-            if var_value != 0.0 or var in local_vars:
-                # Replace in expression
-                eval_expr = re.sub(rf'\b{re.escape(var)}\b', str(var_value), eval_expr)
-        
-        # Apply local_vars (overrides code_content values)
-        for var_name, var_value in local_vars.items():
-            eval_expr = re.sub(rf'\b{re.escape(var_name)}\b', str(var_value), eval_expr)
-        
-        # Create safe evaluation context with math functions
-        safe_dict = {
-            'math': math,
-            'sin': math.sin,
-            'cos': math.cos,
-            'tan': math.tan,
-            'radians': math.radians,
-            'degrees': math.degrees,
-            'pi': math.pi,
-            'e': math.e,
-            'sqrt': math.sqrt,
-            'pow': math.pow,
-            'abs': abs,
-            'round': round,
-            'min': min,
-            'max': max
-        }
-        
-        try:
-            # Evaluate the expression
-            result = eval(eval_expr, {"__builtins__": {}}, safe_dict)
-            return float(result)
-        except Exception as e:
-            logger.debug(f"[_safe_eval_with_math] Failed to eval '{expr}': {e}")
-            return 0.0
     
     def _safe_eval_with_math(self, expr: str, code_content: str, local_vars: Dict[str, Any] = None) -> float:
         """

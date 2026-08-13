@@ -151,16 +151,16 @@ def init_db():
         return
     Base.metadata.create_all(bind=engine)
 
-# Database dependency for FastAPI
-def get_db():
+def _session_scope():
     """
-    Dependency function for FastAPI to get database session.
-    Automatically handles session lifecycle with retry logic.
+    Open a session with connection retry, yield it, then roll back on error and
+    always close. Shared by get_db() and get_db_session(); `yield from` forwards
+    throw()/close() in, so both callers see the same error handling.
     """
     @retry_db_operation(max_retries=3, delay=1.0)
     def _get_session():
         return SessionLocal()
-    
+
     db = None
     try:
         db = _get_session()
@@ -182,6 +182,14 @@ def get_db():
                 db.close()
             except Exception as close_error:
                 logger.error(f"Error closing database session: {close_error}")
+
+# Database dependency for FastAPI
+def get_db():
+    """
+    Dependency function for FastAPI to get database session.
+    Automatically handles session lifecycle with retry logic.
+    """
+    yield from _session_scope()
 
 # Context manager for manual database sessions
 @contextmanager
@@ -196,28 +204,4 @@ def get_db_session():
             result = db.query(Model).all()
         # Connection is automatically closed here
     """
-    @retry_db_operation(max_retries=3, delay=1.0)
-    def _get_session():
-        return SessionLocal()
-    
-    db = None
-    try:
-        db = _get_session()
-        yield db
-    except DatabaseRetryError as e:
-        logger.error(f"Failed to establish database connection after retries: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Database session error: {e}")
-        if db:
-            try:
-                db.rollback()
-            except Exception as rollback_error:
-                logger.error(f"Error during rollback: {rollback_error}")
-        raise
-    finally:
-        if db:
-            try:
-                db.close()
-            except Exception as close_error:
-                logger.error(f"Error closing database session: {close_error}")
+    yield from _session_scope()

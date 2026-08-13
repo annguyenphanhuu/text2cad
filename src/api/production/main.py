@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
+from src.api.cors import configure_cors
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -47,24 +47,8 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://preprodv4.tolery.io",
-        "https://origin-preprod-v4.test",
-    ],
-    allow_credentials=True,
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=[
-        "Content-Type",
-        "Accept",
-        "X-CSRF-TOKEN",
-    ],
-    expose_headers=[
-        "Content-Type",
-    ],
-)
+# CORS middleware (shared policy — see src/api/cors.py)
+configure_cors(app)
 
 # Note: Static files and templates are handled by main app, not sub-apps
 
@@ -407,23 +391,9 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
     - dxf: DXF CAD file
     """
     try:
-        # Get domain from environment variables
-        import os
-        from dotenv import load_dotenv
-        
-        # Load environment variables
-        load_dotenv()
-        
-        # Get domain from .env file or use default
-        DOMAIN = os.getenv("DOMAIN", "http://localhost")
-        PORT = os.getenv("PORT", "8124")
-        
-        # Only include port in BASE_URL if DOMAIN is localhost
-        if DOMAIN == "http://localhost" or DOMAIN == "localhost":
-            BASE_URL = f"{DOMAIN}:{PORT}"
-        else:
-            BASE_URL = DOMAIN
-            
+        from src.utils.download_url import resolve_base_url
+        BASE_URL = resolve_base_url()
+
         # Base query for the session
         query = db.query(ChatHistory).filter(ChatHistory.session_id == session_id)
         
@@ -568,21 +538,8 @@ async def get_chat_history(session_id: str, db: Session = Depends(get_db), token
 
     try:
         # Get domain for URL construction
-        import os
-        from dotenv import load_dotenv
-        
-        # Load environment variables
-        load_dotenv()
-        
-        # Get domain from .env file or use default
-        DOMAIN = os.getenv("DOMAIN", "http://localhost")
-        PORT = os.getenv("PORT", "8124")
-        
-        # Only include port in BASE_URL if DOMAIN is localhost
-        if DOMAIN == "http://localhost" or DOMAIN == "localhost":
-            BASE_URL = f"{DOMAIN}:{PORT}"
-        else:
-            BASE_URL = DOMAIN
+        from src.utils.download_url import resolve_base_url
+        BASE_URL = resolve_base_url()
 
         # Query chat history for the session
         chat_entries = db.query(ChatHistory).filter(
