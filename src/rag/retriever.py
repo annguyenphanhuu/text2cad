@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable, NamedTuple, Sequence, Tuple
 from langchain_core.documents import Document # Import Document
 from src.utils.rag_context_logger import log_rag_context_retrieval
 import time
@@ -211,6 +211,14 @@ _RULES_TO_INFO_CLASS_MAP: dict = {
     "Manufacturing_Processes/Machining/Engraving":       "Engraving",
 }
 
+# Normalised shape_type → info.json class_name. Lets a detected shape inject its
+# info class even when the raw query lacks the English keywords the rules
+# classifier matches on (e.g. the user wrote French/Vietnamese).
+_SHAPE_TYPE_TO_INFO_CLASS: dict = {
+    "perforated sheet": "Perforated_Sheet",
+    "perforated_sheet": "Perforated_Sheet",
+}
+
 # For bent-shape requests, suppress Bending info because the code-gen template
 # for those shapes already handles bending natively — the info adds no value
 # and only bloats the context window.
@@ -254,11 +262,7 @@ def classify_user_query_for_info(user_query: str, detected_shape_type: Optional[
     # guarantee that its corresponding info class is included — even if the
     # raw query text lacks the English keywords that classify_user_query_for_rules
     # relies on (e.g. user wrote in French/Vietnamese without "perforated").
-    # _SHAPE_TYPE_TO_INFO_CLASS maps normalised shape_type → info class_name.
-    _SHAPE_TYPE_TO_INFO_CLASS: dict = {
-        "perforated sheet": "Perforated_Sheet",
-        "perforated_sheet": "Perforated_Sheet",
-    }
+    # _SHAPE_TYPE_TO_INFO_CLASS (module level) maps normalised shape_type → info class_name.
     if detected_shape_type:
         shape_key = detected_shape_type.lower().replace(" ", "_")
         # Try both "perforated sheet" and "perforated_sheet" keys
@@ -380,127 +384,371 @@ def initialize_retriever(force_reload: bool = False):
 
     logger.debug("RAG retriever initialization complete.")
 
-def search_rules_by_class(class_name: str, faiss_index_instance, query: str = "", k: int = 5) -> list[dict]:
+# ═══════════════════════════════════════════════════════════════════════════
+# Shared class-scoped metadata retrieval — used by BOTH the rules flow and the
+# info flow.
+# ───────────────────────────────────────────────────────────────────────────
+# Rules and info entries live in the SAME metadata store, are selected by the
+# SAME class-matching rules, and are wrapped into Documents the same way. They
+# differ ONLY in:
+#   (a) which store entries belong to them (rules.json vs info.json / type=info)
+#   (b) which fields the page_content renders
+#   (c) the metadata each Document carries
+# All three differences are declared in the _DocKind values below, so the
+# matching / iteration / logging logic exists exactly once.
+#
+# IMPORTANT: the rendered page_content and metadata are kept byte-identical to
+# the previous hand-written blocks — rules feed the unified/DFM chain while info
+# feeds the code-generation chain, and both prompts were tuned on these exact
+# texts. Changing a label here changes what those chains see.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _normalize_description(value: Any) -> str:
+    """`description` may be a plain string, a list of lines, or something else."""
+    if isinstance(value, list):
+        return '\n'.join(value) if value else ''
+    if not isinstance(value, str):
+        return str(value) if value else ''
+    return value
+
+
+def _field(key: str, default: str = '') -> Callable[[dict], str]:
+    """Render entry[key] exactly like the previous f-string did (missing → default)."""
+    return lambda entry: f"{entry.get(key, default)}"
+
+
+def _joined(key: str) -> Callable[[dict], str]:
+    """Render a list field as a comma-separated string (None-safe)."""
+    return lambda entry: ', '.join(entry.get(key) or [])
+
+
+class _DocKind(NamedTuple):
+    """Everything that differs between the rules flow and the info flow."""
+    log_tag: str                                      # log prefix, e.g. "RAG_RULES"
+    label: str                                        # noun used in log lines
+    id_field: str                                     # entry id logged per hit
+    belongs: Callable[[dict], bool]                   # store entry → is it this kind?
+    header: str                                       # first page_content line
+    fields: Tuple[Tuple[str, Callable[[dict], str]], ...]  # ("Label", renderer) pairs
+    metadata: Callable[[dict, str], Dict[str, Any]]   # (entry, class_name) → metadata
+
+
+RULES_DOC_KIND = _DocKind(
+    log_tag="RAG_RULES",
+    label="rules",
+    id_field="rule_id",
+    belongs=lambda entry: entry.get('source', '').endswith('rules.json'),
+    header="Manufacturing Rule for {class_name}:",
+    fields=(
+        ("Rule ID",         _field('rule_id', 'Unknown')),
+        ("Title",           _field('title', 'Unknown Rule')),
+        ("Description",     lambda e: _normalize_description(e.get('description', ''))),
+        ("Rule",            _field('rule')),
+        ("Validation Code", _field('validation_code')),
+        ("Severity",        lambda e: f"{e.get('severity', 'info')}".upper()),
+        ("Error Message",   _field('error_message')),
+        ("Parameters",      _joined('parameters')),
+    ),
+    metadata=lambda entry, class_name: {
+        "source": "manufacturing_rules",
+        "class": class_name,
+        "rule_id": entry.get('rule_id', ''),
+        "category": entry.get('category', ''),
+        "severity": entry.get('severity', 'info'),
+    },
+)
+
+INFO_DOC_KIND = _DocKind(
+    log_tag="RAG_INFO",
+    label="info",
+    id_field="info_id",
+    belongs=lambda entry: entry.get('type', '') == 'info' or entry.get('source', '').endswith('info.json'),
+    header="Info for {class_name}:",
+    fields=(
+        ("Info ID",     _field('info_id', 'Unknown')),
+        ("Title",       _field('title', 'Unknown Info')),
+        ("Description", lambda e: _normalize_description(e.get('description', ''))),
+        ("Rule",        _field('rule')),
+        ("Parameters",  _joined('parameters')),
+    ),
+    metadata=lambda entry, class_name: {
+        "source": entry.get('source', ''),
+        "type": "info",
+        "class": class_name,
+        "info_id": entry.get('info_id', ''),
+        "category": entry.get('category', ''),
+    },
+)
+
+
+def _class_matches(entry_class: str, class_name: str) -> bool:
     """
-    Search for rules specific to a class.
-    
+    Flexible class matching, shared by the rules and info lookups.
+
+    IMPORTANT: Guard entry_class != '' before the last condition.
+    In Python, "" in "anything" is always True, which would cause every
+    document with an empty/missing class_name to match every class lookup.
+    This was the root cause of Tubes info leaking into L-Bracket requests.
+    """
+    result_class = entry_class.lower()
+    class_lower = class_name.lower()
+    class_short_name = class_name.split('/')[-1].lower()  # e.g. "Bending" from "Manufacturing_Processes/Forming/Bending"
+    # Normalize: treat spaces and underscores as equivalent for matching
+    result_class_norm = result_class.replace(' ', '_')
+    class_short_norm = class_short_name.replace(' ', '_')
+
+    return (
+        result_class == class_lower or
+        result_class == class_name.replace('/', '_').lower() or
+        result_class == class_short_name or
+        result_class_norm == class_short_norm or          # ← "laser cut" == "laser_cutting" after normalize
+        class_short_norm in result_class_norm or
+        (result_class != '' and result_class in class_lower)  # ← guard: prevent empty-string false positive
+    )
+
+
+def _search_by_class(class_name: str, faiss_index_instance, kind: _DocKind, k: int) -> list[dict]:
+    """
+    Find up to `k` metadata entries of `kind` belonging to `class_name`.
+
     NOTE: Uses DIRECT METADATA FILTERING instead of FAISS semantic search
-    because semantic search returns examples instead of rules (same embeddings for similar content).
+    because semantic search returns examples instead of rules/info
+    (same embeddings for similar content).
     """
     if not faiss_index_instance:
-        logger.warning("[RAG] FAISS index not available for rules search")
+        logger.warning(f"[RAG] FAISS index not available for {kind.label} search")
         return []
 
     # Import metadata store directly
     from src.rag.vector_store import METADATA_STORE
-    
-    # DIRECT METADATA SEARCH: Filter by source containing 'rules.json'
-    class_short_name = class_name.split('/')[-1].lower()  # e.g., "Bending" from "Manufacturing_Processes/Forming/Bending"
-    
-    logger.info(f"[RAG_RULES] Searching rules for class: {class_name} (short: {class_short_name})")
-    logger.info(f"[RAG_RULES] Total metadata entries: {len(METADATA_STORE)}")
-    
-    class_rules = []
-    for doc in METADATA_STORE:
-        source = doc.get('source', '')
-        
-        # Only process rules.json files
-        if not source.endswith('rules.json'):
+
+    logger.info(f"[{kind.log_tag}] Searching {kind.label} for class: {class_name} "
+                f"(short: {class_name.split('/')[-1].lower()})")
+    logger.debug(f"[{kind.log_tag}] Total metadata entries: {len(METADATA_STORE)}")
+
+    matches = []
+    for entry in METADATA_STORE:
+        if not kind.belongs(entry):
             continue
-        
-        result_class = doc.get('class_name', '').lower()
-        # Normalize: treat spaces and underscores as equivalent for matching
-        result_class_norm = result_class.replace(' ', '_')
-        class_short_norm = class_short_name.replace(' ', '_')
-        
-        # Check class match (flexible matching)
-        # IMPORTANT: Guard result_class != '' before condition 6.
-        # In Python, "" in "anything" is always True, which would cause every
-        # document with an empty/missing class_name to match every class lookup.
-        # This was the root cause of Tubes info leaking into L-Bracket requests.
-        class_match = (
-            result_class == class_name.lower() or
-            result_class == class_name.replace('/', '_').lower() or
-            result_class == class_short_name or
-            result_class_norm == class_short_norm or          # ← "laser cut" == "laser_cutting" after normalize
-            class_short_norm in result_class_norm or
-            (result_class != '' and result_class in class_name.lower())  # ← guard: prevent empty-string false positive
-        )
-        
-        if class_match:
-            class_rules.append(doc)
-            logger.info(f"[RAG_RULES] ✅ Found rule: {doc.get('rule_id', 'N/A')} from {source}")
-            if len(class_rules) >= k:
+
+        if _class_matches(entry.get('class_name', ''), class_name):
+            matches.append(entry)
+            logger.info(f"[{kind.log_tag}] ✅ Found {kind.label}: "
+                        f"{entry.get(kind.id_field, 'N/A')} from {entry.get('source', '')}")
+            if len(matches) >= k:
                 break
-    
-    logger.info(f"[RAG_RULES] Total rules found for {class_name}: {len(class_rules)}")
-    return class_rules
+
+    logger.info(f"[{kind.log_tag}] Total {kind.label} found for {class_name}: {len(matches)}")
+    return matches
 
 
-def search_info_by_class(class_name: str, faiss_index_instance, query: str = "", k: int = 5) -> list[dict]:
+def _build_class_document(entry: dict, class_name: str, kind: _DocKind) -> Document:
+    """Render one metadata entry as the Document its chain expects."""
+    lines = [kind.header.format(class_name=class_name)]
+    lines.extend(f"{label}: {render(entry)}" for label, render in kind.fields)
+    return Document(
+        page_content="\n".join(lines) + "\n",
+        metadata=kind.metadata(entry, class_name),
+    )
+
+
+def collect_class_documents(
+    class_names: Sequence[str],
+    faiss_index_instance,
+    kind: _DocKind,
+    k: int,
+    skip_class: Optional[Callable[[str], bool]] = None,
+) -> List[Document]:
     """
-    Search for info files specific to a class.
-    
-    NOTE: Uses DIRECT METADATA FILTERING (same as search_rules_by_class)
-    to ensure only info entries from the exact matching class are returned.
-    
+    Class detection → metadata lookup → Document rendering, for either kind.
+
     Args:
-        class_name: The class name to search for (e.g., "Tubes", "Manufacturing_Processes/Forming/Bending")
-        faiss_index_instance: The loaded FAISS index
-        query: Optional query to refine search (unused, kept for API compatibility)
-        k: Number of info entries to retrieve
-        
-    Returns:
-        List of info documents matching the class
-    """
-    if not faiss_index_instance:
-        logger.warning("[RAG] FAISS index not available for info search")
-        return []
+        class_names: Classes detected for the query (rules paths for
+            RULES_DOC_KIND, info class_names for INFO_DOC_KIND).
+        faiss_index_instance: The loaded FAISS index.
+        kind: RULES_DOC_KIND or INFO_DOC_KIND.
+        k: Max entries per class.
+        skip_class: Optional predicate to skip a class entirely (used by
+            callers that already have that class in their context).
 
-    # Import metadata store directly
-    from src.rag.vector_store import METADATA_STORE
-    
-    # DIRECT METADATA SEARCH: Filter by source containing 'info.json'
-    class_short_name = class_name.split('/')[-1].lower()
-    
-    logger.info(f"[RAG_INFO] Searching info for class: {class_name} (short: {class_short_name})")
-    
-    class_info = []
-    for doc in METADATA_STORE:
-        source = doc.get('source', '')
-        doc_type = doc.get('type', '')
-        
-        # Only process info.json files
-        if not (doc_type == 'info' or source.endswith('info.json')):
+    Returns:
+        Documents for every matching entry. A failure on one class is logged
+        and skipped — the remaining classes still contribute.
+    """
+    documents: List[Document] = []
+    for class_name in class_names:
+        if skip_class and skip_class(class_name):
             continue
-        
-        result_class = doc.get('class_name', '').lower()
-        # Normalize: treat spaces and underscores as equivalent for matching
-        result_class_norm = result_class.replace(' ', '_')
-        class_short_norm = class_short_name.replace(' ', '_')
-        
-        # Check class match (same logic as search_rules_by_class)
-        # IMPORTANT: Guard result_class != '' before condition 6.
-        # In Python, "" in "anything" is always True, which would cause every
-        # document with an empty/missing class_name to match every class lookup.
-        # This was the root cause of Tubes info leaking into L-Bracket requests.
-        class_match = (
-            result_class == class_name.lower() or
-            result_class == class_name.replace('/', '_').lower() or
-            result_class == class_short_name or
-            result_class_norm == class_short_norm or
-            class_short_norm in result_class_norm or
-            (result_class != '' and result_class in class_name.lower())  # ← guard: prevent empty-string false positive
-        )
-        
-        if class_match:
-            class_info.append(doc)
-            logger.info(f"[RAG_INFO] ✅ Found info: {doc.get('info_id', 'N/A')} from {source}")
-            if len(class_info) >= k:
-                break
-    
-    logger.info(f"[RAG_INFO] Total info found for {class_name}: {len(class_info)}")
-    return class_info
+        try:
+            for entry in _search_by_class(class_name, faiss_index_instance, kind, k):
+                documents.append(_build_class_document(entry, class_name, kind))
+        except Exception as e:
+            logger.error(f"[{kind.log_tag}] ❌ Error for {class_name}: {e}")
+    return documents
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Shape-type vocabulary — SINGLE source of truth
+# ───────────────────────────────────────────────────────────────────────────
+# Two consumers, one table:
+#   1. _regex_extract_shape_type() — reads a shape type out of structured text
+#      ("Type: L-Bracket") and returns it in CANONICAL casing.
+#   2. _shape_type_for_filter()    — normalises a detected shape type to the
+#      LOWERCASE form stored in example metadata, for the STEP 3/4 filters.
+# The two used to carry separate hand-maintained copies of this table (80 vs 76
+# entries, canonical- vs lower-cased values), so adding a shape meant editing
+# two places and the copies had already drifted apart.
+# ═══════════════════════════════════════════════════════════════════════════
+
+SHAPE_TYPE_ALIASES: Dict[str, str] = {
+    # L-bracket-Circular variants
+    "l-bracket-circular": "L-bracket-Circular", "l bracket circular": "L-bracket-Circular",
+    "circular-l-bracket": "L-bracket-Circular", "circular l-bracket": "L-bracket-Circular",
+    # U-shaped-Circular variants
+    "u-shaped-circular": "U-shaped-Circular", "u shaped circular": "U-shaped-Circular",
+    "circular-u-shaped": "U-shaped-Circular", "circular u-shaped": "U-shaped-Circular",
+    # Z-shaped-Circular variants
+    "z-shaped-circular": "Z-shaped-Circular", "z shaped circular": "Z-shaped-Circular",
+    "circular-z-shaped": "Z-shaped-Circular", "circular z-shaped": "Z-shaped-Circular",
+    # L-bracket variants
+    "l-bracket": "L-bracket", "l bracket": "L-bracket",
+    "l-shaped": "L-bracket", "l shaped": "L-bracket",
+    "l-shape": "L-bracket", "l shape": "L-bracket",
+    "cornière": "L-bracket", "equerre": "L-bracket",
+    # U-shaped variants
+    "u-shaped": "U-shaped", "u shaped": "U-shaped",
+    "u-shape": "U-shaped", "u shape": "U-shaped",
+    "u-bracket": "U-shaped",
+    # Z-shaped variants
+    "z-shaped": "Z-shaped", "z shaped": "Z-shaped",
+    "z-shape": "Z-shaped", "z shape": "Z-shaped",
+    "z-bracket": "Z-shaped",
+    # I-Shaped variants
+    "i-shaped": "I-Shaped", "i shaped": "I-Shaped",
+    "i-shape": "I-Shaped", "i shape": "I-Shaped",
+    "i-beam": "I-Shaped", "poutre en i": "I-Shaped",
+    # T-Shaped variants
+    "t-shaped": "T-Shaped", "t shaped": "T-Shaped",
+    "t-shape": "T-Shaped", "t shape": "T-Shaped",
+    "t-bar": "T-Shaped", "fer en t": "T-Shaped",
+    # Tube variants
+    "tube": "tube", "square tube": "tube", "rectangular tube": "tube",
+    "round tube": "tube",
+    # Capot variants — mixed-direction (independent per-wall bends) MUST be checked
+    # before the generic "capot" key so it isn't swallowed by the substring fallback.
+    "capot-mixed-direction": "capot-mixed-direction", "capot mixed direction": "capot-mixed-direction",
+    # Capot variants (default: uniform bend direction, built with makeTub)
+    "capot": "capot", "capot-open": "capot",
+    "cover": "capot", "open box": "capot",
+    # Triangle variants — keep UNAMBIGUOUS compound terms only.
+    # NOTE: By the time retriever runs, query_expander has already appended
+    # "Shape type: Triangle" — regex Pattern 1/2 catches it.
+    # This fallback only fires when LLM expansion was unavailable.
+    # DANGER: avoid single-word matches (substring matching can false-positive).
+    "equilateral triangle": "Triangle", "isosceles triangle": "Triangle",
+    "triangular plate": "Triangle", "triangular sheet": "Triangle",
+    "triangle tray": "Triangle", "triangular tray": "Triangle",
+    # French compounds — safe because they all contain 'triangulaire'
+    "plaque triangulaire": "Triangle", "tole triangulaire": "Triangle",
+    "piece triangulaire": "Triangle", "platine triangulaire": "Triangle",
+    "gousset triangulaire": "Triangle", "renfort triangulaire": "Triangle",
+    "equerre triangulaire": "Triangle", "flan triangulaire": "Triangle",
+    "plaque en triangle": "Triangle", "platine en triangle": "Triangle",
+    # Perforated Sheet variants — MUST come before generic "sheet" to prevent map to "plate"
+    "perforated sheet": "Perforated Sheet", "perforated_sheet": "Perforated Sheet",
+    "tôle perforée": "Perforated Sheet", "tôle filtrante": "Perforated Sheet",
+    "perforated": "Perforated Sheet",
+    # Sheet-Circular variants
+    "sheet-circular": "Sheet-Circular", "circular sheet": "Sheet-Circular", "circular plate": "Sheet-Circular", "disque": "Sheet-Circular",
+    # Sheet variants (generic — perforated must be above this block)
+    "sheet": "plate", "plate": "plate", "flat": "plate",
+}
+
+# Longest alias first, computed once instead of re-sorting 80 keys on every
+# lookup (the old code sorted inside the candidate loop, three times per call).
+_SHAPE_ALIASES_LONGEST_FIRST: List[str] = sorted(SHAPE_TYPE_ALIASES, key=len, reverse=True)
+
+
+def _lookup_shape_alias(text: str) -> Optional[str]:
+    """
+    Resolve `text` (already lowercased) to a canonical shape type, or None.
+
+    Longest alias first so a specific alias beats a prefix of itself —
+    "u-shaped-circular" must not be decided by the shorter "u-shaped".
+    An exact hit always wins regardless: an alias LONGER than `text` cannot be
+    contained in it, and an equal-length one can only match by being equal.
+    """
+    if text in SHAPE_TYPE_ALIASES:
+        return SHAPE_TYPE_ALIASES[text]
+    for alias in _SHAPE_ALIASES_LONGEST_FIRST:
+        if text.startswith(alias) or alias in text:
+            return SHAPE_TYPE_ALIASES[alias]
+    return None
+
+
+def _mixed_capot_override(mapped: Optional[str], full_text: str) -> Optional[str]:
+    """Pattern 1 only reads the 'Type:' line, so a generic 'capot' match can hide
+    per-wall mixed up/down bends described further down in the same text."""
+    if mapped != "capot":
+        return mapped
+    tl = full_text.lower()
+    has_up = any(w in tl for w in ("upward", "vers le haut", "montant"))
+    has_down = any(w in tl for w in ("downward", "vers le bas", "descendant"))
+    return "capot-mixed-direction" if (has_up and has_down) else mapped
+
+
+def _regex_extract_shape_type(text: str) -> Optional[str]:
+    """
+    Extract shape type from structured text using regex (no LLM needed).
+
+    The unified-analysis output uses "Type: L-Bracket" format which the LLM
+    expander may not recognise as manufacturing terminology. We normalise it
+    here so that detected_shape_type is always reliable.
+    """
+    # Pattern 1: "Type: L-Bracket" or "Type: Z-shaped" — unified analysis output
+    m = re.search(r'^\s*Type:\s*(.+)', text, re.IGNORECASE | re.MULTILINE)
+    candidates = []
+    if m:
+        candidates.append(m.group(1).strip().lower())
+    # Pattern 2: "Shape type: L-bracket" — already expanded query or example headers
+    for sm in re.finditer(r'shape\s+type:\s*(\S+(?:\s+\S+)?)', text, re.IGNORECASE):
+        candidates.append(sm.group(1).strip().lower())
+
+    for raw in candidates:
+        canonical = _lookup_shape_alias(raw)
+        if canonical:
+            return _mixed_capot_override(canonical, text)
+
+    # Targeted free-text fallback for Triangle (EN + FR compound terms only).
+    # Keep narrow to avoid false positives; LLM is the primary detector.
+    # SAFE rule: only include terms that UNAMBIGUOUSLY identify the part as Triangle.
+    text_lower = text.lower()
+    triangle_terms = [
+        "equilateral triangle", "isosceles triangle",
+        "triangular plate", "triangular sheet", "triangular tray",
+        "triangle tray",
+        # French compounds (all contain 'triangulaire' — safe for substring match)
+        "plaque triangulaire", "gousset triangulaire",
+        "renfort triangulaire", "equerre triangulaire",
+        "platine triangulaire", "piece triangulaire",
+    ]
+    if any(term in text_lower for term in triangle_terms):
+        return "Triangle"
+    return None
+
+
+def _shape_type_for_filter(detected_shape_type: str) -> str:
+    """
+    Normalise a detected shape type to the lowercase form stored in example
+    metadata (`shape_type`), so the STEP 3/4 filters compare like with like.
+
+    Strips trailing punctuation/newlines that leak from bad LLM JSON output
+    (e.g. 'Sheet",'). An unknown shape passes through cleaned-but-unmapped:
+    canonical names already equal their metadata values, so filtering still
+    works for shapes that have no alias entry.
+    """
+    cleaned = detected_shape_type.strip('", \n\r\t.:;[]{}()').lower()
+    return (_lookup_shape_alias(cleaned) or cleaned).lower()
 
 
 async def retrieve_rules_only(
@@ -539,41 +787,12 @@ async def retrieve_rules_only(
         logger.info("[RAG_RULES] ⚠️ No classes detected")
         return retrieved_documents
     
-    # STEP 2: FAISS retrieval (get more candidates for reranking)
+    # STEP 2: Metadata retrieval (get more candidates for reranking)
     initial_k = 15  # Get 15 rules per class for reranking
-    
-    for class_name in detected_classes:
-        try:
-            class_rules = search_rules_by_class(class_name, faiss_index_instance, query, k=initial_k)
-            
-            for rule in class_rules:
-                # Format rule into document
-                description = rule.get('description', '')
-                if isinstance(description, list):
-                    description = '\n'.join(description) if description else ''
-                elif not isinstance(description, str):
-                    description = str(description) if description else ''
-                
-                page_content = f"Manufacturing Rule for {class_name}:\n"
-                page_content += f"Rule ID: {rule.get('rule_id', 'Unknown')}\n"
-                page_content += f"Title: {rule.get('title', 'Unknown Rule')}\n"
-                page_content += f"Description: {description}\n"
-                page_content += f"Rule: {rule.get('rule', '')}\n"
-                page_content += f"Validation Code: {rule.get('validation_code', '')}\n"
-                page_content += f"Severity: {rule.get('severity', 'info').upper()}\n"
-                page_content += f"Error Message: {rule.get('error_message', '')}\n"
-                page_content += f"Parameters: {', '.join(rule.get('parameters', []))}\n"
 
-                metadata = {
-                    "source": "manufacturing_rules",
-                    "class": class_name,
-                    "rule_id": rule.get('rule_id', ''),
-                    "category": rule.get('category', ''),
-                    "severity": rule.get('severity', 'info')
-                }
-                retrieved_documents.append(Document(page_content=page_content, metadata=metadata))
-        except Exception as e:
-            logger.error(f"[RAG_RULES] ❌ Error for {class_name}: {e}")
+    retrieved_documents = collect_class_documents(
+        detected_classes, faiss_index_instance, RULES_DOC_KIND, k=initial_k
+    )
 
     # LOG RAW RULES (Unranked)
     try:
@@ -663,123 +882,9 @@ async def retrieve_examples_only(
     
     # STEP 1: Query Expansion with Shape Type Detection
     from src.rag.query_expander import expand_query_with_llm, _expansion_llm
-    import re as _re
-    
+
     # ── STEP 1a: Regex pre-extraction (fast, zero-cost fallback) ─────────────
-    # The unified-analysis output uses "Type: L-Bracket" format which the LLM
-    # expander may not recognise as manufacturing terminology.  We normalise it
-    # here so that detected_shape_type is always reliable.
-    _SHAPE_TYPE_MAP = {
-        # L-bracket-Circular variants
-        "l-bracket-circular": "L-bracket-Circular", "l bracket circular": "L-bracket-Circular",
-        "circular-l-bracket": "L-bracket-Circular", "circular l-bracket": "L-bracket-Circular",
-        # U-shaped-Circular variants
-        "u-shaped-circular": "U-shaped-Circular", "u shaped circular": "U-shaped-Circular",
-        "circular-u-shaped": "U-shaped-Circular", "circular u-shaped": "U-shaped-Circular",
-        # Z-shaped-Circular variants
-        "z-shaped-circular": "Z-shaped-Circular", "z shaped circular": "Z-shaped-Circular",
-        "circular-z-shaped": "Z-shaped-Circular", "circular z-shaped": "Z-shaped-Circular",
-        # L-bracket variants
-        "l-bracket": "L-bracket", "l bracket": "L-bracket",
-        "l-shaped": "L-bracket", "l shaped": "L-bracket",
-        "l-shape": "L-bracket", "l shape": "L-bracket",
-        "cornière": "L-bracket", "equerre": "L-bracket",
-        # U-shaped variants
-        "u-shaped": "U-shaped", "u shaped": "U-shaped",
-        "u-shape": "U-shaped", "u shape": "U-shaped",
-        "u-bracket": "U-shaped",
-        # Z-shaped variants
-        "z-shaped": "Z-shaped", "z shaped": "Z-shaped",
-        "z-shape": "Z-shaped", "z shape": "Z-shaped",
-        "z-bracket": "Z-shaped",
-        # I-Shaped variants
-        "i-shaped": "I-Shaped", "i shaped": "I-Shaped",
-        "i-shape": "I-Shaped", "i shape": "I-Shaped",
-        "i-beam": "I-Shaped", "poutre en i": "I-Shaped",
-        # T-Shaped variants
-        "t-shaped": "T-Shaped", "t shaped": "T-Shaped",
-        "t-shape": "T-Shaped", "t shape": "T-Shaped",
-        "t-bar": "T-Shaped", "fer en t": "T-Shaped",
-        # Tube variants
-        "tube": "tube", "square tube": "tube", "rectangular tube": "tube",
-        "round tube": "tube",
-        # Capot variants — mixed-direction (independent per-wall bends) MUST be checked
-        # before the generic "capot" key so it isn't swallowed by the substring fallback.
-        "capot-mixed-direction": "capot-mixed-direction", "capot mixed direction": "capot-mixed-direction",
-        # Capot variants (default: uniform bend direction, built with makeTub)
-        "capot": "capot", "capot-open": "capot",
-        "cover": "capot", "open box": "capot",
-        # Triangle variants — keep UNAMBIGUOUS compound terms only.
-        # NOTE: By the time retriever runs, query_expander has already appended
-        # "Shape type: Triangle" — regex Pattern 1/2 above catches it.
-        # This fallback only fires when LLM expansion was unavailable.
-        # DANGER: avoid single-word matches (substring matching can false-positive).
-        "equilateral triangle": "Triangle", "isosceles triangle": "Triangle",
-        "triangular plate": "Triangle", "triangular sheet": "Triangle",
-        "triangle tray": "Triangle", "triangular tray": "Triangle",
-        # French compounds — safe because they all contain 'triangulaire'
-        "plaque triangulaire": "Triangle", "tole triangulaire": "Triangle",
-        "piece triangulaire": "Triangle", "platine triangulaire": "Triangle",
-        "gousset triangulaire": "Triangle", "renfort triangulaire": "Triangle",
-        "equerre triangulaire": "Triangle", "flan triangulaire": "Triangle",
-        "plaque en triangle": "Triangle", "platine en triangle": "Triangle",
-        # Perforated Sheet variants — MUST come before generic "sheet" to prevent map to "plate"
-        "perforated sheet": "Perforated Sheet", "perforated_sheet": "Perforated Sheet",
-        "tôle perforée": "Perforated Sheet", "tôle filtrante": "Perforated Sheet",
-        "perforated": "Perforated Sheet",
-        # Sheet-Circular variants
-        "sheet-circular": "Sheet-Circular", "circular sheet": "Sheet-Circular", "circular plate": "Sheet-Circular", "disque": "Sheet-Circular",
-        # Sheet variants (generic — perforated must be above this block)
-        "sheet": "plate", "plate": "plate", "flat": "plate",
-    }
-
-    def _mixed_capot_override(mapped, full_text):
-        """Pattern 1 only reads the 'Type:' line, so a generic 'capot' match can hide
-        per-wall mixed up/down bends described further down in the same text."""
-        if mapped != "capot":
-            return mapped
-        tl = full_text.lower()
-        has_up = any(w in tl for w in ("upward", "vers le haut", "montant"))
-        has_down = any(w in tl for w in ("downward", "vers le bas", "descendant"))
-        return "capot-mixed-direction" if (has_up and has_down) else mapped
-
-    def _regex_extract_shape_type(text: str):
-        """Extract shape type from structured text using regex (no LLM needed)."""
-        # Pattern 1: "Type: L-Bracket" or "Type: Z-shaped" — unified analysis output
-        m = _re.search(r'^\s*Type:\s*(.+)', text, _re.IGNORECASE | _re.MULTILINE)
-        candidates = []
-        if m:
-            candidates.append(m.group(1).strip().lower())
-        # Pattern 2: "Shape type: L-bracket" — already expanded query or example headers
-        for sm in _re.finditer(r'shape\s+type:\s*(\S+(?:\s+\S+)?)', text, _re.IGNORECASE):
-            candidates.append(sm.group(1).strip().lower())
-        for raw in candidates:
-            # Try exact key lookup first
-            if raw in _SHAPE_TYPE_MAP:
-                return _mixed_capot_override(_SHAPE_TYPE_MAP[raw], text)
-            # Try prefix / substring match — but only with longer keys first to prevent
-            # "u-shaped" from matching before "u-shaped-circular" on the same raw token.
-            # Sort keys longest-first so more-specific keys take priority.
-            for key in sorted(_SHAPE_TYPE_MAP.keys(), key=len, reverse=True):
-                if raw.startswith(key) or key in raw:
-                    return _mixed_capot_override(_SHAPE_TYPE_MAP[key], text)
-        # Targeted free-text fallback for Triangle (EN + FR compound terms only).
-        # Keep narrow to avoid false positives; LLM is the primary detector.
-        # SAFE rule: only include terms that UNAMBIGUOUSLY identify the part as Triangle.
-        text_lower = text.lower()
-        triangle_terms = [
-            "equilateral triangle", "isosceles triangle",
-            "triangular plate", "triangular sheet", "triangular tray",
-            "triangle tray",
-            # French compounds (all contain 'triangulaire' — safe for substring match)
-            "plaque triangulaire", "gousset triangulaire",
-            "renfort triangulaire", "equerre triangulaire",
-            "platine triangulaire", "piece triangulaire",
-        ]
-        if any(term in text_lower for term in triangle_terms):
-            return "Triangle"
-        return None
-
+    # See _regex_extract_shape_type / SHAPE_TYPE_ALIASES at module level.
     detected_shape_type_regex = _regex_extract_shape_type(query)
     if detected_shape_type_regex:
         logger.info(f"[RAG_FILTER] ⚡ Regex pre-extracted shape type: {detected_shape_type_regex}")
@@ -873,69 +978,25 @@ async def retrieve_examples_only(
             document = Document(page_content=page_content, metadata=metadata)
             example_candidates.append(document)
     
+    # Target value for the shape filters, computed ONCE here and reused by STEP 3
+    # and STEP 4 — they must filter on the same value, and the old code derived it
+    # twice from a map that only existed inside STEP 3's `if` block.
+    shape_filter_target = _shape_type_for_filter(detected_shape_type) if detected_shape_type else None
+    if shape_filter_target and shape_filter_target != detected_shape_type:
+        logger.debug(f"[RAG_FILTER] Shape '{detected_shape_type}' normalised to "
+                     f"'{shape_filter_target}' for metadata comparison")
+
     # STEP 3: EXCLUSIVE filter by shape type before reranking
     # Strategy: reranker ONLY sees same-shape candidates → higher quality, no cross-shape noise.
     # Graceful fallback to full pool ONLY when zero same-shape examples found.
     if detected_shape_type and example_candidates:
-        # Strip trailing punctuation/newlines that might leak from bad LLM JSON output
-        detected_shape_clean = detected_shape_type.strip('", \n\r\t.:;[]{}()').lower()
-        
-        # Ensure we map variants correctly back to standard lowercase representation
-        shape_type_map = {
-            # --- Circular variants MUST come before their flat counterparts ---
-            # L-bracket-Circular
-            "l-bracket-circular": "l-bracket-circular", "l bracket circular": "l-bracket-circular",
-            "circular-l-bracket": "l-bracket-circular", "circular l-bracket": "l-bracket-circular",
-            # U-shaped-Circular
-            "u-shaped-circular": "u-shaped-circular", "u shaped circular": "u-shaped-circular",
-            "circular-u-shaped": "u-shaped-circular", "circular u-shaped": "u-shaped-circular",
-            # Z-shaped-Circular
-            "z-shaped-circular": "z-shaped-circular", "z shaped circular": "z-shaped-circular",
-            "circular-z-shaped": "z-shaped-circular", "circular z-shaped": "z-shaped-circular",
-            # Sheet-Circular
-            "sheet-circular": "sheet-circular", "circular sheet": "sheet-circular",
-            "circular plate": "sheet-circular", "disque": "sheet-circular",
-            # --- Flat variants (must come AFTER Circular to avoid early match) ---
-            "l-bracket": "l-bracket", "l bracket": "l-bracket", "l-shaped": "l-bracket", "l shaped": "l-bracket", "l-shape": "l-bracket", "l shape": "l-bracket", "cornière": "l-bracket", "equerre": "l-bracket",
-            "u-shaped": "u-shaped", "u shaped": "u-shaped", "u-shape": "u-shaped", "u shape": "u-shaped", "u-bracket": "u-shaped",
-            "z-shaped": "z-shaped", "z shaped": "z-shaped", "z-shape": "z-shaped", "z shape": "z-shaped", "z-bracket": "z-shaped",
-            "i-shaped": "i-shaped", "i shaped": "i-shaped", "i-shape": "i-shaped", "i shape": "i-shaped", "i-beam": "i-shaped",
-            "t-shaped": "t-shaped", "t shaped": "t-shaped", "t-shape": "t-shaped", "t shape": "t-shaped", "t-bar": "t-shaped",
-            "tube": "tube", "square tube": "tube", "rectangular tube": "tube", "round tube": "tube",
-            "capot-mixed-direction": "capot-mixed-direction", "capot mixed direction": "capot-mixed-direction",
-            "capot": "capot", "capot-open": "capot", "cover": "capot", "open box": "capot",
-            # Triangle variants (EN + FR compounds only — avoid broad single-word matches)
-            "equilateral triangle": "triangle", "isosceles triangle": "triangle",
-            "triangular plate": "triangle", "triangular sheet": "triangle",
-            "triangle tray": "triangle", "triangular tray": "triangle",
-            # French compounds
-            "plaque triangulaire": "triangle", "tole triangulaire": "triangle",
-            "piece triangulaire": "triangle", "platine triangulaire": "triangle",
-            "gousset triangulaire": "triangle", "renfort triangulaire": "triangle",
-            "equerre triangulaire": "triangle", "flan triangulaire": "triangle",
-            "plaque en triangle": "triangle", "platine en triangle": "triangle",
-            # Perforated Sheet -- MUST precede generic "sheet" to prevent false mapping to "plate"
-            "perforated sheet": "perforated sheet", "perforated_sheet": "perforated sheet",
-            "perforated": "perforated sheet",
-            # Generic sheet -- keep last
-            "sheet": "plate", "plate": "plate", "flat": "plate"
-        }
-        
-        # Match longest key first so more-specific Circular keys win over their flat prefixes
-        # e.g. "u-shaped-circular" must win over "u-shaped" when detected_shape_clean contains the former.
-        detected_shape_lower = detected_shape_clean
-        for key in sorted(shape_type_map.keys(), key=len, reverse=True):
-            if key == detected_shape_clean or key in detected_shape_clean:
-                detected_shape_lower = shape_type_map[key]
-                break
-
         exact_matches = [
             doc for doc in example_candidates
-            if str(doc.metadata.get("shape_type", "")).lower() == detected_shape_lower
+            if str(doc.metadata.get("shape_type", "")).lower() == shape_filter_target
         ]
         other_examples = [
             doc for doc in example_candidates
-            if str(doc.metadata.get("shape_type", "")).lower() != detected_shape_lower
+            if str(doc.metadata.get("shape_type", "")).lower() != shape_filter_target
         ]
         
         if exact_matches:
@@ -973,23 +1034,16 @@ async def retrieve_examples_only(
             session_id=session_id
         )
         
-        # Safety post-filter: block leaks from llm_rerank internal fallback paths
+        # Safety post-filter: block leaks from llm_rerank internal fallback paths.
+        # Uses the SAME shape_filter_target as STEP 3 — no second normalization.
         if detected_shape_type and reranked_examples:
-            # Re-compute detected_shape_lower using the same normalization as STEP 3
-            # so that the safety filter and the exclusive filter use the same target value.
-            _safety_clean = detected_shape_type.strip('", \n\r\t.:;[]{}()').lower()
-            detected_shape_lower_safety = _safety_clean
-            for key in sorted(shape_type_map.keys(), key=len, reverse=True):
-                if key == _safety_clean or key in _safety_clean:
-                    detected_shape_lower_safety = shape_type_map[key]
-                    break
             exact_final = [
                 doc for doc in reranked_examples
-                if str(doc.metadata.get("shape_type", "")).lower() == detected_shape_lower_safety
+                if str(doc.metadata.get("shape_type", "")).lower() == shape_filter_target
             ]
             other_final = [
                 doc for doc in reranked_examples
-                if str(doc.metadata.get("shape_type", "")).lower() != detected_shape_lower_safety
+                if str(doc.metadata.get("shape_type", "")).lower() != shape_filter_target
             ]
             
             if exact_final:
@@ -1023,40 +1077,14 @@ async def retrieve_examples_only(
     # classify_user_query_for_info now re-uses the rules classifier internally
     # and applies a shape-type guard to suppress irrelevant info classes.
     detected_classes = classify_user_query_for_info(query, detected_shape_type=detected_shape_type)
-    
 
-    info_count = 0
-    if detected_classes:
-        for class_name in detected_classes:
-            try:
-                class_info = search_info_by_class(class_name, faiss_index_instance, query, k=100)
-                
-                for info in class_info:
-                    description = info.get('description', '')
-                    if isinstance(description, list):
-                        description = '\n'.join(description) if description else ''
-                    elif not isinstance(description, str):
-                        description = str(description) if description else ''
-                    
-                    page_content = f"Info for {class_name}:\n"
-                    page_content += f"Info ID: {info.get('info_id', 'Unknown')}\n"
-                    page_content += f"Title: {info.get('title', 'Unknown Info')}\n"
-                    page_content += f"Description: {description}\n"
-                    page_content += f"Rule: {info.get('rule', '')}\n"
-                    page_content += f"Parameters: {', '.join(info.get('parameters', []))}\n"
+    info_documents = collect_class_documents(
+        detected_classes, faiss_index_instance, INFO_DOC_KIND, k=100
+    )
+    retrieved_documents.extend(info_documents)
+    info_count = len(info_documents)
 
-                    metadata = {
-                        "source": info.get('source', ''),
-                        "type": "info",
-                        "class": class_name,
-                        "info_id": info.get('info_id', ''),
-                        "category": info.get('category', '')
-                    }
-                    retrieved_documents.append(Document(page_content=page_content, metadata=metadata))
-                    info_count += 1
-            except Exception as e:
-                logger.error(f"[RAG_INFO] ❌ Error for {class_name}: {e}")
-    
+
     # Compact summary - Show full flow: candidates → reranked + info = total
     examples_count = len(retrieved_documents) - info_count
     total_docs = len(retrieved_documents)

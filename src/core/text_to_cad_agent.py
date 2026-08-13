@@ -2556,11 +2556,11 @@ class TextToCADAgent:
                 if not confirmed_rag_description:
                     return context
                 try:
-                    from langchain_core.documents import Document
                     from src.core.agent_utils import format_retrieved_context
                     from src.rag.retriever import (
                         classify_user_query_for_info,
-                        search_info_by_class,
+                        collect_class_documents,
+                        INFO_DOC_KIND,
                         faiss_index_instance,
                     )
 
@@ -2568,35 +2568,20 @@ class TextToCADAgent:
                     if not info_classes:
                         return context
 
-                    info_docs = []
+                    # Skip classes whose info is already present in the context
                     context_lower = context.lower()
-                    for class_name in info_classes:
-                        if "type: info" in context_lower and class_name.lower() in context_lower:
-                            continue
-                        for info in search_info_by_class(class_name, faiss_index_instance, confirmed_rag_description, k=100):
-                            description = info.get('description', '')
-                            if isinstance(description, list):
-                                description = '\n'.join(description) if description else ''
-                            elif not isinstance(description, str):
-                                description = str(description) if description else ''
+                    already_present = (
+                        lambda class_name: "type: info" in context_lower
+                        and class_name.lower() in context_lower
+                    )
 
-                            page_content = f"Info for {class_name}:\n"
-                            page_content += f"Info ID: {info.get('info_id', 'Unknown')}\n"
-                            page_content += f"Title: {info.get('title', 'Unknown Info')}\n"
-                            page_content += f"Description: {description}\n"
-                            page_content += f"Rule: {info.get('rule', '')}\n"
-                            page_content += f"Parameters: {', '.join(info.get('parameters') or [])}\n"
-
-                            info_docs.append(Document(
-                                page_content=page_content,
-                                metadata={
-                                    "source": info.get('source', ''),
-                                    "type": "info",
-                                    "class": class_name,
-                                    "info_id": info.get('info_id', ''),
-                                    "category": info.get('category', ''),
-                                }
-                            ))
+                    info_docs = collect_class_documents(
+                        info_classes,
+                        faiss_index_instance,
+                        INFO_DOC_KIND,
+                        k=100,
+                        skip_class=already_present,
+                    )
 
                     if not info_docs:
                         return context
