@@ -6,7 +6,6 @@ from datetime import datetime
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +58,7 @@ from .templates import (
     code_generation_template,
     code_editing_template,
     step_planner_template,
-    description_confirm_template,
     build_confirm_template,
-    confirm_detector_template,
     shape_change_detector_template,
     edit_summary_template,
 )
@@ -176,7 +173,6 @@ def create_unified_processing_chain(expert_llm):
             "detailed_explanation_requested": detect_detailed_explanation_request(user_text),
             "session_id": session_id,  # Pass session_id for logging
             "material": x.get("material", ""),  # Material choice for template
-            "mapped_material": x.get("mapped_material", "steel"),  # Mapped material for GeometryAnalyzer
             "user_language": x.get("user_language", "English")  # User language for template
         }
 
@@ -206,9 +202,11 @@ def create_unified_processing_chain(expert_llm):
         except Exception as log_error:
             logger.error(f"Failed to log unified template I/O: {log_error}")
         
+        # The raw JSON is not returned: it is fully captured by parse_unified_analysis
+        # into unified_output_obj and written verbatim to UNIFIED_TEMPLATE_LOG above.
+        # No prompt downstream consumes it.
         result = {
             "unified_output_obj": parse_unified_analysis(raw_json, template_inputs["user_text"]),
-            "raw_unified_json": raw_json,
             "retrieved_context_for_code_gen": template_inputs.get("examples_context", "")  # Examples for code gen
         }
         print(f"[UNIFIED_ANALYSIS] ✅ Analysis complete - parsed successfully\n")
@@ -556,8 +554,6 @@ def create_code_generation_chain(advanced_llm):
             sanitized_title = "generated_cad"
 
         retrieved_context = inputs.get("retrieved_context", "")
-        material        = inputs.get("material", "")
-        mapped_material = inputs.get("mapped_material", "steel")
 
         # ── 2. Sanitize string inputs before sending to OpenAI ─────────
         # Root cause: null bytes (\x00) and ASCII control chars (except \t \n \r)
@@ -579,15 +575,14 @@ def create_code_generation_chain(advanced_llm):
 
         retrieved_context   = _sanitize_for_openai(retrieved_context,   "retrieved_context")
         user_text_for_chain = _sanitize_for_openai(user_text_for_chain, "user_text")
-        material            = _sanitize_for_openai(material,            "material")
-        mapped_material     = _sanitize_for_openai(mapped_material,     "mapped_material")
 
         # ── 3. Build chain input (pure, no shared dict) ────────────────
+        # NOTE: code_generation_template takes only retrieved_context / user_text /
+        # sanitized_title. It does NOT accept the user's material choice — the
+        # GeometryAnalyzer calls in its export snippet hardcode material="steel".
         chain_input = {
             "retrieved_context": retrieved_context,
             "user_text":         user_text_for_chain,
-            "material":          material,
-            "mapped_material":   mapped_material,
             "session_id":        session_id,
             "sanitized_title":   sanitized_title,
         }
@@ -646,12 +641,11 @@ def create_code_editing_chain(expert_llm):
         """
         session_id = inputs.get("session_id", "unknown")
 
+        # code_editing_template takes only these three placeholders.
         chain_input = {
             "original_code":     inputs.get("original_code", ""),
             "user_request":      inputs.get("user_request", ""),
             "retrieved_context": inputs.get("retrieved_context", ""),
-            "sanitized_title":   inputs.get("sanitized_title", "edited_model"),
-            "mapped_material":   inputs.get("mapped_material", "steel"),
         }
 
         # Log inputs (before LLM call)

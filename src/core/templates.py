@@ -4021,11 +4021,6 @@ def build_confirm_template(shape_type: str) -> str:
     return _CONFIRM_BASE + shape_rules + _CONFIRM_OUTPUT
 
 
-# ── Fallback singleton (used when shape_type not yet known) ──
-# agent_chains.py should call build_confirm_template(shape_type) per request instead.
-description_confirm_template = build_confirm_template("unknown")
-
-
 # ============================================================
 # SHAPE CHANGE DETECTOR TEMPLATE (Mini-agent for edit mode)
 # Classifies whether an edit request changes the part's shape type.

@@ -438,7 +438,8 @@ class TextToCADAgent:
         
         # Build chain input with RAG contexts
         # - rules_context: For DFM VALIDATION AGENT ONLY (rule checking)
-        # - examples_context: For CODE GENERATION ONLY (examples + info files)
+        # - examples_context: For CODE GENERATION ONLY (examples + info files),
+        #   carried through the unified chain as an untouched pass-through value.
         # NOTE: user_text (full [USER]/[CHATBOT] history) is passed to the unified chain
         #       so the LLM retains full conversation context.
         #       expanded_rag_query (user-only) was used ONLY for RAG retrieval above.
@@ -481,8 +482,10 @@ class TextToCADAgent:
 
         unified_chain_input = {
             "user_text": unified_user_text,  # ✅ Full [USER]/[CHATBOT] history for unified analysis context
-            "rules_context": rules_context,  # ✅ RULES → Unified Analysis ONLY
-            "examples_context": examples_context,  # ✅ EXAMPLES + INFO → Code Generation ONLY
+            # NOTE: no rules_context here — the unified template has no such
+            # placeholder (only DFM consumes rules). Information requests get the
+            # rules inlined into user_text above instead.
+            "examples_context": examples_context,  # pass-through → retrieved_context_for_code_gen
             "session_id": session_id,
             "material": material,  # Material choice for template
             "user_language": user_language,  # ✅ Provide user_language to template
@@ -627,7 +630,6 @@ class TextToCADAgent:
                 # ── Confirm fast-path cache (isolated per session_id) ────────
                 # Populated by _save_confirm_cache() right before confirm chain,
                 # consumed and cleared by the fast-path gate on the next turn.
-                'cached_raw_unified_json': '',
                 'cached_retrieved_context': '',
                 'cached_unified_obj_snapshot': None,  # unified_output_obj.dict()
                 'cached_expanded_user_text': '',
@@ -760,7 +762,6 @@ class TextToCADAgent:
         self,
         session_id: str,
         unified_output_obj,
-        raw_unified_json: str,
         retrieved_context: str,
         expanded_user_text: str,
     ):
@@ -777,7 +778,6 @@ class TextToCADAgent:
         state = self._get_session_state(session_id)
         self._update_session_state(
             session_id,
-            cached_raw_unified_json=raw_unified_json,
             cached_retrieved_context=retrieved_context,
             cached_unified_obj_snapshot=unified_output_obj.dict(),
             cached_expanded_user_text=expanded_user_text,
@@ -793,7 +793,6 @@ class TextToCADAgent:
         self,
         session_id: str,
         unified_output_obj,
-        raw_unified_json: str,
         retrieved_context_for_code_gen: str,
         expanded_user_text: str,
         empty_steps_text: str,
@@ -861,7 +860,7 @@ class TextToCADAgent:
 
         # Prime confirm cache so next turn (user reply) skips re-running unified chain
         self._save_confirm_cache(
-            session_id, unified_output_obj, raw_unified_json,
+            session_id, unified_output_obj,
             retrieved_context_for_code_gen, expanded_user_text
         )
         # Set flag — next turn = GATE 1 (either YES or NO → fall through to Confirm)
@@ -2189,13 +2188,11 @@ class TextToCADAgent:
                     previous_responses_formatted="",  # No longer needed - history in user_text
                     latest_requirements_for_guidance=state['latest_requirements'],
                     material=state.get('material_choice', ''),  # Pass material choice to template
-                    mapped_material=state.get('mapped_material', 'steel')  # Pass mapped material
                 )
             
             unified_chain_result = await process_unified_async()
 
             unified_output_obj = unified_chain_result["unified_output_obj"]
-            raw_unified_json = unified_chain_result["raw_unified_json"]
             retrieved_context_for_code_gen = unified_chain_result["retrieved_context_for_code_gen"]
             expanded_user_text = unified_chain_result.get("expanded_user_text", user_text_with_history)
 
@@ -2210,7 +2207,6 @@ class TextToCADAgent:
                 )
 
             print(f"\n[SUCCESS] Unified analysis and parameter check successful for session {session_id}:")
-            print(f"Raw Unified JSON: {raw_unified_json[:500]}...") if len(raw_unified_json) > 500 else print(f"Raw Unified JSON: {raw_unified_json}")
             print(f"Parsed Output: {json.dumps(unified_output_obj.dict(), indent=2)}")
 
             # Step 3: Update session state
@@ -2227,32 +2223,14 @@ class TextToCADAgent:
             
             await update_session_state_async()
 
-            # Step 4: Handle parsing errors
-            if unified_output_obj.title == "Unable to parse requirements":
-                error_details = "\n".join(unified_output_obj.questions) if unified_output_obj.questions else "Unable to parse requirements"
-                print(f"[ERROR] Parsing error for session {session_id}: {error_details}")
-                
-                # Error path: just reset pending_questions so next turn starts fresh
-                self._update_session_state(session_id, pending_questions=[])
+            # NOTE: there are no `title`-based sentinel checks here. The unified
+            # template emits neither `title` nor `description` (see its OUTPUT
+            # block), so `title` is always "". A JSON parse failure surfaces
+            # through _create_fallback_response(), which sets missing_info=True
+            # plus one localized error question — _make_decision() then routes it
+            # to ASK_QUESTIONS and the user sees that message.
 
-
-                return {
-                    "code": None,
-                    "message": f"I had trouble understanding your request. Could you please try rephrasing it? Details: {error_details}",
-                    "explanation": error_details
-                }
-
-            # Step 5: Handle conversational responses
-            if unified_output_obj.title == "Conversational Response":
-                print(f"[CONVERSATIONAL] Detected conversational response for session {session_id}")
-                response_msg = "\n".join(unified_output_obj.questions) if unified_output_obj.questions else "Conversational response provided"
-                return {
-                    "code": None,
-                    "message": response_msg,
-                    "explanation": response_msg
-                }
-
-            # Step 6: Extract AI-determined flags
+            # Step 4: Extract AI-determined flags
             skip_questions  = unified_output_obj.skip_questions_requested
             override_intent = unified_output_obj.override_intent_detected
 
@@ -2358,7 +2336,7 @@ class TextToCADAgent:
                 print(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
 
                 _total, _user_msg = await self._run_step_planner(
-                    session_id, unified_output_obj, raw_unified_json,
+                    session_id, unified_output_obj,
                     retrieved_context_for_code_gen, expanded_user_text,
                     empty_steps_text="  (aucune étape générée)",
                 )
@@ -2384,25 +2362,13 @@ class TextToCADAgent:
                     unified_output_obj.description = confirmed_description
                     logger.info(f"[CONFIRM] Using confirmed_description ({len(confirmed_description)} chars) for code gen")
                 return await self.generate_code_from_requirements(
-                    unified_output_obj, raw_unified_json, retrieved_context_for_code_gen,
+                    unified_output_obj, retrieved_context_for_code_gen,
                     session_id=session_id, current_user_message=user_text, expanded_user_text=expanded_user_text
                 )
 
             # ── GATE 4: CASE 2/3 — Determine skip confirm or run Description Confirm ────
-            # NOTE: _has_operations is checked against user_text (not description which is always
-            # empty at this point — description_confirm_template is what populates it).
-            _user_text_lower = (user_text or "").lower()
-            _has_operations = any(kw in _user_text_lower for kw in [
-                "hole", "trou", "trous", "perçage", "percage",
-                "bend", "pli", "plis", "pliage",
-                "cut", "découpe", "decoupe", "slot", "rainure",
-                "fillet", "congé", "conge", "chamfer", "chanfrein",
-                "countersink", "fraisage", "taraudage", "tapping",
-                "notch", "pocket", "embossing",
-            ])
             logger.info(
-                f"[CONFIRM] has_operations={_has_operations} "
-                f"| complexity={unified_output_obj.complexity_level} "
+                f"[CONFIRM] complexity={unified_output_obj.complexity_level} "
                 f"| confirm_count={confirm_count} | session={session_id}"
             )
 
@@ -2437,7 +2403,7 @@ class TextToCADAgent:
                     confirmed_description='',
                 )
                 return await self.generate_code_from_requirements(
-                    unified_output_obj, raw_unified_json, retrieved_context_for_code_gen,
+                    unified_output_obj, retrieved_context_for_code_gen,
                     session_id=session_id, current_user_message=user_text, expanded_user_text=expanded_user_text
                 )
 
@@ -2450,7 +2416,7 @@ class TextToCADAgent:
             # Save confirm cache so that the fast-path gate (in generate_cad_realtime_stream)
             # can restore the unified result on the next turn when user confirms ("oui"/"yes").
             self._save_confirm_cache(
-                session_id, unified_output_obj, raw_unified_json,
+                session_id, unified_output_obj,
                 retrieved_context_for_code_gen, expanded_user_text
             )
             return await self._run_description_confirm(
@@ -2509,7 +2475,7 @@ class TextToCADAgent:
         # Final fallback: session title stored during code gen
         return state.get('latest_title') or ""
 
-    async def generate_code_from_requirements(self, design_requirements_obj: AnalysisAndParameterCheckOutput, raw_design_requirements_json: str, retrieved_context: str, session_id=None, save_files=True, current_user_message: str = None, expanded_user_text: str = None):
+    async def generate_code_from_requirements(self, design_requirements_obj: AnalysisAndParameterCheckOutput, retrieved_context: str, session_id=None, save_files=True, current_user_message: str = None, expanded_user_text: str = None):
         """
         Generate FreeCAD code from design requirements.
         
@@ -2687,11 +2653,8 @@ class TextToCADAgent:
 
                 _chain_input = {
                     "design_requirements_obj": design_requirements_obj,
-                    "raw_design_requirements_json": raw_design_requirements_json,
                     "retrieved_context": rag_context_content,  # Use retrieved context
                     "user_text": user_text,
-                    "material": self._get_session_state(session_id).get('material_choice', ''),  # Pass material choice to template
-                    "mapped_material": self._get_session_state(session_id).get('mapped_material', 'steel'),  # Pass mapped material
                     "session_id": session_id  # Pass session_id for logging
                 }
 
@@ -3022,11 +2985,9 @@ class TextToCADAgent:
             )
             unified_chain_input = {
                 "user_text":         edit_mode_user_text,
-                "rules_context":     "",
-                "examples_context":  "",
+                "examples_context":  "",   # nothing to carry through to code gen on the edit path
                 "session_id":        session_id,
                 "material":          state.get('material_choice', ''),
-                "mapped_material":   state.get('mapped_material', 'steel'),
                 "user_language":     state.get('user_language', 'French'),
             }
             dfm_chain_input = {
@@ -3120,7 +3081,6 @@ class TextToCADAgent:
             self._save_confirm_cache(
                 session_id,
                 shape_change_req_obj,
-                merged_desc,          # raw_unified_json substitute
                 "",                   # retrieved_context — fetched fresh in code gen
                 merged_desc,          # expanded_user_text
             )
@@ -3313,8 +3273,6 @@ class TextToCADAgent:
                     "original_code":     state['latest_code'],
                     "user_request":      effective_user_request,
                     "retrieved_context": retrieved_context,
-                    "sanitized_title":   sanitized_title,
-                    "mapped_material":   state.get('mapped_material', 'steel'),
                     "session_id":        session_id,
                 },
                 cost_tracker,
@@ -4174,7 +4132,12 @@ class TextToCADAgent:
             logger.debug(f"[AGENT_STATE] Getting session state for session {session_id}")
             state = self._get_session_state(session_id)
             
-            # Store material_choice in session state for use in templates
+            # Store material_choice in session state for use in templates.
+            # `material_choice` reaches the unified + DFM templates (both have a
+            # {material} placeholder). `mapped_material` currently reaches NOTHING:
+            # no template has a placeholder for it, and the GeometryAnalyzer calls
+            # in code_generation_template hardcode material="steel". The mapping is
+            # kept here because wiring it into code gen is the fix, not deleting it.
             if material_choice:
                 state['material_choice'] = material_choice
                 state['mapped_material'] = map_material_to_geometry_analyzer(material_choice)
@@ -4220,7 +4183,6 @@ class TextToCADAgent:
                     self._update_session_state(
                         session_id,
                         awaiting_confirm=False,
-                        cached_raw_unified_json='',
                         cached_retrieved_context='',
                         cached_unified_obj_snapshot=None,
                         cached_expanded_user_text='',
@@ -4236,7 +4198,6 @@ class TextToCADAgent:
                     # Retrieve cached data (all per session_id — multi-user safe)
                     confirmed_desc = state.get('confirmed_description', '')
                     snapshot       = state.get('cached_unified_obj_snapshot')
-                    raw_json_fp    = state.get('cached_raw_unified_json', '')
                     rag_ctx_fp     = state.get('cached_retrieved_context', '')
                     expanded_fp    = state.get('cached_expanded_user_text', '')
                     perf_calc_fp   = state.get('cached_perf_calc_result')
@@ -4281,7 +4242,6 @@ class TextToCADAgent:
                                 awaiting_confirm=False,
                                 confirm_count=0,
                                 confirmed_description='',
-                                cached_raw_unified_json='',
                                 cached_retrieved_context='',
                                 cached_unified_obj_snapshot=None,
                                 cached_expanded_user_text='',
@@ -4323,7 +4283,6 @@ class TextToCADAgent:
                             fp_codegen_start = time.time()
                             fp_result = await self.generate_code_from_requirements(
                                 unified_output_obj_fp,
-                                raw_json_fp,
                                 rag_ctx_fp,
                                 session_id=session_id,
                                 save_files=False,
@@ -4426,12 +4385,6 @@ class TextToCADAgent:
             # END CONFIRM FAST-PATH GATE — continue normal flow below
             # ════════════════════════════════════════════════════════════════
 
-
-            # Set by the information_request branch below when the request turns
-            # out to carry real CAD intent: the unified + RAG analysis it already
-            # ran is handed to the normal flow rather than being recomputed there.
-            prefetched_unified_result = None
-            prefetched_user_text_with_history = None
 
             # Check for greeting/casual conversation/process-question first.
             # Runs on EVERY non-edit turn (not just the very first message of the
@@ -4536,12 +4489,8 @@ class TextToCADAgent:
                         }
 
                         # Run the SAME pipeline the CAD path runs — query expansion,
-                        # RAG retrieval, unified + DFM — exactly once for this turn.
-                        # This branch used to hand-roll its own expansion + rules
-                        # retrieval + unified call, and then, whenever the request
-                        # turned out to carry real CAD intent, fell through to the
-                        # normal flow which ran the whole thing a second time.
-                        # `prefetched_*` below hands this result to that flow instead.
+                        # RAG retrieval, unified + DFM — exactly once for this turn,
+                        # then answer from it and return.
                         try:
                             user_text_with_history = self._build_user_text_with_history(session_id, user_text)
                             logger.info(
@@ -4554,7 +4503,6 @@ class TextToCADAgent:
                                 session_id=session_id,
                                 latest_requirements_for_guidance=None,
                                 material=state.get('material_choice', ''),
-                                mapped_material=state.get('mapped_material', 'steel'),
                                 # Answer the question from the knowledge base, not just
                                 # validate against it — matches the old k=15 + inlined
                                 # "Retrieved Context:" prompt this branch used to build.
@@ -4572,57 +4520,35 @@ class TextToCADAgent:
 
                             unified_output_obj = unified_chain_result["unified_output_obj"]
 
-                            # Check if this is PURE information request (no CAD intent)
-                            # OR if there are questions that need user answers
-                            has_unanswered_questions = (
-                                unified_output_obj.questions and 
-                                len(unified_output_obj.questions) > 0 and 
-                                not unified_output_obj.skip_questions_requested
-                            )
-                            
-                            is_pure_info_request = (
-                                unified_output_obj.title == "Unable to parse requirements"
-                                or not unified_output_obj.description
-                                or unified_output_obj.complexity_level == 0
-                            )
+                            # An information request is always answered here and never
+                            # falls through to code generation. The old "does this also
+                            # carry CAD intent?" test keyed on `description` and `title`,
+                            # neither of which the unified template emits any more, so it
+                            # was unconditionally true; the fall-through it guarded was
+                            # unreachable. Answer with the unified chain's questions —
+                            # which for an information request ARE the answer, grounded in
+                            # the rules inlined via inline_rules_context above.
+                            if unified_output_obj.questions:
+                                response_message = "\n".join(unified_output_obj.questions)
+                            else:
+                                response_message = greeting_result.get('response', 'Information request detected. Please specify what information you need.')
 
-                            # CRITICAL: If there are questions and user hasn't skipped them,
-                            # we MUST stop and wait for user answers - DO NOT generate code!
-                            if is_pure_info_request or has_unanswered_questions:
-                                # Pure information request OR questions need answers - return questions only
-                                if unified_output_obj.questions:
-                                    response_message = "\n".join(unified_output_obj.questions)
-                                else:
-                                    response_message = greeting_result.get('response', 'Information request detected. Please specify what information you need.')
+                            logger.info(f"[AGENT_INFO_REQUEST] 💬 Info request answered - Response length: {len(response_message)} chars")
 
-                                if has_unanswered_questions:
-                                    logger.info(f"[AGENT_INFO_REQUEST] ❓ Questions detected - waiting for user answers (NOT generating code)")
-                                else:
-                                    logger.info(f"[AGENT_INFO_REQUEST] 💬 Pure info request - Response length: {len(response_message)} chars")
+                            yield {
+                                "step": "analysis",
+                                "status": "Information request completed.",
+                                "is_complete": True,
+                                "is_active": False,
+                                "progress": 100
+                            }
 
-                                yield {
-                                    "step": "analysis",
-                                    "status": "Information request completed." if is_pure_info_request else "Waiting for user answers...",
-                                    "is_complete": True,
-                                    "is_active": False,
-                                    "progress": 100
-                                }
-
-                                result = {
-                                    "code": None,
-                                    "message": response_message,
-                                    "explanation": "Information request with context retrieval" if is_pure_info_request else "Questions require user input"
-                                }
-
-                                yield {"final_result": result}
-                                return
-                            
-                            # If we reach here, it means info request has CAD potential.
-                            # Continue to normal flow (don't return early) — handing it
-                            # the analysis we just paid for so it doesn't redo it.
-                            logger.info(f"[AGENT_INFO_REQUEST] 🔄 Info request with CAD potential - reusing unified result for normal flow")
-                            prefetched_unified_result = unified_chain_result
-                            prefetched_user_text_with_history = user_text_with_history
+                            yield {"final_result": {
+                                "code": None,
+                                "message": response_message,
+                                "explanation": "Information request with context retrieval"
+                            }}
+                            return
 
                         except Exception as e:
                             logger.error(f"[AGENT_INFO_REQUEST] Error retrieving context: {e}")
@@ -4763,61 +4689,40 @@ class TextToCADAgent:
 
                 # Always build history from DB — covers both first turn (DB empty) and
                 # subsequent turns (DB has prior Q&A / code-gen entries).
-                # The information_request branch already built it for this turn when
-                # it prefetched the analysis; reuse it so the DB read and the string
-                # the LLM saw stay identical.
-                if prefetched_user_text_with_history is not None:
-                    user_text_with_history = prefetched_user_text_with_history
-                else:
-                    user_text_with_history = self._build_user_text_with_history(session_id, user_text)
+                user_text_with_history = self._build_user_text_with_history(session_id, user_text)
                 logger.info(f"[AGENT_CHAIN] History built: {len(user_text_with_history)} chars for session {session_id}")
 
                 # ══════════════════════════════════════════════════════════════════
-                # FAST-PATH GATE — skip unified chain when waiting for user confirm
-                # Applies to BOTH: awaiting_step_plan_confirm AND awaiting_confirm.
+                # FAST-PATH GATE — skip unified chain when waiting for a step-plan reply.
                 # Cache was saved by _save_confirm_cache() on the previous turn.
+                #
+                # This gate does NOT handle awaiting_confirm: the CONFIRM FAST-PATH GATE
+                # at the top of this function runs first and clears awaiting_confirm on
+                # every one of its exits (YES returns outright; CHANGE, cache-miss and
+                # reconstruct-failure all set it False before falling through), so it is
+                # always False by the time we get here.
                 # ══════════════════════════════════════════════════════════════════
                 _fast_state = self._get_session_state(session_id)
                 _awaiting_step_plan = _fast_state.get('awaiting_step_plan_confirm', False)
-                _awaiting_desc      = _fast_state.get('awaiting_confirm', False)
                 _cached_snapshot    = _fast_state.get('cached_unified_obj_snapshot')
-                _cached_json        = _fast_state.get('cached_raw_unified_json', '')
                 _cached_ctx         = _fast_state.get('cached_retrieved_context', '')
                 _cached_expanded    = _fast_state.get('cached_expanded_user_text', '')
                 _cached_perf_calc   = _fast_state.get('cached_perf_calc_result')
 
-                _can_fast_path = (
-                    (_awaiting_step_plan or _awaiting_desc)
-                    and _cached_snapshot is not None
-                    and _cached_json
-                )
-
-                if _can_fast_path:
+                if _awaiting_step_plan and _cached_snapshot is not None:
                     # ── Restore unified output from cache ─────────────────────
                     # AnalysisAndParameterCheckOutput imported at top of file
                     unified_output_obj           = AnalysisAndParameterCheckOutput(**_cached_snapshot)
-                    raw_unified_json             = _cached_json
                     retrieved_context_for_code_gen = _cached_ctx
                     expanded_user_text           = _cached_expanded or user_text
                     if _cached_perf_calc and not _fast_state.get('perf_calc_result'):
                         self._update_session_state(session_id, perf_calc_result=_cached_perf_calc)
 
-                    # Inject user's current intent into the cached object
-                    # so downstream CASE A / CASE 1 gates can read it correctly.
-                    # detect_confirm_intent is a lightweight keyword check — no LLM call.
-                    from src.utils.language_utils import detect_confirm_intent
-                    _intent = detect_confirm_intent(user_text)
-                    unified_output_obj.confirm_intent_detected = _intent
-
                     logger.info(
                         f"[FAST_PATH] ✅ Using cached unified result "
-                        f"(awaiting_step_plan={_awaiting_step_plan}, awaiting_desc={_awaiting_desc}) "
-                        f"| confirm_intent={_intent} | session={session_id}"
+                        f"(awaiting_step_plan=True) | session={session_id}"
                     )
-                    print(
-                        f"[FAST_PATH] ✅ Skipping unified chain — using cache "
-                        f"| step_plan={_awaiting_step_plan} desc={_awaiting_desc} intent={_intent}"
-                    )
+                    print(f"[FAST_PATH] ✅ Skipping unified chain — using cache | step_plan=True")
 
                     yield {
                         "step": "analysis",
@@ -4831,42 +4736,6 @@ class TextToCADAgent:
                     yield {
                         "step": "parameters",
                         "status": "Parameters validated (fast-path).",
-                        "is_complete": True,
-                        "is_active": False,
-                        "progress": 40
-                    }
-
-                elif prefetched_unified_result is not None:
-                    # ── Reuse path: the information_request branch already ran the
-                    # full unified + RAG analysis for this turn (it needed the same
-                    # result to decide whether the request was pure info). Running
-                    # it again here cost a second expansion, a second retrieval with
-                    # its reranks, and a second expert-tier unified + DFM pair.
-                    logger.info(f"[AGENT_CHAIN] ♻️ Reusing unified result from information_request analysis | session={session_id}")
-                    unified_chain_result = prefetched_unified_result
-
-                    unified_output_obj             = unified_chain_result["unified_output_obj"]
-                    raw_unified_json               = unified_chain_result["raw_unified_json"]
-                    retrieved_context_for_code_gen = unified_chain_result["retrieved_context_for_code_gen"]
-                    expanded_user_text             = unified_chain_result.get("expanded_user_text", user_text)
-
-                    if unified_chain_result.get("_needs_perf_param_chain"):
-                        unified_output_obj = await self._run_perforated_param_chain(
-                            unified_output_obj, user_text_with_history, session_id
-                        )
-
-                    yield {
-                        "step": "analysis",
-                        "status": "Analysis completed.",
-                        "is_complete": True,
-                        "is_active": False,
-                        "progress": 20,
-                        "design_type": unified_output_obj.design_type,
-                        "assembly_warning": unified_output_obj.assembly_warning
-                    }
-                    yield {
-                        "step": "parameters",
-                        "status": "Parameters validated.",
                         "is_complete": True,
                         "is_active": False,
                         "progress": 40
@@ -4900,7 +4769,6 @@ class TextToCADAgent:
                     logger.info(f"[AGENT_CHAIN] Chain processing completed in {chain_duration:.2f}s | session={session_id}")
 
                     unified_output_obj             = unified_chain_result["unified_output_obj"]
-                    raw_unified_json               = unified_chain_result["raw_unified_json"]
                     retrieved_context_for_code_gen = unified_chain_result["retrieved_context_for_code_gen"]
                     expanded_user_text             = unified_chain_result.get("expanded_user_text", user_text)
 
@@ -4933,16 +4801,10 @@ class TextToCADAgent:
 
                 self._update_session_state(session_id, latest_requirements=unified_output_obj)
 
-                if unified_output_obj.title == "Unable to parse requirements":
-                    logger.warning(f"[AGENT_PARSE] Unable to parse requirements for session {session_id}")
-                    error_details = "\n".join(unified_output_obj.questions) if unified_output_obj.questions else "Unable to parse requirements"
-                    result = {
-                        "code": None,
-                        "message": f"I had trouble understanding your request. Could you please try rephrasing it? Details: {error_details}",
-                        "explanation": error_details
-                    }
-                    yield {"final_result": result}
-                    return
+                # NOTE: no `title` sentinel checks — the unified template emits no
+                # `title`/`description`, so it is always "". Parse failures arrive
+                # as missing_info=True + one error question via
+                # _create_fallback_response() and route through ASK_QUESTIONS below.
 
                 logger.info(f"[AGENT_CHAIN] Missing info: {unified_output_obj.missing_info}")
                 logger.info(f"[AGENT_CHAIN] Questions count: {len(unified_output_obj.questions) if unified_output_obj.questions else 0}")
@@ -4958,14 +4820,6 @@ class TextToCADAgent:
                             f"questions={len(unified_output_obj.questions) if unified_output_obj.questions else 0}, "
                             f"skip={skip_questions}, override={override_intent}, "
                             f"max_attempts={max_attempts_reached}")
-
-                
-                if unified_output_obj.title == "Conversational Response":
-                    logger.info(f"[AGENT_CONVERSATIONAL] Detected conversational response for session {session_id}")
-                    # parameters(40%) already emitted via auto-cascade above
-                    response_msg = "\n".join(unified_output_obj.questions) if unified_output_obj.questions else "Conversational response provided"
-                    yield {"final_result": {"code": None, "message": response_msg, "explanation": response_msg}}
-                    return
 
                 # ════════════════════════════════════════════════════════════════════
                 # SINGLE DECISION ENGINE -  _make_decision()  PATH A & PATH B
@@ -5004,104 +4858,81 @@ class TextToCADAgent:
 
                 # ── GENERATE_CODE: check confirm gate TRƯỚC khi gen code ────────
                 # Retrieve per-session confirm state (multi-user safe)
+                #
+                # There is no "user just confirmed" case here. Reaching this point
+                # with awaiting_confirm=True is impossible: the CONFIRM FAST-PATH GATE
+                # at the top of this function owns confirm replies and clears the flag
+                # on every exit. A YES is handled there and returns; anything else
+                # arrives here as a fresh request.
                 confirm_state   = self._get_session_state(session_id)
                 confirm_count   = confirm_state.get('confirm_count', 0)
-                awaiting_confirm = confirm_state.get('awaiting_confirm', False)
                 confirmed_description = confirm_state.get('confirmed_description', '')
 
-                # CASE 1: User just confirmed (said "yes"/"oui" to a 📋 message)
-                if awaiting_confirm and unified_output_obj.confirm_intent_detected:
-                    logger.info(f"[CONFIRM] ✅ User confirmed description (round {confirm_count}) | session={session_id}")
-                    self._update_session_state(session_id, awaiting_confirm=False, confirm_count=0)
-                    if confirmed_description:
-                        unified_output_obj.description = confirmed_description
-                        logger.info(f"[CONFIRM] Using confirmed_description ({len(confirmed_description)} chars)")
-                    # parameters(40%) already emitted via auto-cascade above
-                    # Fall through to code generation below
+                # ══════════════════════════════════════════════════════════════
+                # STEP PLAN / CONFIRM GATE — intent-based
+                # ══════════════════════════════════════════════════════════════
+                awaiting_step_plan_confirm = confirm_state.get('awaiting_step_plan_confirm', False)
 
-                else:
-                    # ══════════════════════════════════════════════════════════════
-                    # STEP PLAN / CONFIRM GATE — intent-based
-                    # ══════════════════════════════════════════════════════════════
-                    awaiting_step_plan_confirm = confirm_state.get('awaiting_step_plan_confirm', False)
+                print(f"\n{'='*60}")
+                print(f"[FLOW_STATE] awaiting_step_plan_confirm = {awaiting_step_plan_confirm}")
+                print(f"[FLOW_STATE] step_by_step_requested     = {unified_output_obj.step_by_step_requested}")
+                print(f"[FLOW_STATE] complexity_level           = {unified_output_obj.complexity_level}")
+                print(f"{'='*60}\n")
 
-                    print(f"\n{'='*60}")
-                    print(f"[FLOW_STATE] awaiting_step_plan_confirm = {awaiting_step_plan_confirm}")
-                    print(f"[FLOW_STATE] confirm_intent_detected    = {unified_output_obj.confirm_intent_detected}")
-                    print(f"[FLOW_STATE] step_by_step_requested     = {unified_output_obj.step_by_step_requested}")
-                    print(f"[FLOW_STATE] complexity_level           = {unified_output_obj.complexity_level}")
-                    print(f"{'='*60}\n")
+                # ── GATE 1: User replied to step plan (YES or NO) → both → Confirm ──
+                if awaiting_step_plan_confirm:
+                    logger.info(f"[STEP_PLAN] User replied to plan (YES/NO → Confirm) | session={session_id}")
+                    print(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
+                    self._update_session_state(session_id, awaiting_step_plan_confirm=False)
+                    # Fall through to Description Confirm below ↓
 
-                    # ── GATE 1: User replied to step plan (YES or NO) → both → Confirm ──
-                    if awaiting_step_plan_confirm:
-                        logger.info(f"[STEP_PLAN] User replied to plan (YES/NO → Confirm) | session={session_id}")
-                        print(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
-                        self._update_session_state(session_id, awaiting_step_plan_confirm=False)
-                        # Fall through to Description Confirm below ↓
+                # ── GATE 2: Unified detected explicit step-by-step request → Run Step Planner ──
+                elif unified_output_obj.step_by_step_requested:
+                    logger.info(f"[STEP_PLAN] 🔧 User requested step plan → Running Step Planner | session={session_id}")
+                    print(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
 
-                    # ── GATE 2: Unified detected explicit step-by-step request → Run Step Planner ──
-                    elif unified_output_obj.step_by_step_requested:
-                        logger.info(f"[STEP_PLAN] 🔧 User requested step plan → Running Step Planner | session={session_id}")
-                        print(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
-
-                        _total, _user_msg = await self._run_step_planner(
-                            session_id, unified_output_obj, raw_unified_json,
-                            retrieved_context_for_code_gen, expanded_user_text,
-                            empty_steps_text="  (aucune étape)",
-                        )
-
-                        yield {"final_result": {
-                            "code":        None,
-                            "message":     _user_msg,
-                            "explanation": f"Step plan ({_total} steps)"
-                        }}
-                        return
-
-                    # ── Normal confirm flow (after GATE 1 fall-through, or no step plan) ──
-                    # NOTE: check user_text_with_history (not description, which is always empty here)
-                    _user_text_lower = (user_text_with_history or "").lower()
-                    _has_operations = any(kw in _user_text_lower for kw in [
-                        "hole", "trou", "trous", "perçage", "percage",
-                        "bend", "pli", "plis", "pliage",
-                        "cut", "découpe", "decoupe", "slot", "rainure",
-                        "fillet", "congé", "conge", "chamfer", "chanfrein",
-                        "countersink", "fraisage", "taraudage", "tapping",
-                        "notch", "pocket", "embossing",
-                    ])
-
-                    # skip_confirm: only when user explicitly requests skip OR max attempts reached.
-                    # complexity_level==1 no longer skips confirm.
-                    skip_confirm = (
-                        (unified_output_obj.skip_questions_requested and not unified_output_obj.override_intent_detected)
-                        or confirm_count >= self.MAX_CONFIRM_ATTEMPTS
+                    _total, _user_msg = await self._run_step_planner(
+                        session_id, unified_output_obj,
+                        retrieved_context_for_code_gen, expanded_user_text,
+                        empty_steps_text="  (aucune étape)",
                     )
 
-                    if not skip_confirm:
-                        self._save_confirm_cache(
-                            session_id,
-                            unified_output_obj,
-                            raw_unified_json,
-                            retrieved_context_for_code_gen,
-                            expanded_user_text,
-                        )
-                        logger.info(f"[CONFIRM] Triggering confirm chain | complexity={unified_output_obj.complexity_level} | session={session_id}")
-                        confirm_result = await self._run_description_confirm(
-                            unified_output_obj, user_text_with_history, session_id
-                        )
-                        yield {"final_result": confirm_result}
-                        return
+                    yield {"final_result": {
+                        "code":        None,
+                        "message":     _user_msg,
+                        "explanation": f"Step plan ({_total} steps)"
+                    }}
+                    return
 
-                    # skip_confirm=True → log reason and fall through to code gen
-                    if confirm_count >= self.MAX_CONFIRM_ATTEMPTS:
-                        logger.info(f"[CONFIRM] Max rounds ({self.MAX_CONFIRM_ATTEMPTS}) reached → auto generate | session={session_id}")
-                        if confirmed_description:
-                            unified_output_obj.description = confirmed_description
-                    else:
-                        logger.info(f"[CONFIRM] Skipped (complexity={unified_output_obj.complexity_level}, ops={_has_operations}) | session={session_id}")
-                    self._update_session_state(session_id, awaiting_confirm=False, confirm_count=0, confirmed_description='')
+                # skip_confirm: only when user explicitly requests skip OR max attempts reached.
+                # complexity_level==1 no longer skips confirm.
+                skip_confirm = (
+                    (unified_output_obj.skip_questions_requested and not unified_output_obj.override_intent_detected)
+                    or confirm_count >= self.MAX_CONFIRM_ATTEMPTS
+                )
 
+                if not skip_confirm:
+                    self._save_confirm_cache(
+                        session_id,
+                        unified_output_obj,
+                        retrieved_context_for_code_gen,
+                        expanded_user_text,
+                    )
+                    logger.info(f"[CONFIRM] Triggering confirm chain | complexity={unified_output_obj.complexity_level} | session={session_id}")
+                    confirm_result = await self._run_description_confirm(
+                        unified_output_obj, user_text_with_history, session_id
+                    )
+                    yield {"final_result": confirm_result}
+                    return
 
-
+                # skip_confirm=True → log reason and fall through to code gen
+                if confirm_count >= self.MAX_CONFIRM_ATTEMPTS:
+                    logger.info(f"[CONFIRM] Max rounds ({self.MAX_CONFIRM_ATTEMPTS}) reached → auto generate | session={session_id}")
+                    if confirmed_description:
+                        unified_output_obj.description = confirmed_description
+                else:
+                    logger.info(f"[CONFIRM] Skipped (skip_questions_requested=True, complexity={unified_output_obj.complexity_level}) | session={session_id}")
+                self._update_session_state(session_id, awaiting_confirm=False, confirm_count=0, confirmed_description='')
 
 
 
@@ -5124,7 +4955,6 @@ class TextToCADAgent:
                 codegen_start_time = time.time()
                 result = await self.generate_code_from_requirements(
                     unified_output_obj,
-                    raw_unified_json,
                     retrieved_context_for_code_gen,
                     session_id=session_id,
                     save_files=False,

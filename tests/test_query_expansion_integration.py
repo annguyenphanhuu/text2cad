@@ -76,7 +76,6 @@ async def test_expansion_integration():
                 questions=[],
                 shape_class="L-bracket"
             ),
-            "raw_unified_json": "{}",
             "retrieved_context_for_code_gen": "Mock Context"
         }
         
