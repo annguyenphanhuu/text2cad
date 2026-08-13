@@ -14,10 +14,7 @@ from .models import (
     ShapeRequirement, ExtractedShapeInfo, Operation,
     DesignRequirements, AnalysisAndParameterCheckOutput
 )
-from .agent_utils import (
-    parse_unified_analysis, clean_code,
-    detect_detailed_explanation_request
-)
+from .agent_utils import detect_detailed_explanation_request
 from .agent_chains import (
     create_greeting_classification_chain,
     create_unified_processing_chain,
@@ -337,16 +334,28 @@ class TextToCADAgent:
             user_text: User query text (current question only)
             session_id: Session ID for cost tracking
             **kwargs: Additional parameters for unified chain (previous_responses_formatted, etc.)
-        
+                k_rules (int): how many rules to retrieve. Information requests ask
+                    for more than a CAD turn does — they are answered *from* the
+                    rules rather than merely validated against them.
+                inline_rules_context (bool): also feed the retrieved rules to the
+                    unified chain by appending them to its user_text. The unified
+                    template has no rules placeholder (only DFM consumes
+                    rules_context), so this is the only way to ground an
+                    information-request answer in the knowledge base.
+
         Returns:
             Unified chain output with parsed analysis
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         from src.core.rag_singleton import get_rag_split_context
         from src.utils.cost_tracking_wrapper import ainvoke_with_cost_tracking
-        
+
+        # Popped up-front so they never leak into the chain inputs built below.
+        k_rules = kwargs.pop('k_rules', 10)
+        inline_rules_context = kwargs.pop('inline_rules_context', False)
+
         # RAG QUERY: Extract only [USER] blocks from conversation history.
         # We deliberately exclude [CHATBOT] responses to avoid duplicate/noisy retrieval —
         # chatbot responses can confuse semantic search and reduce retrieval accuracy.
@@ -417,7 +426,7 @@ class TextToCADAgent:
         logger.info(f"[TIMING] rag_split_context START | session={session_id}")
         rag_result = await get_rag_split_context(
             query=expanded_rag_query,  # ✅ Use expanded query for better semantic matching
-            k_rules=10,
+            k_rules=k_rules,
             k_examples=4,
             reranking_llm=self.reranking_llm,
             cost_tracker=self._get_cost_tracker(session_id),
@@ -468,8 +477,23 @@ class TextToCADAgent:
 
         # Get material from kwargs or session state
         material = kwargs.pop('material', '')
+
+        # Information requests are answered FROM the rules, so they get them
+        # appended to the prompt text. The RAG query was already built above from
+        # the raw user turns, so this never pollutes retrieval.
+        unified_user_text = user_text
+        if inline_rules_context and rules_context:
+            unified_user_text = (
+                f"{user_text}\n\n"
+                f"[RETRIEVED MANUFACTURING RULES]\n{rules_context}"
+            )
+            logger.info(
+                f"[UNIFIED] Inlined {len(rules_context)} chars of rules context into "
+                f"unified prompt | session={session_id}"
+            )
+
         unified_chain_input = {
-            "user_text": user_text,  # ✅ Full [USER]/[CHATBOT] history for unified analysis context
+            "user_text": unified_user_text,  # ✅ Full [USER]/[CHATBOT] history for unified analysis context
             "rules_context": rules_context,  # ✅ RULES → Unified Analysis ONLY
             "examples_context": examples_context,  # ✅ EXAMPLES + INFO → Code Generation ONLY
             "session_id": session_id,
@@ -2179,34 +2203,24 @@ class TextToCADAgent:
         self,
         user_text: str,
         session_id: str,
-        *,
-        is_new_request: bool = True,
-        is_edit_request: bool = False,
-        skip_greeting_check: bool = False,
-        force_proceed: bool = False,
-        check_max_attempts: bool = False
     ) -> dict:
         """
-        Unified processor for all request types (new, continue, edit).
-        
-        This function consolidates the common logic previously duplicated across:
-        - process_new_request
-        - continue_information_collection
-        
+        Run the unified analysis → confirm/code-generation flow for one turn.
+
+        The only caller is process_edit_request(), which routes here when a
+        session in edit mode receives a confirm reply. Greeting / information-
+        request classification is deliberately NOT run here: the caller has
+        already established this is a CAD turn, and process_request_with_progress()
+        owns that classification for every other entry point.
+
         Args:
             user_text: User input text (may contain full conversation history)
             session_id: Session identifier
-            is_new_request: True if this is a brand new request (not continuing collection)
-            is_edit_request: True if this is an edit request
-            skip_greeting_check: Skip greeting/info classification (for continue flows)
-            force_proceed: Force code generation even with missing info
-            check_max_attempts: Check MAX_QUESTION_ATTEMPTS limit
-        
+
         Returns:
             Response dict with code, message, explanation
         """
         from src.core.async_optimizations import async_timer
-        from src.utils.cost_tracking_wrapper import ainvoke_with_cost_tracking
 
         # Async session state loading
         @async_timer(f"session_state_load_{session_id}")
@@ -2217,111 +2231,7 @@ class TextToCADAgent:
         state = await load_session_state_async()
 
         try:
-            # Step 1: Greeting/Info Request Classification (only for new requests)
-            if not skip_greeting_check:
-                print(f"🔍 [GREETING CHECK] Classifying user input for session {session_id} (async optimized)")
-                
-                @async_timer(f"greeting_classification_{session_id}")
-                async def classify_greeting_async():
-                    cost_tracker = self._get_cost_tracker(session_id)
-                    return await ainvoke_with_cost_tracking(
-                        "greeting_classification",
-                        self.greeting_classification_chain.ainvoke,
-                        {"user_text": user_text},
-                        cost_tracker,
-                        self.model_names['default']
-                    )
-                
-                greeting_result = await classify_greeting_async()
-
-                print(f"[GREETING RESULT] Classification: {greeting_result.get('classification')}, Confidence: {greeting_result.get('confidence')}")
-
-                # Guard: a short reply answering our own pending clarifying
-                # question (e.g. "option A", "base") has no context for the
-                # classifier and can be misread as a greeting or an
-                # information_request. process_question is left alone.
-                if state.get('pending_questions') and greeting_result.get('classification') in ('greeting', 'information_request'):
-                    print(f"[GREETING] Overriding '{greeting_result.get('classification')}' → cad_request (session {session_id} has pending question(s))")
-                    greeting_result['classification'] = 'cad_request'
-
-                # Handle greeting responses
-                if (greeting_result.get('classification') == 'greeting' and
-                    greeting_result.get('confidence', 0) > 0.8 and
-                    greeting_result.get('response')):
-
-                    print(f"[GREETING] Detected greeting/casual conversation for session {session_id}")
-                    return {
-                        "code": None,
-                        "message": greeting_result['response'],
-                        "explanation": "Greeting/casual conversation response"
-                    }
-
-                # Handle information requests
-                if (greeting_result.get('classification') == 'information_request' and
-                    greeting_result.get('confidence', 0) > 0.7):
-
-                    print(f"\n{'='*60}")
-                    print(f"[DEBUG_PATH] >>> ENTERING information_request PATH <<<")
-                    print(f"[DEBUG_PATH] classification={greeting_result.get('classification')}, confidence={greeting_result.get('confidence')}")
-                    print(f"[DEBUG_PATH] greeting_response preview: {str(greeting_result.get('response',''))[:200]}")
-                    print(f"{'='*60}\n")
-
-                    try:
-                        # Build user_text with full conversation history using unified format
-                        print(f"[INFO_REQUEST] Step 1: Building user_text with history for session {session_id}")
-                        @async_timer(f"build_user_text_info_{session_id}")
-                        async def build_user_text_async():
-                            loop = asyncio.get_event_loop()
-                            return await loop.run_in_executor(None, self._build_user_text_with_history, session_id, user_text)
-                        
-                        combined_user_text = await build_user_text_async()
-                        print(f"[INFO_REQUEST] Step 2: Built unified user_text (length: {len(combined_user_text)} chars)")
-                        print(f"[INFO_REQUEST] Step 3: User text preview: {combined_user_text[:400]}...")
-
-                        # Use _invoke_unified_with_rag with unified format
-                        print(f"[INFO_REQUEST] Step 4: Calling _invoke_unified_with_rag with unified user_text")
-                        @async_timer(f"info_unified_with_rag_{session_id}")
-                        async def process_info_unified_async():
-                            return await self._invoke_unified_with_rag(
-                                user_text=combined_user_text,  # ✅ Unified [USER]/[CHATBOT] format
-                                session_id=session_id,
-                                previous_responses_formatted="",  # No longer needed - history in user_text
-                                latest_requirements_for_guidance=None,
-                                detailed_explanation_requested=True,
-                                material=state.get('material_choice', ''),  # Pass material choice to template
-                                mapped_material=state.get('mapped_material', 'steel')  # Pass mapped material
-                            )
-                        
-                        unified_chain_result = await process_info_unified_async()
-
-                        # Extract unified output object from result
-                        unified_output_obj = unified_chain_result["unified_output_obj"]
-
-                        # Return the questions as the response
-                        if unified_output_obj.questions:
-                            response_message = "\n".join(unified_output_obj.questions)
-                        else:
-                            response_message = greeting_result.get('response', 'Information request detected. Please specify what information you need.')
-
-                        logger.info(f"[INFO_REQUEST] 📝 Generated informed response (length: {len(response_message)} chars)")
-                        print(f"[INFO_REQUEST] Generated informed response: {response_message[:100]}...")
-
-                        return {
-                            "code": None,
-                            "message": response_message,
-                            "explanation": "Information request with context retrieval"
-                        }
-
-                    except Exception as e:
-                        print(f"[INFO_REQUEST] Error retrieving context: {e}")
-                        # Fallback to basic response
-                        return {
-                            "code": None,
-                            "message": greeting_result.get('response', 'Information request detected. Please specify what information you need.'),
-                            "explanation": "Information request response (fallback)"
-                        }
-
-            # Step 2: Build user_text with conversation history using unified format
+            # Step 1: Build user_text with conversation history using unified format
             @async_timer(f"build_user_text_cad_{session_id}")
             async def build_user_text_async():
                 loop = asyncio.get_event_loop()
@@ -2330,7 +2240,7 @@ class TextToCADAgent:
             user_text_with_history = await build_user_text_async()
             print(f"[CAD_REQUEST] Built unified user_text with history (length: {len(user_text_with_history)} chars)")
 
-            # Step 3: Unified processing with RAG
+            # Step 2: Unified processing with RAG
             @async_timer(f"unified_processing_{session_id}")
             async def process_unified_async():
                 return await self._invoke_unified_with_rag(
@@ -2363,7 +2273,7 @@ class TextToCADAgent:
             print(f"Raw Unified JSON: {raw_unified_json[:500]}...") if len(raw_unified_json) > 500 else print(f"Raw Unified JSON: {raw_unified_json}")
             print(f"Parsed Output: {json.dumps(unified_output_obj.dict(), indent=2)}")
 
-            # Step 4: Update session state
+            # Step 3: Update session state
             @async_timer(f"session_state_update_{session_id}")
             async def update_session_state_async():
                 loop = asyncio.get_event_loop()
@@ -2377,7 +2287,7 @@ class TextToCADAgent:
             
             await update_session_state_async()
 
-            # Step 5: Handle parsing errors
+            # Step 4: Handle parsing errors
             if unified_output_obj.title == "Unable to parse requirements":
                 error_details = "\n".join(unified_output_obj.questions) if unified_output_obj.questions else "Unable to parse requirements"
                 print(f"[ERROR] Parsing error for session {session_id}: {error_details}")
@@ -2392,7 +2302,7 @@ class TextToCADAgent:
                     "explanation": error_details
                 }
 
-            # Step 6: Handle conversational responses
+            # Step 5: Handle conversational responses
             if unified_output_obj.title == "Conversational Response":
                 print(f"[CONVERSATIONAL] Detected conversational response for session {session_id}")
                 response_msg = "\n".join(unified_output_obj.questions) if unified_output_obj.questions else "Conversational response provided"
@@ -2402,7 +2312,7 @@ class TextToCADAgent:
                     "explanation": response_msg
                 }
 
-            # Step 7: Extract AI-determined flags
+            # Step 6: Extract AI-determined flags
             skip_questions  = unified_output_obj.skip_questions_requested
             override_intent = unified_output_obj.override_intent_detected
 
@@ -2415,40 +2325,19 @@ class TextToCADAgent:
             print(f"[DEBUG_FLAGS] override_intent_detected   = {override_intent}")
             print(f"{'='*60}\n")
 
-            # ── Max attempts check ──────────────────────────────────────────
-            # We track attempts by how many pending_questions rounds have occurred.
-            # pending_questions is reset each time we get an answer, so we use
-            # a simple counter: if the state has accumulated MAX_QUESTION_ATTEMPTS
-            # rounds without resolving, force code gen.
-            max_attempts_reached = (
-                check_max_attempts and
-                len(state.get('pending_questions', [])) >= self.MAX_QUESTION_ATTEMPTS
-            )
-            if max_attempts_reached:
-                print(f"[WARNING] Max question attempts ({self.MAX_QUESTION_ATTEMPTS}) reached for session {session_id}.")
-
-            # ── Force proceed + critically missing check ────────────────────
-            if check_max_attempts and force_proceed and unified_output_obj.missing_info:
-                # Critically incomplete = missing_info flag set and no description
-                is_critically_incomplete = (
-                    unified_output_obj.missing_info or
-                    not unified_output_obj.description or
-                    unified_output_obj.complexity_level == 0
-                )
-                if is_critically_incomplete:
-                    print(f"[ERROR] User forced proceed but info is critically missing for session {session_id}")
-                    user_text_extracted = self._extract_user_text_from_state(state, session_id)
-                    error_msg = self._get_complexity_error_message(user_text_extracted)
-                    return {"error": error_msg, "code": None}
-
             # ════════════════════════════════════════════════════════════════
-            # Step 8: SINGLE DECISION ENGINE - single decision point
+            # SINGLE DECISION ENGINE - single decision point
             # ════════════════════════════════════════════════════════════════
+            # max_attempts_reached is always False on this path: the caller
+            # (process_edit_request) reaches here with a confirm reply, not with
+            # an unresolved clarifying-question round. The MAX_QUESTION_ATTEMPTS
+            # cap is enforced in process_request_with_progress(), which owns the
+            # question-asking loop.
             decision = self._make_decision(
                 unified_output_obj,
                 skip_questions=skip_questions,
                 override_intent=override_intent,
-                max_attempts_reached=max_attempts_reached,
+                max_attempts_reached=False,
             )
             print(f"[DECISION] → {decision.action} | session={session_id}")
 
@@ -3030,11 +2919,6 @@ class TextToCADAgent:
             return await self._unified_request_processor(
                 user_text=user_text,
                 session_id=session_id,
-                is_new_request=False,
-                is_edit_request=False,
-                skip_greeting_check=True,
-                force_proceed=False,
-                check_max_attempts=False,
             )
 
         # ── Step 0b: Intercept edit-ack replies ────────────────────────────────
@@ -3074,8 +2958,8 @@ class TextToCADAgent:
 
         print(f"\n[EDIT] Processing edit request for session {session_id}: '{user_text[:80]}'...")
 
-        # ── Step 2: Update running summary, then run shape_change + unified + DFM
-        #            all in parallel (edit mode) ─────────────────────────────────
+        # ── Step 2: Fold the edit into the running summary + classify the message,
+        #            then (only for real edits) run shape_change + unified + DFM ──
         # Rationale: edit mode used to only run shape_change_detector, so an edit
         # that keeps the same shape (e.g. "add a hole here") never went through
         # unified_processing_chain / dfm_validation_chain — meaning missing-info
@@ -3085,6 +2969,14 @@ class TextToCADAgent:
         # NOT a raw replay of edit_history_since_confirm) as the shared context —
         # avoids the LLM having to re-derive final state from a contradictory
         # transcript of add/move/delete operations.
+        #
+        # The intent classifier runs in phase 1, concurrently with edit_summary
+        # rather than inside phase 2's gather. It is a nano call that finishes well
+        # inside edit_summary's latency, so a genuine edit pays nothing for the
+        # earlier placement — but a non-CAD message ("combien ça coûte ?", "merci")
+        # now short-circuits at Step 2b BEFORE phase 2 spends a rules retrieval
+        # (with its rerank call), a shape-change detection and two expert-tier
+        # calls analyzing a design nobody asked to change.
         shape_detection = {"shape_change": False, "current_shape_type": "unknown", "reason": ""}
         unified_output_obj = None
         dfm_result = None
@@ -3092,6 +2984,8 @@ class TextToCADAgent:
         # "cad_request" so behavior is unchanged from before this gate existed.
         intent_result = {"classification": "cad_request", "confidence": 0.0}
         updated_summary = state.get('edit_running_summary') or state.get('last_confirmed_description', '')
+        # Bound outside the try blocks below: phase 2 needs it even if phase 1 raised.
+        cost_tracker = self._get_cost_tracker(session_id)
 
         try:
             if not state.get('last_confirmed_description'):
@@ -3121,68 +3015,22 @@ class TextToCADAgent:
                     f"{state['latest_code'][:6000]}\n```"
                 )
 
-            cost_tracker = self._get_cost_tracker(session_id)
-
-            updated_summary = await ainvoke_with_cost_tracking(
-                "edit_summary",
-                self.edit_summary_chain.ainvoke,
-                {
-                    "previous_description": updated_summary,
-                    "new_edit_request":     enhanced_user_text,
-                    "session_id":           session_id,
-                },
-                cost_tracker,
-                self.model_names['default']
-            )
-
-            rules_context = await self._retrieve_edit_rules_context(enhanced_user_text, session_id)
-
-            # Note for unified/DFM prompts: this is edit mode — updated_summary IS
-            # the current confirmed state (already includes all prior edits), the
-            # user_request below is only the NEW delta to analyze on top of it.
-            edit_mode_user_text = (
-                f"[EDIT MODE] Current confirmed design (net state after all prior edits):\n"
-                f"{updated_summary}\n\n"
-                f"[USER] {enhanced_user_text}"
-            )
-            unified_chain_input = {
-                "user_text":         edit_mode_user_text,
-                "rules_context":     "",
-                "examples_context":  "",
-                "session_id":        session_id,
-                "material":          state.get('material_choice', ''),
-                "mapped_material":   state.get('mapped_material', 'steel'),
-                "user_language":     state.get('user_language', 'French'),
-            }
-            dfm_chain_input = {
-                "user_text":         edit_mode_user_text,
-                "retrieved_context": rules_context,
-                "material":          state.get('material_choice', ''),
-                "session_id":        session_id,
-                "user_language":     state.get('user_language', 'French'),
-            }
-
-            shape_detection, unified_result, dfm_result, intent_result = await asyncio.wait_for(
+            updated_summary, intent_result = await asyncio.wait_for(
                 asyncio.gather(
-                    self._detect_shape_change(enhanced_user_text, updated_summary, session_id),
                     ainvoke_with_cost_tracking(
-                        "unified_processing_edit",
-                        self.unified_processing_chain.ainvoke,
-                        unified_chain_input,
+                        "edit_summary",
+                        self.edit_summary_chain.ainvoke,
+                        {
+                            "previous_description": updated_summary,
+                            "new_edit_request":     enhanced_user_text,
+                            "session_id":           session_id,
+                        },
                         cost_tracker,
-                        self.model_names['expert']
+                        self.model_names['default']
                     ),
-                    ainvoke_with_cost_tracking(
-                        "dfm_validation_edit",
-                        self.dfm_validation_chain.ainvoke,
-                        dfm_chain_input,
-                        cost_tracker,
-                        self.model_names['expert']
-                    ),
-                    # Intent gate — runs alongside the CAD-specific checks above so it
-                    # adds no extra latency to genuine edits. Classifies the raw new
-                    # message only (NOT edit_mode_user_text/updated_summary) since we
-                    # want to know what THIS message is about, not the whole design.
+                    # Classifies the raw new message only (NOT edit_mode_user_text /
+                    # updated_summary) since we want to know what THIS message is
+                    # about, not the whole design.
                     ainvoke_with_cost_tracking(
                         "greeting_classification_edit",
                         self.greeting_classification_chain.ainvoke,
@@ -3193,11 +3041,10 @@ class TextToCADAgent:
                 ),
                 timeout=50.0
             )
-            unified_output_obj = unified_result.get("unified_output_obj") if isinstance(unified_result, dict) else None
 
-        except Exception as parallel_err:
+        except Exception as phase1_err:
             logger.warning(
-                f"[EDIT] shape_change/unified/DFM/intent check failed, continuing with normal edit: {parallel_err}"
+                f"[EDIT] edit summary / intent classification failed, continuing with normal edit: {phase1_err}"
             )
 
         # ── Step 2b: non-CAD intent (pricing/pdf/greeting) → answer directly ─────
@@ -3235,6 +3082,62 @@ class TextToCADAgent:
         # cad_request above and falls through to the normal edit flow below.
         # The pricing/file ask is intentionally NOT answered here — only the CAD
         # edit itself is processed, matching how a plain edit request behaves.
+
+        # ── Step 2c: confirmed CAD edit → shape_change + unified + DFM in parallel ──
+        try:
+            rules_context = await self._retrieve_edit_rules_context(enhanced_user_text, session_id)
+
+            # Note for unified/DFM prompts: this is edit mode — updated_summary IS
+            # the current confirmed state (already includes all prior edits), the
+            # user_request below is only the NEW delta to analyze on top of it.
+            edit_mode_user_text = (
+                f"[EDIT MODE] Current confirmed design (net state after all prior edits):\n"
+                f"{updated_summary}\n\n"
+                f"[USER] {enhanced_user_text}"
+            )
+            unified_chain_input = {
+                "user_text":         edit_mode_user_text,
+                "rules_context":     "",
+                "examples_context":  "",
+                "session_id":        session_id,
+                "material":          state.get('material_choice', ''),
+                "mapped_material":   state.get('mapped_material', 'steel'),
+                "user_language":     state.get('user_language', 'French'),
+            }
+            dfm_chain_input = {
+                "user_text":         edit_mode_user_text,
+                "retrieved_context": rules_context,
+                "material":          state.get('material_choice', ''),
+                "session_id":        session_id,
+                "user_language":     state.get('user_language', 'French'),
+            }
+
+            shape_detection, unified_result, dfm_result = await asyncio.wait_for(
+                asyncio.gather(
+                    self._detect_shape_change(enhanced_user_text, updated_summary, session_id),
+                    ainvoke_with_cost_tracking(
+                        "unified_processing_edit",
+                        self.unified_processing_chain.ainvoke,
+                        unified_chain_input,
+                        cost_tracker,
+                        self.model_names['expert']
+                    ),
+                    ainvoke_with_cost_tracking(
+                        "dfm_validation_edit",
+                        self.dfm_validation_chain.ainvoke,
+                        dfm_chain_input,
+                        cost_tracker,
+                        self.model_names['expert']
+                    ),
+                ),
+                timeout=50.0
+            )
+            unified_output_obj = unified_result.get("unified_output_obj") if isinstance(unified_result, dict) else None
+
+        except Exception as parallel_err:
+            logger.warning(
+                f"[EDIT] shape_change/unified/DFM check failed, continuing with normal edit: {parallel_err}"
+            )
 
         # ── Step 3: shape_change=True → route to full description-confirm ──────
         if shape_detection.get('shape_change', False):
@@ -4623,6 +4526,12 @@ class TextToCADAgent:
             # ════════════════════════════════════════════════════════════════
 
 
+            # Set by the information_request branch below when the request turns
+            # out to carry real CAD intent: the unified + RAG analysis it already
+            # ran is handed to the normal flow rather than being recomputed there.
+            prefetched_unified_result = None
+            prefetched_user_text_with_history = None
+
             # Check for greeting/casual conversation/process-question first.
             # Runs on EVERY non-edit turn (not just the very first message of the
             # session) — a pre-generation multi-turn conversation (still answering
@@ -4725,61 +4634,32 @@ class TextToCADAgent:
                             "progress": 50
                         }
 
-                        # Build conversation history from DB, then extract only [USER] turns.
-                        # Chatbot responses are excluded from the RAG query to reduce noise.
-                        print(f"[INFO_REQUEST_PROGRESS] Step 1: Building conversation history from DB for session {session_id}")
-                        full_history = self._build_user_text_with_history(session_id, user_text)
-                        rag_query = self._extract_user_only_query(full_history)
-                        print(f"[INFO_REQUEST_PROGRESS] Step 2: History built ({len(full_history)} chars) → user-only RAG query ({len(rag_query)} chars)")
-                        print(f"[INFO_REQUEST_PROGRESS] Step 2a: RAG query preview: {rag_query[:300]}...")
-
-                        # Retrieve context to provide accurate information using RAG singleton
+                        # Run the SAME pipeline the CAD path runs — query expansion,
+                        # RAG retrieval, unified + DFM — exactly once for this turn.
+                        # This branch used to hand-roll its own expansion + rules
+                        # retrieval + unified call, and then, whenever the request
+                        # turned out to carry real CAD intent, fell through to the
+                        # normal flow which ran the whole thing a second time.
+                        # `prefetched_*` below hands this result to that flow instead.
                         try:
-                            from src.core.rag_singleton import get_rag_rules_only
-                            from src.rag.query_expander import expand_query_with_llm
-                            
-                            # 🆕 EXPAND QUERY with manufacturing terminology (same as _invoke_unified_with_rag)
-                            expanded_rag_query = rag_query
-                            try:
-                                cost_tracker = self._get_cost_tracker(session_id)
-                                # Use default_llm for expansion (same as _invoke_unified_with_rag)
-                                try:
-                                    expansion_result = await expand_query_with_llm(
-                                        rag_query,
-                                        llm=self.expansion_llm,  # nano tier — see __init__
-                                        cost_tracker=cost_tracker
-                                    )
-                                    
-                                    # Handle both old (string) and new (dict) return formats
-                                    if isinstance(expansion_result, dict):
-                                        expanded_rag_query = expansion_result.get("expanded_query", rag_query)
-                                    else:
-                                        # Fallback for old string format
-                                        expanded_rag_query = expansion_result
-                                    
-                                    if expanded_rag_query != rag_query:
-                                        logger.info("[QUERY_EXPAND] Query expanded for better semantic matching")
-                                except Exception as e:
-                                    logger.warning(f"[QUERY_EXPAND] Expansion failed: {e}, using original query")
-                                    expanded_rag_query = rag_query
-                            except Exception as e:
-                                logger.warning(f"[QUERY_EXPAND] Expansion handling failed: {e}, using original query")
-                                expanded_rag_query = rag_query
-                            
-                            # CRITICAL: Use expanded_rag_query (with history + expansion) instead of just user_text
-                            rag_result = await get_rag_rules_only(
-                                expanded_rag_query,  # ✅ Now includes conversation history + expansion!
-                                k=15,  # Retrieve more rules for comprehensive info
-                                classification_llm=self.default_llm,  # Use default_llm for classification
-                                session_id=session_id
+                            user_text_with_history = self._build_user_text_with_history(session_id, user_text)
+                            logger.info(
+                                f"[AGENT_INFO_REQUEST] History built ({len(user_text_with_history)} chars) "
+                                f"→ running unified analysis with RAG | session={session_id}"
                             )
 
-                            if rag_result['success']:
-                                context_text = rag_result['context']
-                                logger.info(f"[AGENT_INFO_REQUEST] Retrieved context successfully")
-                            else:
-                                logger.error(f"[AGENT_INFO_REQUEST] RAG retrieval failed: {rag_result.get('error')}")
-                                context_text = ""
+                            unified_chain_result = await self._invoke_unified_with_rag(
+                                user_text=user_text_with_history,
+                                session_id=session_id,
+                                latest_requirements_for_guidance=None,
+                                material=state.get('material_choice', ''),
+                                mapped_material=state.get('mapped_material', 'steel'),
+                                # Answer the question from the knowledge base, not just
+                                # validate against it — matches the old k=15 + inlined
+                                # "Retrieved Context:" prompt this branch used to build.
+                                k_rules=15,
+                                inline_rules_context=True,
+                            )
 
                             yield {
                                 "step": "analysis",
@@ -4789,34 +4669,7 @@ class TextToCADAgent:
                                 "progress": 80
                             }
 
-                            # Use unified analysis for all information requests (including URL-enhanced text)
-                            # NOTE: URL content is now treated as normal text - goes through unified chain
-                            # BUT: Don't return early - check if we can proceed to CAD generation
-                            # ✅ Use expanded_rag_query instead of user_text for unified analysis
-                            combined_text = f"User Query: {expanded_rag_query}\n\nRetrieved Context:\n{context_text}"
-
-                            cost_tracker = self._get_cost_tracker(session_id)
-                            unified_output = await ainvoke_with_cost_tracking(
-                                "unified_processing_info",
-                                self.unified_processing_chain.ainvoke,
-                                {
-                                    "user_text": combined_text,  # ✅ Now uses expanded_rag_query
-                                    "rules_context": context_text,  # CRITICAL: Pass retrieved rules context
-                                    "previous_responses_formatted": rag_query,  # rag_query already contains conversation history
-
-                                    "latest_requirements_for_guidance": None,
-                                    "detailed_explanation_requested": True,
-                                    "session_id": session_id
-                                },
-                                cost_tracker,
-                                self.model_names['expert']
-                            )
-
-                            # Check if unified_output already contains the parsed object
-                            if isinstance(unified_output, dict) and 'unified_output_obj' in unified_output:
-                                unified_output_obj = unified_output['unified_output_obj']
-                            else:
-                                unified_output_obj = parse_unified_analysis(unified_output)
+                            unified_output_obj = unified_chain_result["unified_output_obj"]
 
                             # Check if this is PURE information request (no CAD intent)
                             # OR if there are questions that need user answers
@@ -4863,9 +4716,12 @@ class TextToCADAgent:
                                 yield {"final_result": result}
                                 return
                             
-                            # If we reach here, it means info request has CAD potential
-                            # Continue to normal flow (don't return early)
-                            logger.info(f"[AGENT_INFO_REQUEST] 🔄 Info request with CAD potential - continuing to unified processing")
+                            # If we reach here, it means info request has CAD potential.
+                            # Continue to normal flow (don't return early) — handing it
+                            # the analysis we just paid for so it doesn't redo it.
+                            logger.info(f"[AGENT_INFO_REQUEST] 🔄 Info request with CAD potential - reusing unified result for normal flow")
+                            prefetched_unified_result = unified_chain_result
+                            prefetched_user_text_with_history = user_text_with_history
 
                         except Exception as e:
                             logger.error(f"[AGENT_INFO_REQUEST] Error retrieving context: {e}")
@@ -5006,7 +4862,13 @@ class TextToCADAgent:
 
                 # Always build history from DB — covers both first turn (DB empty) and
                 # subsequent turns (DB has prior Q&A / code-gen entries).
-                user_text_with_history = self._build_user_text_with_history(session_id, user_text)
+                # The information_request branch already built it for this turn when
+                # it prefetched the analysis; reuse it so the DB read and the string
+                # the LLM saw stay identical.
+                if prefetched_user_text_with_history is not None:
+                    user_text_with_history = prefetched_user_text_with_history
+                else:
+                    user_text_with_history = self._build_user_text_with_history(session_id, user_text)
                 logger.info(f"[AGENT_CHAIN] History built: {len(user_text_with_history)} chars for session {session_id}")
 
                 # ══════════════════════════════════════════════════════════════════
@@ -5068,6 +4930,42 @@ class TextToCADAgent:
                     yield {
                         "step": "parameters",
                         "status": "Parameters validated (fast-path).",
+                        "is_complete": True,
+                        "is_active": False,
+                        "progress": 40
+                    }
+
+                elif prefetched_unified_result is not None:
+                    # ── Reuse path: the information_request branch already ran the
+                    # full unified + RAG analysis for this turn (it needed the same
+                    # result to decide whether the request was pure info). Running
+                    # it again here cost a second expansion, a second retrieval with
+                    # its reranks, and a second expert-tier unified + DFM pair.
+                    logger.info(f"[AGENT_CHAIN] ♻️ Reusing unified result from information_request analysis | session={session_id}")
+                    unified_chain_result = prefetched_unified_result
+
+                    unified_output_obj             = unified_chain_result["unified_output_obj"]
+                    raw_unified_json               = unified_chain_result["raw_unified_json"]
+                    retrieved_context_for_code_gen = unified_chain_result["retrieved_context_for_code_gen"]
+                    expanded_user_text             = unified_chain_result.get("expanded_user_text", user_text)
+
+                    if unified_chain_result.get("_needs_perf_param_chain"):
+                        unified_output_obj = await self._run_perforated_param_chain(
+                            unified_output_obj, user_text_with_history, session_id
+                        )
+
+                    yield {
+                        "step": "analysis",
+                        "status": "Analysis completed.",
+                        "is_complete": True,
+                        "is_active": False,
+                        "progress": 20,
+                        "design_type": unified_output_obj.design_type,
+                        "assembly_warning": unified_output_obj.assembly_warning
+                    }
+                    yield {
+                        "step": "parameters",
+                        "status": "Parameters validated.",
                         "is_complete": True,
                         "is_active": False,
                         "progress": 40
