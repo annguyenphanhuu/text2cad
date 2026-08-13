@@ -23,11 +23,117 @@ from .sessions import create_session, get_session_by_id, update_session, get_lat
 from ..utils.web_search_handler import WebSearchProcessor
 from ..utils.language_utils import detect_language, get_success_message, get_error_message, get_session_language
 from ..database.db_retry import retry_db_operation, DatabaseRetryError, is_connection_error
+from ..utils.download_url import build_download_url
 
 logger = logging.getLogger(__name__)
 
 # Web search processor will be initialized per-request with cost_tracker
 # web_search_processor = WebSearchProcessor()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Shared request pre-processing
+#
+# handle_chat_request() and generate_cad_realtime_stream() run the same three
+# pre-processing steps before handing off to the agent. They were duplicated
+# verbatim (differing only in log prefix), so a fix applied to one silently
+# missed the other. `tag` keeps the two flows distinguishable in the logs.
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def _apply_web_search(agent, session_id: str, message: str, tag: str):
+    """
+    Expand `message` with content extracted from any URLs it contains.
+
+    Returns (processed_message, web_metadata) — the original message and an
+    empty dict when the request needs no web search or holds no valid URLs.
+    """
+    cost_tracker = agent._get_cost_tracker(session_id)
+    web_search_processor = WebSearchProcessor(cost_tracker=cost_tracker)
+
+    if not (web_search_processor and await web_search_processor.is_web_search_request(message)):
+        logger.debug(f"[{tag}_WEB] No web search requirements detected for session {session_id}")
+        return message, {}
+
+    logger.info(f"[{tag}_WEB] Web search request detected for session {session_id}")
+    has_urls, enhanced_text, metadata = await web_search_processor.process_text_with_urls(message)
+
+    if not has_urls:
+        logger.info(f"[{tag}_WEB] No valid URLs found for web search in session {session_id}")
+        return message, {}
+
+    logger.info(
+        f"[{tag}_WEB] Processed {metadata['successful_extractions']}/{metadata['urls_found']} "
+        f"URLs successfully"
+    )
+    return enhanced_text, metadata
+
+
+def _apply_face_selection(agent, session_id: str, processed_message: str, tag: str):
+    """
+    Enhance `processed_message` with CAD face-selection context when the user
+    has picked a face in the viewer.
+
+    Returns (processed_message, face_metadata); face_metadata always carries a
+    'face_detected' key so downstream consumers can branch on it safely.
+    """
+    if not hasattr(agent, 'face_processor'):
+        logger.debug(f"[{tag}_FACE] Processor not available")
+        return processed_message, {'face_detected': False, 'error': 'face_processor not available'}
+
+    try:
+        face_data = agent.face_processor.parse_face_selection(processed_message)
+    except Exception as e:
+        logger.warning(f"[{tag}_FACE] Error: {e}")
+        return processed_message, {'face_detected': False, 'error': str(e)}
+
+    if not face_data:
+        logger.debug(f"[{tag}_FACE] No selection detected")
+        return processed_message, {'face_detected': False}
+
+    logger.info(
+        f"[{tag}_FACE] Detected - ID:{face_data['face_id']} "
+        f"Type:{face_data['shape_type']} Session:{session_id}"
+    )
+    try:
+        processed_message = agent.face_processor.enhance_user_request(processed_message)
+    except Exception as e:
+        logger.warning(f"[{tag}_FACE] Error: {e}")
+        return processed_message, {'face_detected': False, 'error': str(e)}
+
+    logger.debug(f"[{tag}_FACE] Enhanced message: {len(processed_message)} chars")
+    return processed_message, {
+        'face_detected': True,
+        'face_id': face_data['face_id'],
+        'shape_type': face_data['shape_type'],
+        'spatial_context': face_data['spatial_context'],
+        'bbox': face_data['bbox'],
+        'geometry': face_data['geometry'],
+        'context': face_data['context'],
+    }
+
+
+def _sync_latest_code_from_db(db, agent, session_id: str, tag: str) -> None:
+    """
+    Copy the session's most recent generated code from the DB into agent state.
+
+    Required before an edit request: the edit-mode gate in
+    process_request_with_progress() tests `is_edit_request AND
+    state['latest_code']`, so without this the request falls through to normal
+    generation and the Confirm chain fires even though edit mode is active.
+    """
+    db_latest_code = get_latest_code(db, session_id)
+    if db_latest_code:
+        agent._update_session_state(session_id, latest_code=db_latest_code)
+        logger.info(
+            f"[{tag}_EDIT] Synced latest_code from DB → agent state "
+            f"({len(db_latest_code)} chars) | session={session_id}"
+        )
+    else:
+        logger.warning(
+            f"[{tag}_EDIT] Edit mode requested but no latest_code in DB "
+            f"for session={session_id} — will fall back to generation"
+        )
+
 
 async def handle_chat_request(
     db: Session,
@@ -134,75 +240,14 @@ async def handle_chat_request(
         logger.info(f"[EDIT_MODE] Is edit request: {is_edit_request}")
 
         if is_edit_request:
-            logger.info(f"[EDIT_MODE] Processing edit request - retrieving latest code")
-            db_latest_code = get_latest_code(db, session_id)
-            if db_latest_code:
-                logger.info(f"[EDIT_MODE] Retrieved latest code from database - Length: {len(db_latest_code)} characters")
-                agent._update_session_state(session_id, latest_code=db_latest_code)
-                logger.info(f"[EDIT_MODE] Synced database latest_code to agent session state for {session_id}")
-            else:
-                logger.warning(f"[EDIT_MODE] Edit mode requested but no latest code found in database for session {session_id}")
+            _sync_latest_code_from_db(db, agent, session_id, tag="CHAT")
 
-        logger.info(f"[WEB_SEARCH] Checking for web search requirements")
-        processed_message = chat_req.message
-        web_metadata = {}
-
-        # Create web search processor with cost_tracker from agent
-        cost_tracker = agent._get_cost_tracker(session_id)
-        web_search_processor = WebSearchProcessor(cost_tracker=cost_tracker)
-
-        # Use await for async web search methods
-        if web_search_processor and await web_search_processor.is_web_search_request(chat_req.message):
-            logger.info(f"[WEB_SEARCH] Web search request detected for session {session_id}")
-
-            # Use await for async method - returns 3 values: (has_urls, enhanced_text, metadata)
-            has_urls, enhanced_text, metadata = await web_search_processor.process_text_with_urls(chat_req.message)
-
-            if has_urls:
-                logger.info(f"[WEB_SEARCH] Processed {metadata['successful_extractions']}/{metadata['urls_found']} URLs successfully")
-                processed_message = enhanced_text
-                web_metadata = metadata
-            else:
-                logger.info(f"[WEB_SEARCH] No valid URLs found for web search in session {session_id}")
-        else:
-            logger.info(f"[WEB_SEARCH] No web search requirements detected for session {session_id}")
-
-        # 🆕 FACE PROCESSING: Detect and enhance face selection
-        face_metadata = {}
-        
-        if hasattr(agent, 'face_processor'):
-            try:
-                # Parse face selection from message
-                face_data = agent.face_processor.parse_face_selection(processed_message)
-                
-                if face_data:
-                    logger.info(f"[FACE] Detected - ID:{face_data['face_id']} Type:{face_data['shape_type']} Session:{session_id}")
-                    
-                    # Enhance message with face context
-                    enhanced_message = agent.face_processor.enhance_user_request(processed_message)
-                    processed_message = enhanced_message
-                    
-                    # Store face metadata for later use
-                    face_metadata = {
-                        'face_detected': True,
-                        'face_id': face_data['face_id'],
-                        'shape_type': face_data['shape_type'],
-                        'spatial_context': face_data['spatial_context'],
-                        'bbox': face_data['bbox'],
-                        'geometry': face_data['geometry'],
-                        'context': face_data['context']
-                    }
-                    
-                    logger.debug(f"[FACE] Enhanced message: {len(processed_message)} chars")
-                else:
-                    logger.debug(f"[FACE] No selection detected")
-                    face_metadata = {'face_detected': False}
-            except Exception as e:
-                logger.warning(f"[FACE] Error: {e}")
-                face_metadata = {'face_detected': False, 'error': str(e)}
-        else:
-            logger.debug(f"[FACE] Processor not available")
-            face_metadata = {'face_detected': False, 'error': 'face_processor not available'}
+        processed_message, web_metadata = await _apply_web_search(
+            agent, session_id, chat_req.message, tag="CHAT"
+        )
+        processed_message, face_metadata = _apply_face_selection(
+            agent, session_id, processed_message, tag="CHAT"
+        )
 
         logger.info(f"[AGENT] Starting agent processing for session {session_id}")
         agent_start_time = time.time()
@@ -421,7 +466,6 @@ def _process_agent_result(
             chat_req,
             agent_result,
             obj_export_path,
-            step_export_path,
             request_received_at,
             response_generated_at
         )
@@ -429,12 +473,12 @@ def _process_agent_result(
     _add_to_chat_history_with_retry()
 
     # Create download URLs (summary already logged above)
-    obj_url = _create_download_url(obj_export_path) if obj_export_path else None
-    step_url = _create_download_url(step_export_path) if step_export_path else None
+    obj_url = build_download_url(obj_export_path) if obj_export_path else None
+    step_url = build_download_url(step_export_path) if step_export_path else None
     # PDF is optional (visualization only) — a missing/failed PDF must never
     # affect the response, so any URL-building error here is swallowed.
     try:
-        pdf_url = _create_download_url(pdf_export_path) if pdf_export_path else None
+        pdf_url = build_download_url(pdf_export_path) if pdf_export_path else None
     except Exception as pdf_url_error:
         logger.warning(f"[RESULT_PROCESS] Failed to build PDF download URL (optional, ignored): {pdf_url_error}")
         pdf_url = None
@@ -525,33 +569,12 @@ def _add_to_chat_history(
     chat_req: ChatRequest,
     agent_result: dict,
     obj_export_path: Optional[str],
-    step_export_path: Optional[str],
     request_received_at: Optional[datetime] = None,
     response_generated_at: Optional[datetime] = None
 ):
     """
     Add entry to chat history.
     """
-    # logger.info(f"[CHAT_HISTORY] Adding chat history entry for session {session_id}")
-    
-    # if agent_result.get("error"):
-    #     output = f"ERROR_RESPONSE: {agent_result.get('error')}"
-    #     logger.error(f"[CHAT_HISTORY] Adding error response to history: {agent_result.get('error')}")
-    # elif agent_result.get("code"):
-    #     output = f"CODE_GENERATED: {agent_result.get('code')}"
-    #     logger.info(f"[CHAT_HISTORY] Adding code generation to history - Length: {len(agent_result.get('code'))} characters")
-    # elif agent_result.get("message"):
-    #     output = agent_result.get("message")
-    #     logger.info(f"[CHAT_HISTORY] Adding message response to history - Length: {len(agent_result.get('message'))} characters")
-    # else:
-    #     output = "Agent produced an unknown response structure."
-    #     logger.warning(f"[CHAT_HISTORY] Adding unknown response structure to history")
-
-    lasted_code = agent_result.get("code") if agent_result.get("code") else None
-    export_format = chat_req.export_format or "both"
-    
-    # logger.info(f"[CHAT_HISTORY] Export format for history: {export_format}")
-
     try:
         add_chat_history_entry(
             db=db,
@@ -563,7 +586,6 @@ def _add_to_chat_history(
             created_at=request_received_at,
             response_at=response_generated_at
         )
-        # logger.info(f"[CHAT_HISTORY] Successfully added chat history entry for session {session_id}")
     except DatabaseRetryError as e:
         logger.error(f"[CHAT_HISTORY] Database retry failed for session {session_id}: {str(e)}")
         logger.error(f"[CHAT_HISTORY] Original error: {e.original_error}")
@@ -574,89 +596,9 @@ def _add_to_chat_history(
         if is_connection_error(e):
             logger.error(f"[CHAT_HISTORY] Database connection error for session {session_id}: {str(e)}")
             raise DatabaseRetryError(f"Connection error in chat history: {str(e)}", e)
-        
-        # logger.error(f"[CHAT_HISTORY] Error adding chat history entry for session {session_id}: {str(e)}")
+
         logger.error(f"[CHAT_HISTORY] Traceback: {traceback.format_exc()}")
         raise
-
-    # if lasted_code:
-    #     logger.info(f"[CHAT_HISTORY] Stored latest code in chat_history for session {session_id} ({len(lasted_code)} characters)")
-
-
-def _create_download_url(file_path: str) -> str:
-    """
-    Create full download URL with domain for the file path.
-    """
-    import os
-    from pathlib import Path
-
-    from src.utils.download_url import resolve_base_url
-
-    BASE_URL = resolve_base_url()
-
-    # Convert to relative path first
-    project_root = Path.cwd()
-    project_root_str = str(project_root).replace('\\', '/')
-    file_path_str = str(file_path).replace('\\', '/')
-
-
-
-    if project_root_str in file_path_str:
-        # Extract the part after the project root
-        relative_path = file_path_str.split(project_root_str, 1)[1].lstrip('\\/')
-        # Create full download URL
-        # Convert outputs/obj/date/file.obj to /download/outputs/obj/date/file.obj format
-        if relative_path.startswith('outputs/obj/'):
-            path_parts = relative_path.split('/')
-            if len(path_parts) >= 4:  # outputs/obj/date/filename
-                date_dir = path_parts[2]
-                filename = path_parts[3]
-                download_url = f"{BASE_URL}/download/outputs/obj/{date_dir}/{filename}"
-            else:
-                download_url = f"{BASE_URL}/download/{relative_path}"
-        elif relative_path.startswith('outputs/cad/'):
-            # Extract filename and date directory for STEP files (stored in cad directory)
-            path_parts = relative_path.split('/')
-            if len(path_parts) >= 4:  # outputs/cad/date/filename
-                date_dir = path_parts[2]
-                filename = path_parts[3]
-                download_url = f"{BASE_URL}/download/outputs/cad/{date_dir}/{filename}"
-            else:
-                download_url = f"{BASE_URL}/download/{relative_path}"
-        elif relative_path.startswith('outputs/pdf/'):
-            path_parts = relative_path.split('/')
-            if len(path_parts) >= 4:  # outputs/pdf/date/filename
-                date_dir = path_parts[2]
-                filename = path_parts[3]
-                download_url = f"{BASE_URL}/download/outputs/pdf/{date_dir}/{filename}"
-            else:
-                download_url = f"{BASE_URL}/download/{relative_path}"
-        else:
-            download_url = f"{BASE_URL}/download/{relative_path}"
-
-        return download_url
-    else:
-        # If path doesn't contain project root, treat as filename and try to construct URL
-        filename = os.path.basename(file_path)
-        if filename.endswith('.obj'):
-            # Assume it's in today's outputs/obj directory
-            from datetime import datetime
-            today = datetime.now().strftime('%Y-%m-%d')
-            download_url = f"{BASE_URL}/download/outputs/obj/{today}/{filename}"
-        elif filename.endswith('.step'):
-            # Assume it's in today's outputs/cad directory
-            from datetime import datetime
-            today = datetime.now().strftime('%Y-%m-%d')
-            download_url = f"{BASE_URL}/download/outputs/cad/{today}/{filename}"
-        elif filename.endswith('.pdf') or filename.endswith('.svg'):
-            # Assume it's in today's outputs/pdf directory
-            from datetime import datetime
-            today = datetime.now().strftime('%Y-%m-%d')
-            download_url = f"{BASE_URL}/download/outputs/pdf/{today}/{filename}"
-        else:
-            download_url = f"{BASE_URL}/download/{file_path}"
-
-        return download_url
 
 
 async def generate_cad_realtime_stream(
@@ -783,86 +725,17 @@ async def generate_cad_realtime_stream(
             "overall_percentage": 0
         }
 
-        logger.debug(f"[STREAM] Checking for web search requirements")
-        processed_message = message
-        web_metadata = {}
+        processed_message, web_metadata = await _apply_web_search(
+            agent, resolved_session_id, message, tag="STREAM"
+        )
+        processed_message, face_metadata = _apply_face_selection(
+            agent, resolved_session_id, processed_message, tag="STREAM"
+        )
 
-        # Create web search processor with cost_tracker from agent
-        cost_tracker = agent._get_cost_tracker(resolved_session_id)
-        web_search_processor = WebSearchProcessor(cost_tracker=cost_tracker)
-
-        # Use await for async web search methods
-        if web_search_processor and await web_search_processor.is_web_search_request(message):
-            logger.debug(f"[STREAM_WEB] Web search request detected for session {resolved_session_id}")
-            # Use await for async method - now returns natural language description
-            has_urls, natural_language_text, metadata = await web_search_processor.process_text_with_urls(message)
-            if has_urls:
-                processed_message = natural_language_text
-                web_metadata = metadata
-                logger.debug(f"[STREAM_WEB] Natural language text with {metadata['successful_extractions']} URL extractions: {natural_language_text}")
-            else:
-                logger.debug(f"[STREAM_WEB] No valid URLs found for processing")
-        else:
-            logger.debug(f"[STREAM_WEB] No web search requirements detected")
-
-        # 🆕 FACE PROCESSING: Detect and enhance face selection
-        face_metadata = {}
-        
-        if hasattr(agent, 'face_processor'):
-            try:
-                # Parse face selection from message
-                face_data = agent.face_processor.parse_face_selection(processed_message)
-                
-                if face_data:
-                    logger.info(f"[STREAM_FACE] Detected - ID:{face_data['face_id']} Type:{face_data['shape_type']} Session:{resolved_session_id}")
-                    
-                    # Enhance message with face context
-                    enhanced_message = agent.face_processor.enhance_user_request(processed_message)
-                    processed_message = enhanced_message
-                    
-                    # Store face metadata for later use
-                    face_metadata = {
-                        'face_detected': True,
-                        'face_id': face_data['face_id'],
-                        'shape_type': face_data['shape_type'],
-                        'spatial_context': face_data['spatial_context'],
-                        'bbox': face_data['bbox'],
-                        'geometry': face_data['geometry'],
-                        'context': face_data['context']
-                    }
-                    
-                    logger.debug(f"[STREAM_FACE] Enhanced: {len(processed_message)} chars")
-                else:
-                    logger.debug(f"[STREAM_FACE] No selection detected")
-                    face_metadata = {'face_detected': False}
-            except Exception as e:
-                logger.warning(f"[STREAM_FACE] Error: {e}")
-                face_metadata = {'face_detected': False, 'error': str(e)}
-        else:
-            logger.debug(f"[STREAM_FACE] Processor not available")
-            face_metadata = {'face_detected': False, 'error': 'face_processor not available'}
-
-        # ══════════════════════════════════════════════════════════════════════
-        # EDIT MODE: sync latest_code from DB into agent state BEFORE streaming.
-        # Without this, state['latest_code'] is empty and the edit-mode gate at
-        # `process_request_with_progress` (is_edit_request AND state['latest_code'])
-        # would fail silently → the request falls through to normal generation
-        # flow → the Confirm chain fires even though edit mode is active.
-        # ══════════════════════════════════════════════════════════════════════
+        # Sync BEFORE streaming starts — see _sync_latest_code_from_db for why.
         if is_edit_request:
             with get_db_session() as _db_edit:
-                db_latest_code = get_latest_code(_db_edit, resolved_session_id)
-                if db_latest_code:
-                    agent._update_session_state(resolved_session_id, latest_code=db_latest_code)
-                    logger.info(
-                        f"[STREAM_EDIT] Synced latest_code from DB → agent state "
-                        f"({len(db_latest_code)} chars) | session={resolved_session_id}"
-                    )
-                else:
-                    logger.warning(
-                        f"[STREAM_EDIT] Edit mode requested but no latest_code in DB "
-                        f"for session={resolved_session_id} — will fall back to generation"
-                    )
+                _sync_latest_code_from_db(_db_edit, agent, resolved_session_id, tag="STREAM")
 
         logger.debug(f"[STREAM] Initializing progress tracking")
         step_progress = {

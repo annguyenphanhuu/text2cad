@@ -340,8 +340,8 @@ class ImageProcessor:
             logger.info(f"Using provided session ID {session_id} for uploaded file {uploaded_file.filename}")
 
         if not self.client:
-            return False, "OpenAI client not initialized. Check API key.", session_id
-        
+            return False, "OpenAI client not initialized. Check API key.", session_id, None
+
         try:
             # Create a temporary file to store the uploaded content
             temp_dir = Path("temp_uploads")

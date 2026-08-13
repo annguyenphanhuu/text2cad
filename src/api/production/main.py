@@ -282,88 +282,6 @@ class ExportResponseItem(BaseModel):
 class ExportResponse(BaseModel):
     exports: List[ExportResponseItem] = Field(..., description="List of export files")
 
-# Helper function to clean path and create URL
-def create_download_url(file_path, base_url):
-    """
-    Create a standardized download URL for exported files.
-    Format: https://domain.com/download/outputs/format/YYYY-MM-DD/filename.ext
-    """
-    import os
-    import re
-    from datetime import datetime
-    
-    if file_path.startswith(('http://', 'https://')):
-        return file_path
-        
-    # Clean path - remove backslashes and common prefixes
-    clean_path = file_path.replace('\\', '/')
-    clean_path = clean_path.replace('D:/DFM_ATN_TOLERY/', '')
-    clean_path = clean_path.replace('D:/DFM_ATN_TOLERY', '')
-    
-    # Remove leading slash if present
-    if clean_path.startswith('/'):
-        clean_path = clean_path[1:]
-    
-    # Extract filename and extension
-    filename = os.path.basename(clean_path)
-    _, ext = os.path.splitext(filename)
-    ext = ext.lower().replace('.', '')  # Get extension without dot and lowercase it
-    
-    # Try to extract date from path (format: outputs/format/YYYY-MM-DD/filename)
-    # Pattern: YYYY-MM-DD in path
-    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', clean_path)
-    if date_match:
-        today = date_match.group(1)
-    else:
-        # Fallback to today's date if not found in path
-        today = datetime.now().strftime('%Y-%m-%d')
-    
-    # Check if the filename already contains a timestamp (8 digits YYYYMMDD or 14 digits YYYYMMDDHHMMSS)
-    # Pattern: YYYYMMDD or YYYYMMDDHHMMSS (with optional underscore before)
-    # Examples: box_20251111_162509.pdf, box_20251111162536.pdf, box20251111.pdf
-    has_timestamp = re.search(r'[_\s]?\d{8}(_\d{6})?', filename)
-    
-    # If filename already has timestamp, keep it as is (don't modify)
-    # The filename will be used as-is in the URL
-    
-    # Determine the export format from the path first, then fall back to extension
-    # Try to extract format from path if it contains /obj/, /step/, /cad/, /pdf/, etc.
-    if '/pdf/' in clean_path or '\\pdf\\' in clean_path:
-        format_dir = 'pdf'
-    elif '/obj/' in clean_path or '\\obj\\' in clean_path:
-        format_dir = 'obj'
-    elif '/step/' in clean_path or '\\step\\' in clean_path:
-        format_dir = 'step'
-    elif '/cad/' in clean_path or '\\cad\\' in clean_path:
-        # STEP files are actually stored in outputs/cad/ directory
-        format_dir = 'cad'
-    elif '/dxf/' in clean_path or '\\dxf\\' in clean_path:
-        format_dir = 'dxf'
-    elif '/technical_drawings/' in clean_path or '\\technical_drawings\\' in clean_path:
-        format_dir = 'technical_drawings'
-    else:
-        # Fall back to extension-based detection
-        if ext == 'obj':
-            format_dir = 'obj'
-        elif ext == 'step' or ext == 'stp':
-            format_dir = 'step'
-        elif ext == 'dxf':
-            format_dir = 'dxf'
-        elif ext == 'pdf' or ext == 'svg':
-            # Default to 'pdf' for PDF files instead of 'technical_drawings'
-            format_dir = 'pdf'
-        else:
-            # Default to a generic "exports" directory
-            format_dir = 'exports'
-    
-    # Construct the standardized URL - use the original filename (don't add timestamp if it already has one)
-    download_url = f"{base_url}/download/outputs/{format_dir}/{today}/{filename}"
-    
-    # Make sure the URL is properly formatted
-    download_url = download_url.replace("//download", "/download")
-    
-    return download_url
-
 @app.get("/api/get-export", response_model=ExportResponse, tags=["session"])
 async def get_export(session_id: str, export_format: Optional[str] = None, db: Session = Depends(get_db), token: str = Depends(verify_token)):
     """Get export files for a session.
@@ -377,7 +295,7 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
     - dxf: DXF CAD file
     """
     try:
-        from src.utils.download_url import resolve_base_url
+        from src.utils.download_url import build_download_url, resolve_base_url
         BASE_URL = resolve_base_url()
 
         # Base query for the session
@@ -440,7 +358,7 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
         for entry in entries:
             # Check for OBJ export
             if entry.obj_export and (export_format_lower is None or export_format_lower == "obj"):
-                export_link = create_download_url(entry.obj_export, BASE_URL)
+                export_link = build_download_url(entry.obj_export, BASE_URL)
                 
                 export_items.append(ExportResponseItem(
                     session_id=session_id,
@@ -451,7 +369,7 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
             
             # Check for STEP export
             if entry.step_export and (export_format_lower is None or export_format_lower == "step"):
-                export_link = create_download_url(entry.step_export, BASE_URL)
+                export_link = build_download_url(entry.step_export, BASE_URL)
                 
                 export_items.append(ExportResponseItem(
                     session_id=session_id,
@@ -465,7 +383,7 @@ async def get_export(session_id: str, export_format: Optional[str] = None, db: S
                 if hasattr(entry, 'dxf_export') and entry.dxf_export:
                     # Only include if no specific format requested, or if dxf was requested
                     if export_format_lower is None or export_format_lower == "dxf":
-                        export_link = create_download_url(entry.dxf_export, BASE_URL)
+                        export_link = build_download_url(entry.dxf_export, BASE_URL)
                         export_items.append(ExportResponseItem(
                             session_id=session_id,
                             export_format="dxf",
@@ -496,10 +414,6 @@ async def get_chat_history(session_id: str, db: Session = Depends(get_db), token
     logger.info(f"Getting chat history for session: {session_id}")
 
     try:
-        # Get domain for URL construction
-        from src.utils.download_url import resolve_base_url
-        BASE_URL = resolve_base_url()
-
         # Query chat history for the session
         chat_entries = db.query(ChatHistory).filter(
             ChatHistory.session_id == session_id

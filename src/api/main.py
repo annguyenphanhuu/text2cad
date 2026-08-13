@@ -365,36 +365,12 @@ async def chat(
         }
 
     except Exception as e:
-        logger.error(f"[MAIN-CHAT] Error processing request for user {user_id}: {str(e)}")
-        # Fallback to legacy method for backward compatibility
-        try:
-            from src.schemas.sessions import ChatRequest as ApiChatRequest
-            api_request = ApiChatRequest(
-                message=request_data.message,
-                session_id=request_data.session_id,
-                image_path="",
-                part_file_name="part_file_name",
-                export_format="obj",
-                material_choice="STEEL",
-                selected_feature_uuid="",
-                is_edit_request=request_data.is_edit_request
-            )
+        # No retry via crud.handle_chat_request: that path funnels into the same
+        # agent.process_request() call that just raised, so a second attempt only
+        # repeats the failure at double the LLM cost.
+        logger.exception(f"[MAIN-CHAT] Error processing request for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
-            # Process using legacy method
-            result = await crud.handle_chat_request(db, api_request, text_to_cad_agent, request_origin='web')
-            
-            # Check for errors
-            if isinstance(result, dict) and result.get("error"):
-                logger.error(f"Error processing chat request: {result['error']}")
-                raise HTTPException(status_code=500, detail=result["error"])
-
-            # Return the result dictionary
-            return result
-            
-        except Exception as fallback_error:
-            logger.exception(f"Both pooled and legacy methods failed: {str(fallback_error)}")
-            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(fallback_error)}")
-    
     finally:
         # No need to release agent with singleton pattern
         logger.info(f"[MAIN-CHAT] Request completed for user {user_id}")
@@ -475,34 +451,16 @@ async def process_pdf(
             )
 
         except Exception as pool_error:
-            logger.error(f"[PROCESS-PDF] Pool manager failed for user {user_id}: {str(pool_error)}")
-
-            # Fallback to legacy method for backward compatibility
-            try:
-                # Process the PDF using the processor's async method which handles session properly
-                success, message, final_session_id, agent_result = await pdf_processor.process_uploaded_file(db, file, user_input, session_id)
-
-                # Extract export files from agent_result if available
-                obj_export = None
-                step_export = None
-                if agent_result:
-                    obj_export = agent_result.get("obj_export") or agent_result.get("obj_path")
-                    step_export = agent_result.get("step_export") or agent_result.get("step_path")
-
-                return PDFProcessingResponse(
-                    success=success,
-                    response=message,
-                    session_id=final_session_id,
-                    obj_export=obj_export,
-                    step_export=step_export
-                )
-            except Exception as fallback_error:
-                logger.exception(f"Both pooled and legacy methods failed: {str(fallback_error)}")
-                return PDFProcessingResponse(
-                    success=False,
-                    response=f"Error processing PDF: {str(fallback_error)}",
-                    session_id=session_id
-                )
+            # No retry here: the PDF analysis above already consumed `file`, so
+            # re-running process_uploaded_file would read an empty body — and the
+            # failure is in CAD generation, not analysis, so a re-read would only
+            # repeat the vision call and still fail.
+            logger.exception(f"[PROCESS-PDF] CAD generation failed for user {user_id}: {str(pool_error)}")
+            return PDFProcessingResponse(
+                success=False,
+                response=f"PDF analysed, but CAD generation failed: {str(pool_error)}",
+                session_id=session_id or "unknown"
+            )
 
         finally:
             # No need to release agent with singleton pattern
@@ -575,61 +533,16 @@ async def process_image(
             )
 
         except Exception as pool_error:
-            logger.error(f"[PROCESS-IMAGE] Pool manager failed for user {user_id}: {str(pool_error)}")
-
-            # Fallback to legacy method for backward compatibility
-            try:
-                # Process the image using the processor's async method if available, or create temp file with session
-                if hasattr(image_processor, 'process_uploaded_file'):
-                    success, message, final_session_id, agent_result = await image_processor.process_uploaded_file(db, file, user_input, session_id)
-                else:
-                    # Fallback: create temp file and use session_id properly
-                    temp_dir = Path("temp_uploads")
-                    temp_dir.mkdir(exist_ok=True)
-
-                    file_path = temp_dir / file.filename
-                    with open(file_path, "wb") as f:
-                        content = await file.read()
-                        f.write(content)
-
-                    # Generate session_id if not provided
-                    if not session_id:
-                        import random
-                        import uuid
-                        rand_digits = random.randint(100000, 999999)
-                        rand_uuid_hex = uuid.uuid4().hex[:6]
-                        session_id = f"session_{rand_uuid_hex}_{rand_digits}"
-
-                    # Process the image with proper session_id
-                    success, message = image_processor.process_image(db, session_id, str(file_path), user_input)
-                    final_session_id = session_id
-                    agent_result = None
-
-                    # Clean up
-                    if file_path.exists():
-                        file_path.unlink()
-
-                # Extract export files from agent_result if available
-                obj_export = None
-                step_export = None
-                if agent_result:
-                    obj_export = agent_result.get("obj_export") or agent_result.get("obj_path")
-                    step_export = agent_result.get("step_export") or agent_result.get("step_path")
-
-                return ImageProcessingResponse(
-                    success=success,
-                    response=message,
-                    session_id=final_session_id,
-                    obj_export=obj_export,
-                    step_export=step_export
-                )
-            except Exception as fallback_error:
-                logger.exception(f"Both pooled and legacy methods failed: {str(fallback_error)}")
-                return ImageProcessingResponse(
-                    success=False,
-                    response=f"Error processing image: {str(fallback_error)}",
-                    session_id=session_id
-                )
+            # No retry here: the image analysis above already consumed `file`, so
+            # re-running process_uploaded_file would read an empty body — and the
+            # failure is in CAD generation, not analysis, so a re-read would only
+            # repeat the vision call and still fail.
+            logger.exception(f"[PROCESS-IMAGE] CAD generation failed for user {user_id}: {str(pool_error)}")
+            return ImageProcessingResponse(
+                success=False,
+                response=f"Image analysed, but CAD generation failed: {str(pool_error)}",
+                session_id=session_id or "unknown"
+            )
 
         finally:
             # No need to release agent with singleton pattern
@@ -1133,13 +1046,13 @@ def _viewer_response_headers(**extra) -> dict:
 def _normalize_viewer_path(file_path: str, known_paths: dict) -> str:
     """
     Normalize a viewer path: drop a leading slash, drop the 'download/' prefix
-    that _create_download_url may add, then expand shorthand directory prefixes
+    that build_download_url may add, then expand shorthand directory prefixes
     (e.g. 'obj/x.obj' -> 'outputs/obj/x.obj').
     """
     if file_path.startswith('/'):
         file_path = file_path[1:]
 
-    # Handle paths with 'download' prefix that might come from _create_download_url
+    # Handle paths with 'download' prefix that might come from build_download_url
     if file_path.startswith('download/'):
         file_path = file_path[len('download/'):]
 
@@ -1586,8 +1499,6 @@ except ImportError:
     from src.api.routes.cad import download_router
 
 app.include_router(download_router)
-
-
 
 # Custom OpenAPI schema to add Authorization button
 from fastapi.openapi.utils import get_openapi

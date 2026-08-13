@@ -366,10 +366,10 @@ class PDFProcessor:
             user_input: Optional user input to send along with the default prompt.
 
         Returns:
-            Tuple of (success: bool, result_message_for_user: str)
+            Tuple of (success: bool, result_message_for_user: str, agent_result: Optional[dict])
         """
         if not self.client:
-            return False, get_error_message("no_api_key")
+            return False, get_error_message("no_api_key"), None
 
         # Initialize variables
         pdf_analysis_text = ""
@@ -386,7 +386,7 @@ class PDFProcessor:
             # Validate file
             is_valid, validation_error = self._validate_file(file_path)
             if not is_valid:
-                return False, validation_error
+                return False, validation_error, None
 
             # Prepare prompt
             prompt = self._prepare_prompt(user_input)
@@ -395,7 +395,7 @@ class PDFProcessor:
             # Upload file to OpenAI
             upload_success, file_id, upload_message = await self._upload_file_to_openai(file_path)  # Added await
             if not upload_success:
-                return False, upload_message
+                return False, upload_message, None
 
             # Analyze PDF content
             analysis_success, pdf_analysis_text = await self._analyze_pdf_content(file_id, prompt)  # Added await
@@ -403,7 +403,7 @@ class PDFProcessor:
                 if add_chat_history_entry and db and session_id:
                     add_chat_history_entry(db, session_id, f"PDF analysis attempt for {file_path}", 
                                          {"error": pdf_analysis_text, "message": pdf_analysis_text})
-                return False, pdf_analysis_text
+                return False, pdf_analysis_text, None
 
             # Prepare messages for database and CAD generation
             if user_input and user_input.strip():
@@ -439,9 +439,9 @@ class PDFProcessor:
             logger.exception(f"Error processing PDF for session {session_id}: {e}")
             error_msg = get_error_message("processing_failed", error=str(e))
             if add_chat_history_entry and db and session_id:
-                add_chat_history_entry(db, session_id, f"PDF processing attempt for {file_path}", 
+                add_chat_history_entry(db, session_id, f"PDF processing attempt for {file_path}",
                                      {"error": str(e), "message": error_msg})
-            return False, error_msg
+            return False, error_msg, None
         finally:
             # Clean up uploaded file
             await self._cleanup_openai_file(file_id)  # Added await
@@ -458,7 +458,8 @@ class PDFProcessor:
             session_id: Optional session ID. If not provided, will generate a new one.
 
         Returns:
-            Tuple of (success: bool, result_message_for_user: str, session_id: Optional[str])
+            Tuple of (success: bool, result_message_for_user: str, session_id: Optional[str],
+                      agent_result: Optional[dict])
         """
         # Use provided session_id or generate a new one
         if not session_id:
@@ -468,7 +469,7 @@ class PDFProcessor:
             logger.info(f"Using provided session ID {session_id} for uploaded file {uploaded_file.filename}")
 
         if not self.client:
-            return False, get_error_message("no_api_key"), session_id
+            return False, get_error_message("no_api_key"), session_id, None
 
         temp_file_path_obj = None
         try:
