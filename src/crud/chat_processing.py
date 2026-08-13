@@ -348,6 +348,31 @@ def _generate_session_id() -> str:
     return session_id
 
 
+def _is_session_id_collision(exc: Exception) -> bool:
+    """
+    Check whether an exception raised by create_session really means
+    "this session_id is already taken", as opposed to any other failure
+    (database unreachable, FK/NOT NULL violation, …).
+
+    Only a collision is worth retrying with a freshly generated id.
+    """
+    # create_session turns "Session ID already exists" into HTTPException(400);
+    # every other HTTPException it raises (e.g. 503 when the DB is down) is not
+    # a collision.
+    if isinstance(exc, HTTPException):
+        return exc.status_code == 400
+
+    if isinstance(exc, IntegrityError):
+        # MySQL 1062 = ER_DUP_ENTRY. Fall back to the message when the driver
+        # does not expose the numeric code.
+        code = getattr(getattr(exc, "orig", None), "errno", None)
+        if code is not None:
+            return code == 1062
+        return "duplicate entry" in str(exc).lower()
+
+    return False
+
+
 def _process_agent_result(
     db: Session,
     chat_req: ChatRequest,
@@ -736,6 +761,16 @@ async def generate_cad_realtime_stream(
                         break  # Success → exit retry loop
                     except (IntegrityError, HTTPException) as e:
                         db.rollback()
+                        # Only a genuine duplicate session_id is worth retrying. Anything else
+                        # (DB down, FK/NOT NULL violation, …) would fail identically on every
+                        # attempt, so re-raise it with its real cause instead of burning
+                        # `max_retries` × connect-timeout and reporting a bogus collision.
+                        if not _is_session_id_collision(e):
+                            logger.error(
+                                f"[SESSION_CREATE] Non-collision failure creating "
+                                f"'{resolved_session_id}': {e}"
+                            )
+                            raise
                         # Collision detected → generate a new session_id and retry
                         old_id = resolved_session_id
                         resolved_session_id = _generate_session_id()

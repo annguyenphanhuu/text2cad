@@ -142,7 +142,13 @@ Base = declarative_base()
 def init_db():
     """
     Initialize database by creating all tables.
+
+    Set SKIP_DB=1 to boot without a reachable MySQL server (local dev only);
+    the table creation is skipped and any endpoint touching the DB will fail.
     """
+    if os.getenv("SKIP_DB", "").lower() in ("1", "true", "yes"):
+        logger.warning("SKIP_DB is set - skipping database initialization")
+        return
     Base.metadata.create_all(bind=engine)
 
 # Database dependency for FastAPI
