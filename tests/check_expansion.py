@@ -9,7 +9,7 @@ WHAT MATTERS: `detected_shape_type`. The retriever merges it with its own regex
 pass (retriever.py STEP 1c) and uses the result to filter which code examples
 reach code generation, so a wrong shape type here feeds the generator examples
 for the wrong kind of part. The prompt's other job — normalising capot face
-synonyms ("plan du haut" -> "Face arrière") — only rewrites the retrieval query,
+synonyms ("the top plane" -> "Back face") — only rewrites the retrieval query,
 so it is compared but weighted as advisory.
 
 Nothing here asserts an absolute right answer: it compares the cheap model

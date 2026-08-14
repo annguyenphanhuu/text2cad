@@ -186,15 +186,15 @@ MANDATORY SHAPE TYPE FILTERING - FOLLOW THIS PROCESS:
 
 Step 1 - Identify query shape type from query text:
    Look for these EXACT keywords in the query (case-insensitive):
-   - **Z-shaped**: "Z-shaped", "Z-shape", "Z shape", "Z profil", "forme de Z", "en forme de Z", "en Z", "Z-bend", "Z-Bracket"
-   - **U-shaped**: "U-shaped", "U shape", "U profil", "channel", "2 plis", "2 bends", "patte de fixation", "forme de U"
-   - **L-bracket**: "L-bracket", "L shape", "cornière", "1 pli", "1 bend", "L profil", "angle bracket"
-   - **I-Shaped**: "I-Shaped", "I shape", "I profil", "forme de I", "poutre en I"
-   - **T-Shaped**: "T-Shaped", "T shape", "T profil", "forme de T", "fer en T"
-   - **capot**: "capot", "cover", "box", "4 plis", "4 bends", "tub", "bac", "quatre plis"
+   - **Z-shaped**: "Z-shaped", "Z-shape", "Z shape", "Z profile", "Z-bend", "Z-Bracket", "offset bracket"
+   - **U-shaped**: "U-shaped", "U shape", "U profile", "channel", "2 bends", "two bends", "U-channel"
+   - **L-bracket**: "L-bracket", "L shape", "L profile", "1 bend", "one bend", "angle bracket", "angle iron"
+   - **I-Shaped**: "I-Shaped", "I shape", "I profile", "I-beam"
+   - **T-Shaped**: "T-Shaped", "T shape", "T profile", "T-bar", "T-beam"
+   - **capot**: "capot", "cover", "hood", "box", "4 bends", "four bends", "tub", "tray", "enclosure"
    - **Triangle**: "Triangle", "triangular", "triangular plate", "triangular sheet", "equilateral triangle", "isosceles triangle",
-     "plaque triangulaire", "gousset triangulaire", "renfort triangulaire", "équerre triangulaire", "platine triangulaire"
-   - **plate**: "plate", "plaque", "flat", "without bends", "no bends", "plan", "2D"
+     "triangular gusset", "gusset plate", "triangular bracket", "triangular stiffener"
+   - **plate**: "plate", "sheet", "flat", "without bends", "no bends", "2D"
    - **tube**: "tube", "circular tube", "cylindrical", "round tube"
 
 Step 2 - Identify shape type for EACH example (check in order):

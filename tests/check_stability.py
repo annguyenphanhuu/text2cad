@@ -136,7 +136,6 @@ async def run_case(agent, case, runs):
                     "examples_context": "",
                     "session_id": session_id,
                     "material": "",
-                    "user_language": "French",
                 },
                 agent._get_cost_tracker(session_id),
                 agent.model_names["expert"],

@@ -9,9 +9,9 @@ format — identical for both media types.
 
 _MEDIA_CLASSIFICATION_PROMPT = (
     "Analyze this {medium} and identify if it shows a "
-    "['Perforated sheet','Tole','Countersink hole']. "
+    "['Perforated sheet','Sheet metal','Countersink hole']. "
     "Return in this exact format: "
-    "'Class: [perforated sheet/tole/countersink hole], Name/code: [value]'. "
+    "'Class: [perforated sheet/sheet metal/countersink hole], Name/code: [value]'. "
     "If you can see specific dimensions, hole patterns, or model codes, include them. "
     "No other text."
 )

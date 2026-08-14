@@ -97,9 +97,8 @@ def classify_user_query_for_rules(user_query: str, classification_llm) -> List[s
     Note: classification_llm parameter is kept for backward compatibility but not used.
     
     IMPORTANT: Uses word-boundary matching for short keywords to prevent false positives:
-    - "pli" must not match "appliqués" or "réplications"
-    - "grille" removed (too generic, means "grid" in French)
     - "tap" must not match "tape", "taper" etc.
+    - "fold" must not match "folder", "unfolded" etc.
     """
     logger.debug("[RAG] Using keyword-based class detection")
     
@@ -114,33 +113,30 @@ def classify_user_query_for_rules(user_query: str, classification_llm) -> List[s
         return any(_match_word(query_lower, term) for term in terms)
     
     # Materials/Sheet_Metal/Perforated_Sheet
-    # NOTE: "grille" removed - too generic in French (means "grid", triggers on regular hole grids)
-    # NOTE: unaccented variants (tole perforee, perforee) added because query encoding may strip
-    #       French diacritics (ô→o, é→e) — must still detect as Perforated Sheet.
-    if _has_long_term(["perforated", "tôle filtrante", "tôle perforée", "perforated sheet",
-                        "tole perforee", "tole perforé", "tôle perforee",
-                        "perforee", "perforé"]) or \
-       _has_word(["perforé", "mesh", "perfore"]):
+    # NOTE: "grid" is deliberately excluded — too generic, it fires on regular hole grids.
+    if _has_long_term(["perforated", "perforated sheet", "perforated plate",
+                        "filter sheet", "open area"]) or \
+       _has_word(["mesh", "perforation", "perforations"]):
         detected_classes.append("Materials/Sheet_Metal/Perforated_Sheet")
 
     
     # Materials/Sheet_Metal/Standard_Sheet
-    if _has_long_term(["platine", "plaque", "tôle", "sheet", "console", "flasque", "socle", "panneau", "carter"]) or \
-       _has_word(["patte", "base", "rack", "cadre"]):
+    if _has_long_term(["sheet", "plate", "panel", "bracket plate", "housing", "casing"]) or \
+       _has_word(["blank", "base", "rack", "frame", "tab"]):
         detected_classes.append("Materials/Sheet_Metal/Standard_Sheet")
     
     # Materials/Tubes
-    if _has_long_term(["cylindrical", "cylindrique", "portique"]) or \
-       _has_word(["tube", "pipe", "paroi"]):
+    if _has_long_term(["cylindrical", "hollow section"]) or \
+       _has_word(["tube", "pipe", "wall"]):
         detected_classes.append("Materials/Tubes")
     
     # Materials/Profile
-    if _has_long_term(["profilé", "channel", "extrusion"]) or \
-       _has_word(["profile", "cornière", "angle", "beam"]):
+    if _has_long_term(["channel", "extrusion", "angle iron"]) or \
+       _has_word(["profile", "angle", "beam"]):
         detected_classes.append("Materials/Profile")
     
     # Manufacturing_Processes/Forming/Bending
-    # NOTE: "pli" uses word boundary to avoid matching "appliqués", "réplications" etc.
+    # NOTE: short terms use word boundaries to avoid matching inside longer words.
     # NOTE: Structural shape synonyms (u-shaped, capot, wing, etc.) added so that bent shapes
     #       described by structure — not by verb "bent/bend" — still trigger bending rule retrieval.
     #       This matters when the unified analysis output uses "Type: U-Bracket" / "wings: 40mm"
@@ -148,44 +144,42 @@ def classify_user_query_for_rules(user_query: str, classification_llm) -> List[s
     # NOTE: "rectangular tube" / "square tube" added because bent-from-sheet tubes need B_05_TUBE
     #       (round welded/extruded tubes do not, so plain "tube" is excluded from this list).
     if _has_long_term(["l-bracket", "l-shaped", "l shape", "l-shape",
-                        "u-bend", "z-bend", "grugeage",
+                        "u-bend", "z-bend", "notching",
                         "u-shaped", "u-shape", "z-shaped", "z-shape", "capot",
                         "u-bracket", "z-bracket",
-                        "rectangular tube", "square tube",
-                        "tube rectangulaire", "tube carré", "tube rect"]) or \
-       _has_word(["bend", "bent", "flange", "folding", "fold", "forming",
-                  "pli", "équerre", "berceau", "aile", "retour", "plié", "cornière",
-                  "wing", "ailes", "bracket"]):
+                        "rectangular tube", "square tube"]) or \
+       _has_word(["bend", "bends", "bent", "flange", "flanges", "folding", "fold",
+                  "forming", "return", "returns", "wing", "wings", "bracket",
+                  "cover", "hood"]):
         detected_classes.append("Manufacturing_Processes/Forming/Bending")
     
     # Manufacturing_Processes/Cutting/Laser_Cutting
-    if _has_long_term(["laser cutting", "laser cut", "découpe laser", "découpe", "drilling",
-                        "gueule de loup", "cope cut", "demi-lune", "hexagone",
+    if _has_long_term(["laser cutting", "laser cut", "cutting", "drilling",
+                        "cope cut", "half-moon", "hexagon",
                         "circular", "cutout", "opening", "diameter", "Ø", "perforat"]) or \
-       _has_word(["trous", "hole", "perçage", "slot", "fente", "évidement", "encoche",
-                  "mortaise", "tenon", "oblong", "ouïe", "radius", "diametre", "diamètre",
-                  "percé", "perce", "trouer"]):
+       _has_word(["hole", "holes", "slot", "slots", "notch", "recess", "mortise",
+                  "tenon", "oblong", "louvre", "radius", "drilled", "drill", "pierce"]):
         detected_classes.append("Manufacturing_Processes/Cutting/Laser_Cutting")
     
     # Manufacturing_Processes/Machining/Countersinking
-    if _has_long_term(["countersink", "fraisurage", "flat head screw", "countersunk"]) or \
-       _has_word(["fraisé", "fraiser", "lamage"]):
+    if _has_long_term(["countersink", "countersinking", "flat head screw", "countersunk"]) or \
+       _has_word(["counterbore"]):
         detected_classes.append("Manufacturing_Processes/Machining/Countersinking")
     
     # Manufacturing_Processes/Machining/Threading
     # NOTE: "tap" uses word boundary to avoid matching "tape", "taper" etc.
-    if _has_long_term(["threaded", "threading", "taraudage", "filetage", "tapping", "tige filetée", "passe-tige"]) or \
-       _has_word(["taraudé", "tapped", "thread", "tap", "fileté", "goujon"]):
+    if _has_long_term(["threaded", "threading", "tapping", "threaded rod", "stud"]) or \
+       _has_word(["tapped", "thread", "threads", "tap"]):
         detected_classes.append("Manufacturing_Processes/Machining/Threading")
     
     # Manufacturing_Processes/Machining/Engraving
-    if _has_long_term(["engraving", "engrave", "gravure", "emprunte", "empreinte"]) or \
-       _has_word(["gravé", "graver"]):
+    if _has_long_term(["engraving", "engrave", "etching", "marking"]) or \
+       _has_word(["engraved", "etched"]):
         detected_classes.append("Manufacturing_Processes/Machining/Engraving")
     
     # Manufacturing_Processes/Forming/Stamping
-    if _has_long_term(["stamping", "estampage", "metal stamping", "press forming"]) or \
-       _has_word(["stamp", "bridge", "estampé"]):
+    if _has_long_term(["stamping", "metal stamping", "press forming", "embossing"]) or \
+       _has_word(["stamp", "stamped", "bridge", "embossed"]):
         detected_classes.append("Manufacturing_Processes/Forming/Stamping")
 
     logger.debug(f"[RAG] Keyword-based detected classes: {detected_classes}")
@@ -194,7 +188,7 @@ def classify_user_query_for_rules(user_query: str, classification_llm) -> List[s
 
 def _match_word(query_lower: str, word: str) -> bool:
     """Check if word appears as a whole word in query (word boundary matching).
-    Uses regex \\b to prevent 'pli' from matching inside 'appliqués' etc."""
+    Uses regex \\b to prevent 'tap' from matching inside 'tape', 'taper' etc."""
     import re
     return bool(re.search(r'\b' + re.escape(word) + r'\b', query_lower))
 
@@ -213,7 +207,7 @@ _RULES_TO_INFO_CLASS_MAP: dict = {
 
 # Normalised shape_type → info.json class_name. Lets a detected shape inject its
 # info class even when the raw query lacks the English keywords the rules
-# classifier matches on (e.g. the user wrote French/Vietnamese).
+# classifier matches on.
 _SHAPE_TYPE_TO_INFO_CLASS: dict = {
     "perforated sheet": "Perforated_Sheet",
     "perforated_sheet": "Perforated_Sheet",
@@ -260,8 +254,8 @@ def classify_user_query_for_info(user_query: str, detected_shape_type: Optional[
     # ── Shape-type injection ─────────────────────────────────────────────────
     # When the query expander / regex already identified the shape type,
     # guarantee that its corresponding info class is included — even if the
-    # raw query text lacks the English keywords that classify_user_query_for_rules
-    # relies on (e.g. user wrote in French/Vietnamese without "perforated").
+    # raw query text lacks the keywords that classify_user_query_for_rules
+    # relies on (e.g. the user described the part without saying "perforated").
     # _SHAPE_TYPE_TO_INFO_CLASS (module level) maps normalised shape_type → info class_name.
     if detected_shape_type:
         shape_key = detected_shape_type.lower().replace(" ", "_")
@@ -614,7 +608,7 @@ SHAPE_TYPE_ALIASES: Dict[str, str] = {
     "l-bracket": "L-bracket", "l bracket": "L-bracket",
     "l-shaped": "L-bracket", "l shaped": "L-bracket",
     "l-shape": "L-bracket", "l shape": "L-bracket",
-    "cornière": "L-bracket", "equerre": "L-bracket",
+    "angle bracket": "L-bracket", "angle iron": "L-bracket",
     # U-shaped variants
     "u-shaped": "U-shaped", "u shaped": "U-shaped",
     "u-shape": "U-shaped", "u shape": "U-shaped",
@@ -626,11 +620,11 @@ SHAPE_TYPE_ALIASES: Dict[str, str] = {
     # I-Shaped variants
     "i-shaped": "I-Shaped", "i shaped": "I-Shaped",
     "i-shape": "I-Shaped", "i shape": "I-Shaped",
-    "i-beam": "I-Shaped", "poutre en i": "I-Shaped",
+    "i-beam": "I-Shaped", "i-profile": "I-Shaped",
     # T-Shaped variants
     "t-shaped": "T-Shaped", "t shaped": "T-Shaped",
     "t-shape": "T-Shaped", "t shape": "T-Shaped",
-    "t-bar": "T-Shaped", "fer en t": "T-Shaped",
+    "t-bar": "T-Shaped", "t-profile": "T-Shaped",
     # Tube variants
     "tube": "tube", "square tube": "tube", "rectangular tube": "tube",
     "round tube": "tube",
@@ -648,18 +642,14 @@ SHAPE_TYPE_ALIASES: Dict[str, str] = {
     "equilateral triangle": "Triangle", "isosceles triangle": "Triangle",
     "triangular plate": "Triangle", "triangular sheet": "Triangle",
     "triangle tray": "Triangle", "triangular tray": "Triangle",
-    # French compounds — safe because they all contain 'triangulaire'
-    "plaque triangulaire": "Triangle", "tole triangulaire": "Triangle",
-    "piece triangulaire": "Triangle", "platine triangulaire": "Triangle",
-    "gousset triangulaire": "Triangle", "renfort triangulaire": "Triangle",
-    "equerre triangulaire": "Triangle", "flan triangulaire": "Triangle",
-    "plaque en triangle": "Triangle", "platine en triangle": "Triangle",
+    "triangular gusset": "Triangle", "triangular bracket": "Triangle",
+    "gusset plate": "Triangle", "triangular blank": "Triangle",
     # Perforated Sheet variants — MUST come before generic "sheet" to prevent map to "plate"
     "perforated sheet": "Perforated Sheet", "perforated_sheet": "Perforated Sheet",
-    "tôle perforée": "Perforated Sheet", "tôle filtrante": "Perforated Sheet",
+    "perforated plate": "Perforated Sheet", "filter sheet": "Perforated Sheet",
     "perforated": "Perforated Sheet",
     # Sheet-Circular variants
-    "sheet-circular": "Sheet-Circular", "circular sheet": "Sheet-Circular", "circular plate": "Sheet-Circular", "disque": "Sheet-Circular",
+    "sheet-circular": "Sheet-Circular", "circular sheet": "Sheet-Circular", "circular plate": "Sheet-Circular", "disc": "Sheet-Circular",
     # Sheet variants (generic — perforated must be above this block)
     "sheet": "plate", "plate": "plate", "flat": "plate",
 }
@@ -727,10 +717,8 @@ def _regex_extract_shape_type(text: str) -> Optional[str]:
         "equilateral triangle", "isosceles triangle",
         "triangular plate", "triangular sheet", "triangular tray",
         "triangle tray",
-        # French compounds (all contain 'triangulaire' — safe for substring match)
-        "plaque triangulaire", "gousset triangulaire",
-        "renfort triangulaire", "equerre triangulaire",
-        "platine triangulaire", "piece triangulaire",
+        "triangular gusset", "triangular bracket",
+        "gusset plate", "triangular blank",
     ]
     if any(term in text_lower for term in triangle_terms):
         return "Triangle"

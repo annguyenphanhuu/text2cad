@@ -42,7 +42,6 @@ class ChatResponse(BaseModel):
     attribute_and_transientid_map: Optional[Dict[str, Any]] = None
     manufacturing_errors: Optional[List[str]] = None
     web_search_metadata: Optional[Dict[str, Any]] = None  # Web search metadata with extracted URL content
-    detected_language: Optional[str] = None  # Detected language of the user's message (e.g. EN, FR)
     total_cost_usd: Optional[float] = None  # Total OpenAI API cost for this request turn (USD)
     cost_breakdown: Optional[Dict[str, Any]] = None  # Per-chain cost breakdown for this request turn
 

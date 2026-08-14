@@ -116,7 +116,7 @@ class WebSearchProcessor:
     # can produce — no new keyword detection added here.
     _URL_PRODUCT_TYPE_TO_CANONICAL = {
         "Perforated sheet": "Perforated Sheet",
-        "Tube":             "Tube-Circular",   # generic tube from URL → circular (rectangular URLs usually say "carré" etc.)
+        "Tube":             "Tube-Circular",   # generic tube from URL → circular (rectangular URLs usually spell out "square"/"rectangular")
         "sheet":            "Sheet",
         "L-shaped bracket": "L-bracket",
         "U-shaped":         "U-shaped",
@@ -145,8 +145,8 @@ class WebSearchProcessor:
         description = unknown_match.group(1).strip()
         desc_lower = description.lower()
         sheet_terms = (
-            "plaque", "platine", "tôle", "tole", "sheet", "plate",
-            "disque", "rondelle", "flan", "couvercle", "bride",
+            "sheet", "plate", "panel", "disc", "disk",
+            "washer", "blank", "cover", "flange plate",
         )
 
         if any(term in desc_lower for term in sheet_terms):
@@ -173,7 +173,11 @@ class WebSearchProcessor:
             parsed = urlparse(url)
             path = unquote(parsed.path)  # Decode URL encoding
 
-            # Look for product type keywords first
+            # Look for product type keywords first.
+            # NOTE: the French keywords below are NOT product language — they are
+            # literal URL slugs published by the supplier sites we scrape
+            # (tolery.io and similar). They must stay to keep URL-only fallback
+            # working; the chatbot's own output is English regardless.
             product_type = None
             path_lower = path.lower()
 
@@ -383,9 +387,9 @@ class WebSearchProcessor:
         REMOVED (noise for chatbot):
           - Material grades: S235, E24, A36, Fe360
           - Material standards: EN 10060, DIN 1025, NF A35 (4+ digit norm codes)
-          - Surface state: état brut, galvanisé, laminé à chaud
-          - Weight: poids au mètre, kg/m
-          - Cutting tolerances: coupe non ébavurée, +/- 1mm
+          - Surface state: as-rolled, galvanised, hot-rolled
+          - Weight: weight per metre, kg/m
+          - Cutting tolerances: un-deburred cut, +/- 1mm
           - Commercial: price, stock
 
         Args:
@@ -397,6 +401,10 @@ class WebSearchProcessor:
         if not content:
             return content
 
+        # NOTE: the French patterns below are NOT product language — they strip
+        # commercial boilerplate that the supplier pages we scrape publish in
+        # French. They are a defensive post-filter on third-party page text; the
+        # extraction prompt already asks for English output.
         non_geometric_patterns = [
             # --- Material grades ---
             # "nuance S235", "nuance E24 ou S235"
@@ -500,16 +508,13 @@ CRITICAL EXTRACTION RULES:
 3. Use only the dimensions that are actually specified on the product page
 4. **IMPORTANT**: If the page shows multiple different values for the same dimension (e.g., length: 1/2/3/4/5/6), keep the placeholder [length] and do NOT extract specific values. Only use specific values when exactly ONE value is provided.
 5. **EXTRACT HOLE POSITION INFORMATION**: If the product has holes (perforations, cutouts, mounting holes, etc.), extract and describe their positions/locations when available
-6. **LANGUAGE RULE (MANDATORY)**: Detect the language of the web page and write ALL descriptive labels (shape names, dimension labels, position descriptions) in THAT language. Technical codes (R12, T16, C20, U40, LR5x20, Z9x24, etc.) and numeric values are universal — keep them unchanged. Only translate the surrounding words.
-   - French page → use "tôle", "épaisseur", "longueur", "largeur", "cornière", "tube", "tôle perforée", "trous aux coins", etc.
-   - English page → use "sheet", "thickness", "length", "width", "bracket", "tube", "perforated sheet", "holes at corners", etc.
-   - Other languages: follow the same principle — match the page language.
+6. **LANGUAGE RULE (MANDATORY)**: Write ALL output in English, whatever language the web page uses. Translate descriptive labels (shape names, dimension labels, position descriptions) into English — "sheet", "thickness", "length", "width", "bracket", "tube", "perforated sheet", "holes at corners", etc. Technical codes (R12, T16, C20, U40, LR5x20, Z9x24, etc.) and numeric values are universal — keep them unchanged.
 7. **EXCLUDE non-geometric information (MANDATORY)**: Do NOT include any of the following in your output:
    - Material grades or steel grades (e.g., S235, E24, A36, S355, Fe360, St37, etc.)
    - Norms or standards (e.g., EN 10060, DIN 1025, ISO, NF, ASTM, etc.)
-   - Surface finish or state (e.g., état brut, galvanisé, laminé à chaud, brut de laminage, etc.)
-   - Weight per meter or unit weight (e.g., poids au mètre, kg/m, lbs/ft, etc.)
-   - Cutting tolerances or delivery notes (e.g., coupe non ébavurée, +/- 1 mm, etc.)
+   - Surface finish or state (e.g., as-rolled, galvanised, hot-rolled, mill finish, etc.)
+   - Weight per meter or unit weight (e.g., kg/m, lbs/ft, etc.)
+   - Cutting tolerances or delivery notes (e.g., unde-burred cut, +/- 1 mm, etc.)
    - Price, stock, or commercial information
    - Keep ONLY: shape type, geometric dimensions (length, width, height, thickness, diameter), and hole pattern/position
 
@@ -519,35 +524,35 @@ Use your understanding of the product — name, form, cross-section — to pick 
 
 | Canonical shape_type    | What it is                                                                |
 |-------------------------|--------------------------------------------------------------------------|
-| Sheet                   | Flat plate / tôle plate / plaque (rectangulaire OU ronde/disque/rondelle). Peut avoir des trous INDIVIDUELS (perçages, taraudages, trous de fixation, découpes, encoches, lumières, trou central, trous aux coins). ⚠️ La présence de trous individuels NE classe PAS la pièce en Perforated Sheet. |
-| Perforated Sheet         | Tôle perforée. Détecté si AU MOINS UN des indicateurs suivants est présent: (1) code de perforation (R12 T16, C20 U40, LR5x20 Z9x24, LC10x100 U30x40...) OU (2) mot-clé explicite ("perforated" / "perforée" / "tôle perforée" / "tôle à trous"). ⚠️ Trous individuels (fixation, coins, centre) seuls SANS ces indicateurs → Sheet. |
-| Tube-Circular           | (A) Hollow tube: tube rond / tube cylindrique / pipe / round pipe. Has wall thickness (épaisseur de paroi). (B) Solid bar: **rond plein / barre ronde / tige ronde / solid round bar** — NO wall thickness (plein = solid). Both subtypes → Tube-Circular. |
-| Tube-Rectangular        | Square or rectangular hollow section: tube carré, carré creux, carré plein (solid square bar also maps here), tube rectangulaire, profilé carré, SHS, RHS, box section, profilé creux |
-| L-bracket               | Angle / cornière / équerre / L-shaped bracket / angle iron               |
-| U-shaped                | U-channel / profilé en U / U-shaped / chute en U                        |
-| Z-shaped                | Z-section / profilé en Z / Z-shaped                                      |
-| CAPOT                   | Box / enclosure / capot / coffret / boîtier plié                         |
-| I-Shaped              | I-beam / poutre en I / poutrelle / profilé en I      |
-| T-Shaped              | T-beam / fer en T / profilé en T      |
+| Sheet                   | Flat plate / flat sheet (rectangular OR round/disc/washer). May have INDIVIDUAL holes (drilled holes, tapped holes, mounting holes, cutouts, notches, slots, a centre hole, corner holes). ⚠️ The presence of individual holes does NOT make the part a Perforated Sheet. |
+| Perforated Sheet         | Perforated sheet. Detected if AT LEAST ONE of the following is present: (1) a perforation code (R12 T16, C20 U40, LR5x20 Z9x24, LC10x100 U30x40...) OR (2) an explicit keyword ("perforated" / "perforated sheet" / "sheet with a hole pattern"). ⚠️ Individual holes (mounting, corners, centre) alone WITHOUT these indicators → Sheet. |
+| Tube-Circular           | (A) Hollow tube: round tube / cylindrical tube / pipe / round pipe. Has wall thickness. (B) Solid bar: **solid round bar / round rod** — NO wall thickness. Both subtypes → Tube-Circular. |
+| Tube-Rectangular        | Square or rectangular hollow section: square tube, rectangular tube, solid square bar (also maps here), square profile, SHS, RHS, box section, hollow profile |
+| L-bracket               | Angle / angle bracket / L-shaped bracket / angle iron                    |
+| U-shaped                | U-channel / U-profile / U-shaped / channel section                       |
+| Z-shaped                | Z-section / Z-profile / Z-shaped                                         |
+| CAPOT                   | Box / enclosure / cover / hood / folded housing                          |
+| I-Shaped              | I-beam / I-profile / joist      |
+| T-Shaped              | T-beam / T-profile / T-bar      |
 | unknown                 | Cannot determine shape from available information                         |
 
 ⚠️ DISAMBIGUATION — Sheet vs Perforated Sheet:
-→ Perforated Sheet si AU MOINS UN indicateur présent:
-   - Code: "R12 T16", "C20 U40", "LR5x20 Z9x24", "40% de vide", "entraxe Xmm" (pattern complet)
-   - Mot-clé: "perforated", "perforée", "tôle perforée", "tôle à trous"
-→ Sheet si UNIQUEMENT des trous individuels, SANS code ni mot-clé "perforated":
-   - "4 trous de fixation Ø10 aux coins"  → [Shape type: Sheet]
-   - "trou central Ø12 + 4 trous Ø8"      → [Shape type: Sheet]
-   - "trou taraudé M12 au centre"          → [Shape type: Sheet]
-   - "découpe carrée centrale 40mm"        → [Shape type: Sheet]
-   - "platine / plaque de fixation"        → [Shape type: Sheet]
+→ Perforated Sheet if AT LEAST ONE indicator is present:
+   - Code: "R12 T16", "C20 U40", "LR5x20 Z9x24", "40% open area", "pitch Xmm" (complete pattern)
+   - Keyword: "perforated", "perforated sheet", "sheet with a hole pattern"
+→ Sheet if ONLY individual holes, WITHOUT a code or the "perforated" keyword:
+   - "4 mounting holes Ø10 at the corners"  → [Shape type: Sheet]
+   - "centre hole Ø12 + 4 holes Ø8"         → [Shape type: Sheet]
+   - "tapped hole M12 at the centre"        → [Shape type: Sheet]
+   - "square central cutout 40mm"           → [Shape type: Sheet]
+   - "mounting plate"                       → [Shape type: Sheet]
 
 → Prepend **[Shape type: <canonical_value>]** as the VERY FIRST token of your output, on the same line as the description.
 → Use ONLY the exact canonical string from the table above (case-sensitive).
 → Example output line: "[Shape type: Tube-Rectangular] Tube 8x8, thickness [t], length 300"
 → If truly unsure: "[Shape type: unknown] <description>"
 
-RETURN FORMAT - Description with dimensions and hole positions from product page (in the web page's language):
+RETURN FORMAT - Description with dimensions and hole positions from product page (always in English):
 
 For simple sheets:
 - "sheet [length]x[width], thickness [t]"
@@ -636,13 +641,12 @@ For tubes (circular) — HOLLOW (tube creux / tube rond):
 - **Example with holes**: "Tube 55mm diameter, thickness 2, length 750, holes at both ends, 4 mounting holes 6mm diameter at 20mm from ends"
 - **Example with positioned holes**: "Tube 55mm diameter, thickness 2, length 750, drainage holes at bottom, 3 holes spaced 200mm apart"
 
-For solid round bars (Tube-Circular — SOLID: rond plein / barre ronde / tige ronde):
-⚠️ Solid bars have NO wall thickness — do NOT invent an épaisseur/thickness value.
-- "Rond plein [diameter]mm, longueur [l]" (French page)
-- "Solid round bar [diameter]mm, length [l]" (English page)
-- Example: "Rond plein 4mm, longueur 1000"
-- Example missing length: "Rond plein 12mm, longueur [longueur]"
-- Example multiple lengths: "Rond plein 4mm, longueur [longueur]" (if site shows multiple standard lengths)
+For solid round bars (Tube-Circular — SOLID: solid round bar / round rod):
+⚠️ Solid bars have NO wall thickness — do NOT invent a thickness value.
+- "Solid round bar [diameter]mm, length [l]"
+- Example: "Solid round bar 4mm, length 1000"
+- Example missing length: "Solid round bar 12mm, length [length]"
+- Example multiple lengths: "Solid round bar 4mm, length [length]" (if site shows multiple standard lengths)
 
 For tubes (rectangular):
 - "Tube [width]x[height], thickness [t], length [l]"
@@ -658,7 +662,7 @@ For tubes (square):
 - Example missing thickness and length: "Tube 60x60, thickness [t], length [l]"
 - **Example with holes**: "Tube 60x60, thickness 2, length 920, holes at 4 corners of each end, 8mm diameter, 15mm from edges"
 
-For L-shaped/Support/Cornière:
+For L-shaped / support brackets:
 - "L-shaped bracket [base_length]x[vertical_length]x[thickness], width [width], bend radius [bend_radius], bend angle [bend_angle]"
 - Example: "L-shaped bracket 100x200x2, width 50, bend radius 2, bend angle 90"
 - **Example with holes**: "L-shaped bracket 100x200x2, width 50, bend radius 2, bend angle 90, mounting holes at ends, 2 holes per leg, 6mm diameter, 20mm from edges"
@@ -702,7 +706,7 @@ IMPORTANT RULES:
    - If hole positions are mentioned but exact values are unclear, use [position_description] placeholder
    - If no hole position information is provided, omit the position description entirely
 5. **SPECIAL RULE FOR PERFORATED SHEETS**: If the product code contains symbols like T, U, or Z (e.g., R12 T16, C20 U40, LR5x20 Z9x24), DO NOT include hole position description because the code symbol already defines the hole pattern and position. Only include hole position for perforated sheets WITHOUT code symbols or when additional positioning information is explicitly provided beyond the standard code pattern.
-6. **LANGUAGE ENFORCEMENT**: The final output description MUST be written in the same language as the web page. Do NOT default to English if the page is in French, German, or any other language. Technical codes and numbers are always kept as-is.
+6. **LANGUAGE ENFORCEMENT**: The final output description MUST be written in English, regardless of the web page language. Technical codes and numbers are always kept as-is.
 7. **SHAPE TYPE PREFIX (MANDATORY)**: Every output line MUST start with `[Shape type: <canonical>]`. This prefix is a machine tag — do NOT translate it, do NOT omit it, do NOT place it anywhere other than the very beginning of the output. The canonical value must match exactly one entry from the SHAPE TYPE CLASSIFICATION table above.
 
 # ═══════════════════════════════════════════════════════════════════════════

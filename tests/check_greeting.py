@@ -53,14 +53,14 @@ ACT_THRESHOLD = {
 NON_CAD = [
     ("greeting", "hey there"),
     ("greeting", "bonsoir, ça va ?"),
-    ("greeting", "chào bạn"),
+    ("greeting", "hey there"),
     ("greeting", "thanks, that's all for now"),
-    ("information_request", "quelles matières est-ce que vous proposez ?"),
+    ("information_request", "which materials do you offer?"),
     ("information_request", "which sheet thicknesses do you stock for stainless?"),
     ("information_request", "peux-tu me dire ce que ton outil sait faire ?"),
-    ("process_question", "combien ça coûterait cette pièce ?"),
-    ("process_question", "j'ai besoin du devis pour la commande"),
-    ("process_question", "tu peux me sortir un PDF de ce fichier ?"),
+    ("process_question", "how much would this part cost?"),
+    ("process_question", "I need the quote for the order"),
+    ("process_question", "can you give me a PDF of this file?"),
     ("process_question", "can you export that as a STEP file for me?"),
 ]
 

@@ -1,7 +1,7 @@
 """
 perforated_sheet_calculator.py
 ══════════════════════════════════════════════════════════════════════════════
-Utility module for Perforated Sheet open-area (pourcentage de vide) calculation.
+Utility module for Perforated Sheet open-area calculation.
 
 Supports ALL notation types from data/Info/Perforated_Sheet/info.json:
   SHAPES  : R<D>            Round,  D = diameter (mm)
@@ -15,13 +15,13 @@ Supports ALL notation types from data/Info/Perforated_Sheet/info.json:
                             stagger_offset = pitch_x / 2
 
 TWO CALCULATION MODES:
-  1. FORWARD  — notation + sheet dims → % vide + hole count
-  2. REVERSE  — notation + % vide target + one known param → infer the missing param
+  1. FORWARD  — notation + sheet dims → % open area + hole count
+  2. REVERSE  — notation + % open area target + one known param → infer the missing param
 
-% VIDE — two definitions:
-  • Theoretical (RMIG / maille infinie): hole_area / unit_cell_area × 100 — same idea as
+% OPEN AREA — two definitions:
+  • Theoretical (RMIG / infinite grid): hole_area / unit_cell_area × 100 — same idea as
     https://rmigsolutions.com/fr/perforation/formules/calcul-du-pourcentage-de-vide/
-  • Actual (plaque finie): same grid rules as generated CAD in
+  • Actual (finished plate): same grid rules as generated CAD in
     data/Example/plate/Perforated_R12xT16.txt, Perforated_C20_U40.txt,
     Perforated_LR5x20.txt — centered pattern, n = floor((edge − hole_span)/pitch)+1,
     stagger on odd rows for T/Z, then clip holes outside the plate.
@@ -80,8 +80,8 @@ class PerfNotation:
 @dataclass
 class ForwardResult:
     """Result of forward calculation."""
-    open_area_pct: float          # Theoretical % vide from RMIG formula
-    actual_open_area_pct: float   # Real % vide based on actual hole count on sheet
+    open_area_pct: float          # Theoretical % open area from RMIG formula
+    actual_open_area_pct: float   # Actual % open area based on real hole count on the sheet
     hole_count: int               # Total holes on sheet
     hole_area_each: float         # mm² per hole
     total_hole_area: float        # mm² total holes
@@ -110,13 +110,12 @@ def parse_open_area_pct_from_text(text: str) -> Optional[float]:
     """
     Extract an open-area percentage from user text.
 
-    Accepts both dot and comma decimal separators, e.g. "22.68%" and
-    French-style "22,68%".
+    Accepts both dot and comma decimal separators, e.g. "22.68%" and "22,68%".
     """
     pct_number_pattern = r'\d+(?:[\.,]\d+)?'
     match = re.search(
-        rf'(?:vide|open\s+area|pourcentage)[^\d]*({pct_number_pattern})\s*%'
-        rf'|({pct_number_pattern})\s*%\s*(?:vide|open|ouvert)',
+        rf'(?:open\s+area|percentage)[^\d]*({pct_number_pattern})\s*%'
+        rf'|({pct_number_pattern})\s*%\s*open(?:\s+area)?',
         text,
         re.IGNORECASE,
     )
@@ -171,7 +170,7 @@ def _resolved_reverse_notation(notation_str: str, inferred_param: str, inferred_
 def compute_perforated_sheet_from_extracted_params(
     shape_notation: Optional[str],
     pitch_notation: Optional[str],
-    pct_vide: Any,
+    pct_open_area: Any,
     calc_mode: str,
     sheet_length: Optional[float] = None,
     sheet_width: Optional[float] = None,
@@ -186,7 +185,7 @@ def compute_perforated_sheet_from_extracted_params(
     shape = (shape_notation or "").strip()
     pitch = (pitch_notation or "").strip()
     notation = f"{shape} {pitch}".strip()
-    target_pct = _coerce_optional_float(pct_vide)
+    target_pct = _coerce_optional_float(pct_open_area)
 
     if calc_mode == "forward":
         if not shape or not pitch:
@@ -207,7 +206,7 @@ def compute_perforated_sheet_from_extracted_params(
         if not shape or not pitch or target_pct is None:
             return {
                 "error": "missing_reverse_pitch_params",
-                "message": "Reverse pitch calculation requires shape_notation, pitch_notation, and pct_vide.",
+                "message": "Reverse pitch calculation requires shape_notation, pitch_notation, and pct_open_area.",
             }
         result = compute_perforated_sheet(
             notation,
@@ -230,7 +229,7 @@ def compute_perforated_sheet_from_extracted_params(
         if not shape or not pitch or target_pct is None:
             return {
                 "error": "missing_reverse_hole_params",
-                "message": "Reverse hole-size calculation requires shape_notation, pitch_notation, and pct_vide.",
+                "message": "Reverse hole-size calculation requires shape_notation, pitch_notation, and pct_open_area.",
             }
         result = compute_perforated_sheet(
             notation,
@@ -496,7 +495,7 @@ def _formula_label(n: PerfNotation, pct: float) -> str:
     return (
         f"shape={shape_desc} | pitch={pitch_desc} | "
         f"hole_area={hole_area:.3f}mm² | cell_area={cell_area:.3f}mm² | "
-        f"% théorique = hole_area/cell_area × 100 = {pct:.2f}%"
+        f"% theoretical = hole_area/cell_area × 100 = {pct:.2f}%"
     )
 
 
@@ -511,7 +510,7 @@ def calculate_open_area(
     sheet_thickness: Optional[float] = None,
 ) -> ForwardResult:
     """
-    FORWARD MODE: notation → % vide.
+    FORWARD MODE: notation → % open area.
 
     Args:
         notation_str    : e.g. "R12 T16", "C20 U40", "LC5x20 Z9x24"
@@ -520,7 +519,7 @@ def calculate_open_area(
         sheet_thickness : Z dimension (mm). Required for DFM checks only.
 
     Returns:
-        ForwardResult with theoretical + actual % vide, hole count, DFM warnings.
+        ForwardResult with theoretical + actual % open area, hole count, DFM warnings.
     """
     n = parse_notation(notation_str)
 
@@ -549,7 +548,7 @@ def calculate_open_area(
             f"({span_x}mm x {span_y}mm). Holes would OVERLAP -- geometry invalid!"
         )
 
-    # PERF-003: % vide limits
+    # PERF-003: % open area limits
     if theo_pct > 65:
         dfm["errors"].append(
             f"PERF-003: Open area {theo_pct:.1f}% > 65% — structural integrity insufficient. "
@@ -600,8 +599,8 @@ def calculate_open_area(
         )
 
         formula = (
-            f"{formula} | [Plaque finie — grille centrée comme data/Example/plate] "
-            f"% réel = {actual_pct:.2f}% "
+            f"{formula} | [Finished plate — centred grid, as in data/Example/plate] "
+            f"% actual = {actual_pct:.2f}% "
             f"({hole_count} trous × {hole_area:.3f} mm² / {sheet_area:.0f} mm²; "
             f"grille {n_cols}×{n_rows} brute avant clip bord)"
         )
@@ -629,7 +628,7 @@ def infer_pitch_from_pct(
     target_pct: float,
 ) -> ReverseResult:
     """
-    REVERSE MODE A: Given notation (shape only) + target % vide → infer pitch.
+    REVERSE MODE A: Given notation (shape only) + target % open area → infer pitch.
 
     The notation_str must contain the SHAPE part (R<D>, C<S>, LC<W>x<L>)
     and optionally the pitch TYPE letter (U, T, Z) without a value.
@@ -695,7 +694,7 @@ def infer_hole_size_from_pct(
     target_pct: float,
 ) -> ReverseResult:
     """
-    REVERSE MODE B: Given notation (pitch fully known) + target % vide → infer hole size.
+    REVERSE MODE B: Given notation (pitch fully known) + target % open area → infer hole size.
 
     Supports partial notation where shape has no number yet:
         "R T16"   → infer hole diameter for round + staggered 60° pitch=16

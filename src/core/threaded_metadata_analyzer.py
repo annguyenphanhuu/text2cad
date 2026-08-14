@@ -225,7 +225,7 @@ CRITICAL INDICATORS (in priority order):
    Example: tap_hole_diam = 8.0
    
 3. **Comments with thread mentions** (HIGH PRIORITY - 85% confidence)
-   Examples: "# Threaded M4 holes", "# 4x M6 in corners", "# taraudé M8"
+   Examples: "# Threaded M4 holes", "# 4x M6 in corners", "# tapped M8"
    
 4. **Diameter matching + thread context** (MEDIUM - 70% confidence)
    Example: hole_diam = 6.0 AND comment mentions "M6" or "threaded"
@@ -245,7 +245,7 @@ CRITICAL INDICATORS:
    Examples: slot_tool, oblong_tool, slot_total_len, slot_width
    
 3. **Comments mentioning oblongs/slots** (HIGH PRIORITY - 85% confidence)
-   Examples: "# Oblong slot", "# Slotted hole", "# lumière oblongue"
+   Examples: "# Oblong slot", "# Slotted hole", "# oblong opening"
 
 🔥 CRITICAL: LOOP DETECTION (VERY IMPORTANT!)
 **MULTIPLE OBLONGS IN LOOPS** - MUST detect ALL iterations!
@@ -453,7 +453,7 @@ PARAMETERS TO EXTRACT:
 
 CRITICAL INDICATORS (in priority order):
 1. **Comments with shape type** (HIGHEST PRIORITY - 95% confidence)
-   Examples: "# Shape type: L-bracket", "# L-shaped bracket", "# U-shape channel", "# Tube carré"
+   Examples: "# Shape type: L-bracket", "# L-shaped bracket", "# U-shape channel", "# Square tube"
    
 2. **Variable names** (HIGH PRIORITY - 85% confidence)
    Examples: l_bracket_dim, u_channel_width, tube_diameter, tube_wall_thickness
@@ -768,22 +768,22 @@ Return JSON only, no explanation."""
         
         # Calculate bounding box based on direction
         # ✅ USE ORIGINAL corner.z and depth (no adjustment)
-        # Bbox được tính từ pnt (corner) + dimensions (length, width, height)
-        # Đây là bbox dự kiến từ metadata, sẽ được so sánh với bbox thực tế từ faces trong step_converter.py
+        # Bbox is computed from pnt (corner) + dimensions (length, width, height).
+        # This is the expected bbox from metadata; step_converter.py compares it with the real bbox from faces.
         if abs(direction.get('z', 0)) > 0.9:  # Z-up extrusion (most common)
-            # pnt (corner) là điểm bắt đầu, sau đó di chuyển theo trục XYZ
-            # X: từ corner.x đến corner.x + total_length (có thêm end_radius ở 2 đầu)
-            # Y: từ corner.y đến corner.y + width
-            # Z: từ corner.z đến corner.z + depth
+            # pnt (corner) is the start point; the box then extends along the XYZ axes.
+            # X: from corner.x to corner.x + total_length (plus end_radius at both ends)
+            # Y: from corner.y to corner.y + width
+            # Z: from corner.z to corner.z + depth
             bbox = {
                 "min": {
-                    "x": corner.get('x', 0) - end_radius,  # Mở rộng về trái cho rounded end
-                    "y": corner.get('y', 0),               # Bắt đầu từ corner.y
+                    "x": corner.get('x', 0) - end_radius,  # Extend left for the rounded end
+                    "y": corner.get('y', 0),               # Starts at corner.y
                     "z": corner.get('z', 0)                 # ✅ Keep original Z (can be negative)
                 },
                 "max": {
-                    "x": corner.get('x', 0) + total_length + end_radius,  # Mở rộng về phải cho rounded end
-                    "y": corner.get('y', 0) + width,                       # Kết thúc tại corner.y + width
+                    "x": corner.get('x', 0) + total_length + end_radius,  # Extend right for the rounded end
+                    "y": corner.get('y', 0) + width,                       # Ends at corner.y + width
                     "z": corner.get('z', 0) + depth                        # ✅ Keep original depth
                 }
             }
@@ -4311,7 +4311,10 @@ Return JSON only, no explanation."""
         """
         import re
         
-        # Pattern 1: Comment-based detection (highest priority)
+        # Pattern 1: Comment-based detection (highest priority).
+        # NOTE: the French tokens below (equerre, carré, rond, coffert) are NOT product
+        # language — they match comments inside the legacy FreeCAD example scripts under
+        # data/Example/, which are left as-is. Newly generated scripts are English.
         comment_patterns = [
             (r'#\s*Shape\s*type:\s*([\w-]+)', 1),  # # Shape type: L-bracket
             (r'#\s*(L-shaped|L-bracket|equerre)', 'l-shape'),  # # L-shaped bracket

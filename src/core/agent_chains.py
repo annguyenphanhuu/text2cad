@@ -69,7 +69,7 @@ from .models import DFMValidationOutput
 
 
 def parse_greeting_classification(raw_output):
-    """Parse greeting classification output with enhanced language feedback detection"""
+    """Parse greeting classification output into a dict, with a safe fallback."""
     try:
         # Extract JSON from the output
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_output, re.DOTALL)
@@ -173,7 +173,6 @@ def create_unified_processing_chain(expert_llm):
             "detailed_explanation_requested": detect_detailed_explanation_request(user_text),
             "session_id": session_id,  # Pass session_id for logging
             "material": x.get("material", ""),  # Material choice for template
-            "user_language": x.get("user_language", "English")  # User language for template
         }
 
     def parse_and_log_unified_result(x):
@@ -206,7 +205,7 @@ def create_unified_processing_chain(expert_llm):
         # into unified_output_obj and written verbatim to UNIFIED_TEMPLATE_LOG above.
         # No prompt downstream consumes it.
         result = {
-            "unified_output_obj": parse_unified_analysis(raw_json, template_inputs["user_text"]),
+            "unified_output_obj": parse_unified_analysis(raw_json),
             "retrieved_context_for_code_gen": template_inputs.get("examples_context", "")  # Examples for code gen
         }
         print(f"[UNIFIED_ANALYSIS] ✅ Analysis complete - parsed successfully\n")
@@ -264,15 +263,13 @@ def create_dfm_validation_chain(expert_llm):
             "user_text": inputs.get("user_text", ""),
             "retrieved_context": inputs.get("retrieved_context", ""),
             "material": inputs.get("material", ""),
-            "user_language": inputs.get("user_language", "English"),  # ✅ Forward pre-detected language to template
         }
-        
+
         # Log inputs
         log_inputs = {
             "user_text": chain_input["user_text"],
             "retrieved_context": chain_input["retrieved_context"],
             "material": chain_input["material"],
-            "detected_language": chain_input["user_language"],  # ← show which language was detected
         }
         
         try:
@@ -319,7 +316,7 @@ def create_description_confirm_chain(default_llm):
     BEFORE code generation. Produces a high-quality technical description
     and a user-facing confirm message.
 
-    Input:  { user_text, validated_params, confirm_round, user_language }
+    Input:  { user_text, validated_params, confirm_round }
     Output: { final_description, confirm_message }
 
     Multi-user safe: all inputs are per-invocation, no shared state.
@@ -346,7 +343,7 @@ def create_description_confirm_chain(default_llm):
             pass
         # Fallback: treat raw output as both description and confirm message
         logger.warning("[DESC_CONFIRM] Failed to parse JSON, using raw output as fallback")
-        fallback_msg = f"\ud83d\udccb **Description:**\n{raw}\n\n\u2705 *Reply yes/oui/ok to generate, or add more details.*"
+        fallback_msg = f"\ud83d\udccb **Description:**\n{raw}\n\n\u2705 *Reply yes/ok to generate, or add more details.*"
         return {
             "final_description": raw,
             "confirm_message": fallback_msg
@@ -398,9 +395,8 @@ def create_description_confirm_chain(default_llm):
         log_inputs = {
             "user_text": inputs.get("user_text", ""),
             "confirm_round": inputs.get("confirm_round", 1),
-            "user_language": inputs.get("user_language", "English"),
             "shape_type": shape_type,
-            "perf_info": inputs.get("perf_info", ""),   # ← forward pre-computed % vide
+            "perf_info": inputs.get("perf_info", ""),   # ← forward pre-computed % open area
         }
         # These refs are local to this coroutine — no shared state
         session_id_ref = [session_id]
@@ -433,7 +429,7 @@ def create_step_planner_chain(default_llm):
     Analyzes complex CAD requests and generates a step-by-step build plan.
     Runs BEFORE description_confirm when complexity_level >= threshold.
 
-    Input:  { description, complexity_level, user_language, session_id }
+    Input:  { description, complexity_level, session_id }
     Output: { steps, total_steps, plan_summary, user_message }
 
     Multi-user safe: all inputs are per-invocation, no shared state.
@@ -474,13 +470,11 @@ def create_step_planner_chain(default_llm):
         chain_input = {
             "description": inputs.get("description", ""),
             "complexity_level": inputs.get("complexity_level", 1),
-            "user_language": inputs.get("user_language", "French"),
         }
 
         log_inputs = {
             "description": chain_input["description"],
             "complexity_level": chain_input["complexity_level"],
-            "user_language": chain_input["user_language"],
         }
 
         try:
@@ -868,22 +862,21 @@ def create_perforated_param_chain(default_llm):
     Create the Perforated Sheet Parameter Extraction chain.
 
     Dedicated, focused LLM chain that extracts hole shape, pitch, and
-    % vide from user text (both notation style AND free natural language).
+    % open area from user text (both notation style AND free natural language).
     Called ONLY when unified chain has already set shape_type="Perforated Sheet".
 
     Input:
         user_text     : full conversation history ([USER]/[CHATBOT] format)
-        user_language : pre-detected language string (e.g. "French")
         sheet_dims    : pre-parsed sheet dims string (e.g. "L=200 W=200 T=2")
 
     Output dict:
         shape_notation   : "R12" | "C20" | "LR5x20" | None
         pitch_notation   : "T16" | "U40" | "T" | None
         pitch_type_known : bool
-        pct_vide         : float | None
+        pct_open_area         : float | None
         calc_mode        : "forward" | "reverse_C" | "reverse_D" | "unknown"
         missing          : list[str]  (— empty = ready to compute)
-        questions        : list[str]  (— focused questions in user's language)
+        questions        : list[str]  (— focused questions, empty if nothing missing)
 
     Multi-user safe: all inputs are per-invocation, no shared state.
     """
@@ -912,7 +905,7 @@ def create_perforated_param_chain(default_llm):
             "shape_notation": None,
             "pitch_notation": None,
             "pitch_type_known": False,
-            "pct_vide": None,
+            "pct_open_area": None,
             "calc_mode": "unknown",
             "missing": ["parse_error"],
             "questions": [],
@@ -927,13 +920,11 @@ def create_perforated_param_chain(default_llm):
 
         chain_input = {
             "user_text":    inputs.get("user_text", ""),
-            "user_language": inputs.get("user_language", "French"),
             "sheet_dims":   inputs.get("sheet_dims", "unknown"),
         }
 
         log_inputs = {
             "user_text_len":  f"{len(chain_input['user_text'])} chars",
-            "user_language":  chain_input["user_language"],
             "sheet_dims":     chain_input["sheet_dims"],
         }
 
@@ -962,7 +953,7 @@ def create_perforated_param_chain(default_llm):
                 f"[PERF_PARAM] ✅ Complete | session={session_id} | "
                 f"shape={result.get('shape_notation')} | "
                 f"pitch={result.get('pitch_notation')} | "
-                f"pct={result.get('pct_vide')} | "
+                f"pct={result.get('pct_open_area')} | "
                 f"mode={result.get('calc_mode')} | "
                 f"missing={result.get('missing')}"
             )
@@ -977,7 +968,7 @@ def create_perforated_param_chain(default_llm):
                 "shape_notation": None,
                 "pitch_notation": None,
                 "pitch_type_known": False,
-                "pct_vide": None,
+                "pct_open_area": None,
                 "calc_mode": "unknown",
                 "missing": ["chain_error"],
                 "questions": [],

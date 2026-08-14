@@ -54,16 +54,16 @@ if sys.stderr.encoding != 'utf-8':
 # drifts from what was agreed with the customer.
 PROCESS_QUESTION_RESPONSES = {
     "pricing": (
-        "Pour chiffrer votre pièce, veuillez télécharger le fichier et créer un "
-        "nouveau devis."
+        "To get a price for your part, please download the file and create a "
+        "new quote."
     ),
     "file_export": (
-        "Pour avoir le fichier et/ou le PDF, vous devez télécharger votre fichier."
+        "To get the file and/or the PDF, you need to download your file."
     ),
 }
 PROCESS_QUESTION_DEFAULT_RESPONSE = (
-    "Cette demande ne concerne pas la modélisation CAO. Veuillez télécharger "
-    "votre fichier pour la suite (devis, PDF, etc.)."
+    "This request is not about CAD modelling. Please download your file to "
+    "continue (quote, PDF, etc.)."
 )
 
 
@@ -102,9 +102,9 @@ MODELS = {
 # ERROR CODE SYSTEM (sub-numbered for easy debugging)
 # ═══════════════════════════════════════════════════════════════════════════
 ERROR_CODES = {
-    # Erreur 101.x — Délai d'attente dépassé
+    # Error 101.x — Timeout exceeded
     "101.1": "101.1",
-    # Erreur 102.x — Communication avec le serveur FreeCAD
+    # Error 102.x — Communication with the FreeCAD server
     "102.1": "102.1",
     "102.2": "102.2",
     "102.3": "102.3",
@@ -113,14 +113,14 @@ ERROR_CODES = {
     "102.6": "102.6",
     "102.7": "102.7",
     "102.8": "102.8",
-    # Erreur 104.x — Échec d'exécution FreeCAD
+    # Error 104.x — FreeCAD execution failure
     "104.1": "104.1",
     "104.2": "104.2",
     "104.3": "104.3",
     "104.4": "104.4",
     "104.5": "104.5",
     "104.6": "104.6",
-    # Erreur 105.x — Échec de génération du code
+    # Error 105.x — Code generation failure
     "105.1": "105.1",
     "105.2": "105.2",
     "105.3": "105.3",
@@ -443,26 +443,6 @@ class TextToCADAgent:
         # NOTE: user_text (full [USER]/[CHATBOT] history) is passed to the unified chain
         #       so the LLM retains full conversation context.
         #       expanded_rag_query (user-only) was used ONLY for RAG retrieval above.
-        # ── [TIMING] Step 3: Language Detection ──────────────────────────────
-        # Detect user language using gpt-4.1-nano (reranking_llm).
-        # Strategy: extract the FIRST substantive [USER] block (>= 10 chars) so we detect
-        # from the original CAD request, not from a short confirmation word ("ok", "oui").
-        # Result is cached in _SESSION_LANG_CACHE[session_id] → all subsequent turns are FREE.
-        from src.utils.language_utils import detect_language_llm, set_session_language, lang_code_to_name
-        import re as _re_lang
-        _user_blocks = _re_lang.findall(
-            r'\[USER\]:\s*(.*?)(?=\s*\[(?:USER|CHATBOT)\]:|$)',
-            user_text, _re_lang.DOTALL
-        )
-        _user_blocks = [b.strip() for b in _user_blocks if b.strip()]
-        substantive_msgs = [m for m in _user_blocks if len(m) >= 10]
-        detect_target = substantive_msgs[0] if substantive_msgs else (_user_blocks[-1] if _user_blocks else "")
-        # detect_language_llm: session cache hit → zero LLM cost on turn 2+
-        lang_code = await detect_language_llm(detect_target, self.reranking_llm, session_id) if detect_target else "fr"
-        user_language = lang_code_to_name(lang_code)
-        # Cache user_language in session state so _run_perforated_param_chain() can access it
-        self._update_session_state(session_id, user_language=user_language)
-
         # Get material from kwargs or session state
         material = kwargs.pop('material', '')
 
@@ -488,16 +468,14 @@ class TextToCADAgent:
             "examples_context": examples_context,  # pass-through → retrieved_context_for_code_gen
             "session_id": session_id,
             "material": material,  # Material choice for template
-            "user_language": user_language,  # ✅ Provide user_language to template
             **kwargs
         }
-        
+
         dfm_chain_input = {
             "user_text": user_text,  # ✅ Full [USER]/[CHATBOT] history so DFM agent can understand context (e.g. "use 3" means selecting thickness 3mm from a list)
             "retrieved_context": rules_context,  # ✅ RULES → DFM validation
             "material": material,
             "session_id": session_id,
-            "user_language": user_language,  # ✅ Pre-detected language → enforces consistent reply language
         }
         
         # ── [TIMING] Step 4: Unified + DFM parallel gather ───────────────────
@@ -579,16 +557,16 @@ class TextToCADAgent:
         
         # ── PERFORATED SHEET ROUTING GATE ───────────────────────────────────────────────────
         # shape_type="Perforated Sheet" detected by unified chain.
-        # Unified chain validates L/W/T only. Hole shape / pitch / % vide are handled
+        # Unified chain validates L/W/T only. Hole shape / pitch / % open area are handled
         # by the dedicated perforated_param_chain (LLM, focused prompt), called
         # from _unified_request_processor() or process_request_with_progress() after this returns.
         if unified_output_obj:
             _shape = getattr(unified_output_obj, 'shape_type', '') or ''
             if 'perforated' in _shape.lower() or _shape.lower() == 'perforated sheet':
-                # Luôn chạy perf chain khi là Perforated Sheet
-                # _run_perforated_param_chain sẽ tự quyết định extract-only hay extract+calc
+                # Always run the perf chain for a Perforated Sheet;
+                # _run_perforated_param_chain decides extract-only vs extract+calc.
                 unified_result["_needs_perf_param_chain"] = True
-                # Lưu flag để _run_perforated_param_chain biết có thể calc hay không
+                # Flag telling _run_perforated_param_chain whether it may calculate
                 unified_result["_perf_dims_complete"] = not unified_output_obj.missing_info
             else:
                 # Clear stale result if shape changed away from Perforated Sheet
@@ -636,8 +614,6 @@ class TextToCADAgent:
                 'cached_perf_calc_result': None,
                 # ── Step Plan state ──────────────────────────────────────────
                 'awaiting_step_plan_confirm': False,   # Waiting for user reply after step plan shown (YES/NO)
-                # ── Language (cached from first unified call — free on subsequent turns) ──
-                'user_language': 'French',
                 # ── Perforated Sheet function-calling result ──────────────────
                 # Populated by _run_perf_vide_function_call() right after unified chain.
                 # Consumed by _run_description_confirm() (display) and code gen (params).
@@ -767,7 +743,7 @@ class TextToCADAgent:
     ):
         """
         Persist unified chain results into the per-session state so that the
-        NEXT turn (user typing "yes" / "oui" / etc.) can bypass the entire
+        NEXT turn (user typing "yes" / "ok" / etc.) can bypass the entire
         unified chain, RAG, DFM, and description-confirm chain entirely.
 
         Called right BEFORE _run_description_confirm() so the cache always
@@ -800,10 +776,10 @@ class TextToCADAgent:
         """
         Run the Step Planner chain and set up the turn that hands the plan back.
 
-        Invokes the planner in the session's cached language, builds the user-facing
-        message (formatting the steps locally when the LLM returns no user_message),
-        primes the confirm cache so the next turn skips the unified chain, and flags
-        the session as awaiting step-plan confirmation.
+        Invokes the planner, builds the user-facing message (formatting the steps
+        locally when the LLM returns no user_message), primes the confirm cache so
+        the next turn skips the unified chain, and flags the session as awaiting
+        step-plan confirmation.
 
         Shared by _unified_request_processor() and process_request_with_progress();
         each caller wraps the result in its own response shape.
@@ -815,11 +791,6 @@ class TextToCADAgent:
         Returns:
             (total_steps, user_message)
         """
-        # Use session-cached language (set on first turn by gpt-4.1-nano)
-        from src.utils.language_utils import get_session_language, lang_code_to_name
-        _user_language = lang_code_to_name(get_session_language(session_id))
-        logger.info(f"[STEP_PLAN] Using cached language: {_user_language} | session={session_id}")
-
         # Run Step Planner — input: description derived from user request
         cost_tracker     = self._get_cost_tracker(session_id)
         step_plan_result = await ainvoke_with_cost_tracking(
@@ -828,7 +799,6 @@ class TextToCADAgent:
             {
                 "description":      unified_output_obj.description,
                 "complexity_level": unified_output_obj.complexity_level,
-                "user_language":    _user_language,
                 "session_id":       session_id,
             },
             cost_tracker,
@@ -843,18 +813,18 @@ class TextToCADAgent:
 
         # Fallback message if LLM returned empty user_message
         if not _user_msg:
-            _lang_steps = [
-                f"  Étape {i+1} — {s.get('title', 'Step')}\n  {s.get('description', '')}"
+            _formatted_steps = [
+                f"  Step {i+1} — {s.get('title', 'Step')}\n  {s.get('description', '')}"
                 for i, s in enumerate(step_plan_result.get('steps', []))
             ]
-            _steps_text = "\n\n".join(_lang_steps) if _lang_steps else empty_steps_text
+            _steps_text = "\n\n".join(_formatted_steps) if _formatted_steps else empty_steps_text
             _user_msg = (
-                f"🔧 **Plan de construction en {_total} étape(s) :**\n\n"
+                f"🔧 **Build plan in {_total} step(s):**\n\n"
                 f"{_steps_text}\n\n"
                 f"---\n"
-                f"💡 **Pour générer chaque étape :**\n"
-                f"Ouvrez une **nouvelle conversation** et copiez-collez **une étape à la fois** dans le chat.\n"
-                f"Chaque étape sera générée séparément pour plus de précision."
+                f"💡 **To generate each step:**\n"
+                f"Open a **new conversation** and paste **one step at a time** into the chat.\n"
+                f"Each step will be generated separately for better accuracy."
             )
             logger.warning(f"[STEP_PLAN] LLM returned empty user_message, using fallback | session={session_id}")
 
@@ -881,7 +851,7 @@ class TextToCADAgent:
 
           Layer 2 — Mini LLM (gpt-4.1-nano, ~$0.00005):
             For longer or ambiguous messages where pre-check is inconclusive.
-            Handles: sentences, multilingual, emoji, mixed intent.
+            Handles: sentences, emoji, mixed intent.
 
         Returns "YES" or "CHANGE" (never raises).
         Multi-user safe: only session_id for cost logging, no shared state.
@@ -909,14 +879,9 @@ class TextToCADAgent:
         # A long message almost certainly contains extra instructions → CHANGE.
         # ══════════════════════════════════════════════════════════════════
         YES_KEYWORDS = {
-            # English
             "yes", "yep", "yeah", "yea", "sure", "ok", "okay", "y",
             "go", "proceed", "generate", "correct", "right",
             "perfect", "fine", "good", "great", "alright", "agreed",
-            # French
-            "oui", "ouais", "parfait", "bien", "accord", "aller",
-            # Vietnamese
-            "có", "đúng", "được", "tiếp", "oke",
             # Symbols / emoji
             "✓", "✔", "👍", "🆗",
         }
@@ -935,7 +900,7 @@ class TextToCADAgent:
             # 1b. Fuzzy similarity against each YES keyword
             #     Threshold 0.75 — catches "yeas"→"yes" (0.86),
             #     "okey"→"okay" (0.75), "yse"→"yes" (0.67→try vs more kws),
-            #     "ouio"→"oui" (0.86), "yess"→"yes" (0.86),
+            #     "yess"→"yes" (0.86),
             #     but NOT "no" or "cancel" (all < 0.50 vs yes keywords).
             best_ratio = 0.0
             best_kw    = ""
@@ -960,7 +925,7 @@ class TextToCADAgent:
 
         # ══════════════════════════════════════════════════════════════════
         # LAYER 2 — Mini LLM (gpt-4.1-nano)
-        # Handles: long text, sentences, languages without good keyword lists.
+        # Handles: long text, sentences, phrasings the keyword list misses.
         # ══════════════════════════════════════════════════════════════════
         try:
             if self.reranking_llm is None:
@@ -1016,7 +981,7 @@ class TextToCADAgent:
         Handles two situations that the old single 3-number regex
         (r'NxNxN') silently dropped to None on:
           1. L/W and thickness given in DIFFERENT turns, e.g.
-             turn1="épaisseur 3mm" then turn2="145cm x 125cm"
+             turn1="thickness 3mm" then turn2="145cm x 125cm"
              → old regex never sees 3 numbers chained by x/× → None,None,None
           2. Per-number units (cm/m), e.g. "145cm x 125cm" → must scale to mm,
              not read as raw 145/125 mm.
@@ -1025,7 +990,7 @@ class TextToCADAgent:
         chronological), take the LAST occurrence of each pattern (most recent
         turn wins), then combine:
           - If a 3-number "LxWxT" chain exists → use it (L, W, T all from
-            the same chain), unless a separate explicit "épaisseur/thickness"
+            the same chain), unless a separate explicit "thickness"
             mention appears later in the text (that one is more explicit/recent).
           - Else fall back to a 2-number "LxW" chain (T = None unless an
             explicit thickness mention exists elsewhere in the text).
@@ -1049,7 +1014,7 @@ class TextToCADAgent:
             rf'{num}\s*[xX×]\s*{num}(?!\s*[xX×]\s*\d)', text
         ))
         thick_mentions = list(_re.finditer(
-            r'(?:épaisseur|epaisseur|thickness)\s*(?:de|:|=)?\s*'
+            r'thickness\s*(?::|=)?\s*'
             rf'{num}',
             text, _re.IGNORECASE,
         ))
@@ -1080,12 +1045,12 @@ class TextToCADAgent:
         self, unified_output_obj, session_id: str, user_text: str = ''
     ) -> dict | None:
         """
-        Function Calling Gate for Perforated Sheet % vide calculation.
+        Function Calling Gate for Perforated Sheet % open area calculation.
 
         Responsibilities:
           • Parse hole/pitch/% params from unified description (Python regex, no LLM).
           • Determine which param is missing → choose calculation mode:
-              - forward     : D + C given          → compute % vide
+              - forward     : D + C given          → compute % open area
               - reverse_D   : % + C given, D miss  → compute D (hole diameter)
               - reverse_C   : % + D given, C miss  → compute pitch
           • Call compute_perforated_sheet() — pure Python math, always accurate.
@@ -1224,11 +1189,11 @@ class TextToCADAgent:
 
 
 
-        # % vide if user provided it: "51%" or "open area 51" or "vide 51%"
+        # % open area if user provided it: "51%" or "open area 51"
         target_pct = parse_open_area_pct_from_text(search_text)
 
         # Sheet dimensions: handles "200x200x2" in one message, AND
-        # "épaisseur 3mm" + "145cm x 125cm" split across turns (see
+        # "thickness 3mm" + "145cm x 125cm" split across turns (see
         # _extract_perf_sheet_dims_mm docstring).
         sheet_length, sheet_width, sheet_thickness = self._extract_perf_sheet_dims_mm(search_text)
 
@@ -1374,8 +1339,8 @@ class TextToCADAgent:
 
         Responsibilities:
           1. Invoke self.perforated_param_chain (focused LLM prompt) to extract
-             hole shape / pitch / % vide from user_text.
-             Handles BOTH notation (R12 T16) AND free language (entraxe triangulaire).
+             hole shape / pitch / % open area from user_text.
+             Handles BOTH notation (R12 T16) AND free text ("triangular pitch").
           2. params complete (missing=[])  →
                call _run_perf_vide_function_call() to compute result
                store in session_state['perf_calc_result']
@@ -1395,11 +1360,7 @@ class TextToCADAgent:
             f"user_text_len={len(user_text)}"
         )
 
-        # ── 1. User language (cached from unified chain pass) ───────────────
-        state = self._get_session_state(session_id)
-        user_language = state.get('user_language', 'French')
-
-        # ── 2. Extract sheet dims hint (L/W/T, mm) ───────────────────────────
+        # ── 1. Extract sheet dims hint (L/W/T, mm) ───────────────────────────
         # Cheap regex pre-parse, passed to the LLM as a grounding hint (see
         # _extract_perf_sheet_dims_mm docstring: handles "NxNxN", split-turn
         # "NxN" + separate thickness, and cm/m → mm). The LLM chain below does
@@ -1422,7 +1383,7 @@ class TextToCADAgent:
             perf_params['questions'] = []
             self._update_session_state(session_id, perf_extracted_params=None)
         else:
-            # ── 3. Invoke the perforated param chain ────────────────────────────
+            # ── 2. Invoke the perforated param chain ────────────────────────────
             cost_tracker = self._get_cost_tracker(session_id)
             try:
                 perf_params = await ainvoke_with_cost_tracking(
@@ -1430,7 +1391,6 @@ class TextToCADAgent:
                     self.perforated_param_chain.ainvoke,
                     {
                         "user_text":     user_text,
-                        "user_language": user_language,
                         "sheet_dims":    sheet_dims,
                         "session_id":    session_id,
                     },
@@ -1454,9 +1414,9 @@ class TextToCADAgent:
         missing   = perf_params.get('missing', [])
         questions = perf_params.get('questions', [])
 
-        # LLM's own extraction is authoritative (handles free-language + units
-        # across the WHOLE conversation, e.g. Vietnamese "chiều dài 1000 m" or
-        # dims split across turns); fall back to the cheap regex hint only
+        # LLM's own extraction is authoritative (handles free text + units
+        # across the WHOLE conversation, e.g. dims split across turns);
+        # fall back to the cheap regex hint only
         # when the LLM didn't return a value for a field.
         sheet_length    = perf_params.get('sheet_length_mm')    if perf_params.get('sheet_length_mm')    is not None else hint_length
         sheet_width     = perf_params.get('sheet_width_mm')     if perf_params.get('sheet_width_mm')     is not None else hint_width
@@ -1466,7 +1426,7 @@ class TextToCADAgent:
             f"[PERF_PARAM_CHAIN] 📊 Extracted | "
             f"shape={perf_params.get('shape_notation')} | "
             f"pitch={perf_params.get('pitch_notation')} | "
-            f"pct={perf_params.get('pct_vide')} | "
+            f"pct={perf_params.get('pct_open_area')} | "
             f"calc_mode={calc_mode} | missing={missing} | "
             f"dims(mm)=L{sheet_length}xW{sheet_width}xT{sheet_thickness} "
             f"(llm=L{perf_params.get('sheet_length_mm')}xW{perf_params.get('sheet_width_mm')}xT{perf_params.get('sheet_thickness_mm')}) | "
@@ -1484,18 +1444,18 @@ class TextToCADAgent:
                     # get hole_count=0 / actual_pct=None. Surface loudly so it's caught.
                     logger.warning(
                         f"[PERF_PARAM_CHAIN] ⚠️ dims_complete=True but sheet_length/width "
-                        f"unresolved (L={sheet_length} W={sheet_width}) — % vide result will "
+                        f"unresolved (L={sheet_length} W={sheet_width}) — % open area result will "
                         f"be theoretical-only | session={session_id}"
                     )
                 shape_notation = perf_params.get('shape_notation') or ''
                 pitch_notation = perf_params.get('pitch_notation') or ''
-                pct_vide       = perf_params.get('pct_vide')
+                pct_open_area       = perf_params.get('pct_open_area')
 
                 # Compute directly from structured extraction; no synthetic text re-parse.
                 calc_result = compute_perforated_sheet_from_extracted_params(
                     shape_notation=shape_notation,
                     pitch_notation=pitch_notation,
-                    pct_vide=pct_vide,
+                    pct_open_area=pct_open_area,
                     calc_mode=calc_mode,
                     sheet_length=sheet_length,
                     sheet_width=sheet_width,
@@ -1516,12 +1476,8 @@ class TextToCADAgent:
                     )
                     # LLM may still emit reverse_C + missing=[] without a real T/U/Z in text — force ask.
                     if calc_mode == 'reverse_C':
-                        from src.utils.language_utils import (
-                            get_perforated_pitch_type_question,
-                            get_session_language,
-                        )
-                        _lang_code = get_session_language(session_id)
-                        _fq = get_perforated_pitch_type_question(_lang_code)
+                        from src.utils.messages import get_perforated_pitch_type_question
+                        _fq = get_perforated_pitch_type_question()
                         if _fq not in (unified_output_obj.questions or []):
                             unified_output_obj.questions.append(_fq)
                         unified_output_obj.missing_info = True
@@ -1534,7 +1490,7 @@ class TextToCADAgent:
                     perf_extracted_params={
                         'shape_notation': perf_params.get('shape_notation'),
                         'pitch_notation': perf_params.get('pitch_notation'),
-                        'pct_vide': perf_params.get('pct_vide'),
+                        'pct_open_area': perf_params.get('pct_open_area'),
                         'calc_mode': calc_mode,
                     }
                 )
@@ -1569,7 +1525,7 @@ class TextToCADAgent:
                 )
                 if calc_result:
                     self._update_session_state(session_id, perf_calc_result=calc_result)
-                    # Chỉ reset missing_info nếu calc thực sự thành công VÀ missing chỉ là parse_error
+                    # Only reset missing_info when the calc really succeeded AND the only miss was a parse error
                     if 'parse_error' in missing or 'chain_error' in missing:
                         unified_output_obj.missing_info = False
 
@@ -1588,15 +1544,7 @@ class TextToCADAgent:
         state = self._get_session_state(session_id)
         confirm_round = state['confirm_count'] + 1
 
-        # Language is already detected and cached in _SESSION_LANG_CACHE by
-        # _invoke_unified_with_rag() on the first turn (using gpt-4.1-nano).
-        # Here we just read the cache — zero LLM cost, guaranteed consistency.
-        from src.utils.language_utils import get_session_language, lang_code_to_name
-        lang_code = get_session_language(session_id)
-        user_language = lang_code_to_name(lang_code)
-        logger.info(f"[CONFIRM] Using cached lang={user_language} | session={session_id}")
-
-        logger.info(f"[CONFIRM] Round {confirm_round}/{self.MAX_CONFIRM_ATTEMPTS} | session={session_id} | lang={user_language}")
+        logger.info(f"[CONFIRM] Round {confirm_round}/{self.MAX_CONFIRM_ATTEMPTS} | session={session_id}")
 
         # Extract shape_type from unified_output_obj for shape-conditional template (Option A)
         shape_type = getattr(unified_output_obj, 'shape_type', 'unknown') or 'unknown'
@@ -1604,7 +1552,7 @@ class TextToCADAgent:
 
         # ── Read pre-computed Perforated Sheet result (function calling output) ──
         # Computed by _run_perf_vide_function_call() — LLM does NOT recompute here.
-        # Template uses this to display % vide section in the confirm message.
+        # Template uses this to display the % open area section in the confirm message.
         perf_calc = state.get('perf_calc_result')
         perf_info_str = ""
         if perf_calc:
@@ -1619,7 +1567,7 @@ class TextToCADAgent:
                 try:
                     from src.utils.perf_time_estimator import estimate_freecad_time, extract_shape_letter
                     _shape_letter = extract_shape_letter(_raw_notation)
-                    _est_time = estimate_freecad_time(int(_n_holes), _shape_letter, lang=user_language)
+                    _est_time = estimate_freecad_time(int(_n_holes), _shape_letter)
                 except Exception:
                     _est_time = "~unknown"
                 perf_info_str = (
@@ -1655,7 +1603,7 @@ class TextToCADAgent:
                         from src.utils.perf_time_estimator import estimate_freecad_time, extract_shape_letter
                         _shape_letter_rev = extract_shape_letter(resolved_notation)
                         _est_time_rev = estimate_freecad_time(
-                            int(_n_holes_rev), _shape_letter_rev, lang=user_language
+                            int(_n_holes_rev), _shape_letter_rev
                         )
                     except Exception:
                         _est_time_rev = "~unknown"
@@ -1685,7 +1633,6 @@ class TextToCADAgent:
             {
                 'user_text': user_text_with_history,
                 'confirm_round': confirm_round,
-                'user_language': user_language,
                 'shape_type': shape_type,
                 'session_id': session_id,
                 'perf_info': perf_info_str,   # ← PRE-COMPUTED, no LLM recompute
@@ -1764,7 +1711,7 @@ class TextToCADAgent:
 
             # Find the last row where the user confirmed a template.
             last_confirm_index = -1
-            CONFIRM_WORDS = {"yes", "oui", "ok", "y", "confirm", "approve", "xác nhận", "d'accord", "dac", "agree"}
+            CONFIRM_WORDS = {"yes", "ok", "y", "confirm", "confirmed", "approve", "approved", "agree", "agreed"}
 
             for i in range(len(rows) - 1, -1, -1):
                 msg = rows[i].message or ""
@@ -1790,7 +1737,7 @@ class TextToCADAgent:
             confirmed_desc = ""
             for idx in range(last_confirm_index, -1, -1):
                 resp = rows[idx].response or rows[idx].output or ""
-                if "📋" in resp or "Répondez" in resp or "Reply yes" in resp:
+                if "📋" in resp or "Reply yes" in resp:
                     match = re.search(r'(?i)(?:description|description\s+technique)\s*:\s*(.*?)(?=\n-|\n\n|\Z)', resp, re.DOTALL)
                     if match:
                         confirmed_desc = match.group(1).strip().strip("* ")
@@ -1799,7 +1746,7 @@ class TextToCADAgent:
                         lines = resp.split('\n')
                         clean_lines = []
                         for line in lines:
-                            if not any(kw in line for kw in ["📋", "Répondez", "Reply yes", "yes/ok", "Modifier", "Valider"]):
+                            if not any(kw in line for kw in ["📋", "Reply yes", "yes/ok", "Modify", "Confirm"]):
                                 clean_lines.append(line)
                         confirmed_desc = "\n".join(clean_lines).strip()
                         break
@@ -2234,7 +2181,7 @@ class TextToCADAgent:
             skip_questions  = unified_output_obj.skip_questions_requested
             override_intent = unified_output_obj.override_intent_detected
 
-            # ── Log raw AI flags để debug ───────────────────────────────────
+            # ── Log raw AI flags for debugging ──────────────────────────────
             print(f"\n{'='*60}")
             print(f"[DEBUG_FLAGS] Session: {session_id}")
             print(f"[DEBUG_FLAGS] missing_info               = {unified_output_obj.missing_info}")
@@ -2285,8 +2232,8 @@ class TextToCADAgent:
                     "explanation": decision.payload["info"]
                 }
 
-            # ── GENERATE_CODE: đủ thông tin → confirm or gen code ──────────
-            # (cả GENERATE_CODE lẫn ASK_QUESTIONS khi pending_questions rỗng đều reach đây)
+            # ── GENERATE_CODE: enough info → confirm or gen code ──────────
+            # (both GENERATE_CODE and ASK_QUESTIONS with empty pending_questions reach here)
             print(f"\n[SUCCESS] ✅ Proceeding to confirm/code generation for session {session_id}")
             print(f"[SUCCESS] Decision reason: {decision.payload.get('reason', 'normal')}")
 
@@ -2338,7 +2285,7 @@ class TextToCADAgent:
                 _total, _user_msg = await self._run_step_planner(
                     session_id, unified_output_obj,
                     retrieved_context_for_code_gen, expanded_user_text,
-                    empty_steps_text="  (aucune étape générée)",
+                    empty_steps_text="  (no steps generated)",
                 )
 
                 return {
@@ -2414,7 +2361,7 @@ class TextToCADAgent:
             )
             print(f"[CONFIRM] → CASE 3 — Description Confirm chain (round {confirm_count + 1})")
             # Save confirm cache so that the fast-path gate (in generate_cad_realtime_stream)
-            # can restore the unified result on the next turn when user confirms ("oui"/"yes").
+            # can restore the unified result on the next turn when user confirms ("yes"/"ok").
             self._save_confirm_cache(
                 session_id, unified_output_obj,
                 retrieved_context_for_code_gen, expanded_user_text
@@ -2750,7 +2697,7 @@ class TextToCADAgent:
                     error_str = str(save_error)
                     
                     # Log the specific error type
-                    error_keywords = ["Shape too complex", "Forme trop complexe", "Forma demasiado compleja", "Form zu komplex", "形状过于复杂", "形状が複雑すぎます", "모양이 너무 복잡합니다"]
+                    error_keywords = ["Shape too complex"]
                     if any(keyword in error_str for keyword in error_keywords):
                         print(f"[ERROR] FreeCAD execution failed (complex shape) for session {session_id}: {save_error}")
                     elif any(keyword in error_str.lower() for keyword in ['server', 'connection', 'network', 'communication']):
@@ -2795,7 +2742,7 @@ class TextToCADAgent:
 
         # ── Step 0: Intercept confirm replies ────────────────────────────────
         # When shape change was detected → _run_description_confirm was shown
-        # → awaiting_confirm=True. The user's "oui" must go to the fast-path
+        # → awaiting_confirm=True. The user's "yes" must go to the fast-path
         # gate (process_request_with_progress) which bypasses edit routing.
         # This branch only fires if the EDIT_GATE somehow did not catch it.
         if state.get('awaiting_confirm', False):
@@ -2861,7 +2808,7 @@ class TextToCADAgent:
         # The intent classifier runs in phase 1, concurrently with edit_summary
         # rather than inside phase 2's gather. It is a nano call that finishes well
         # inside edit_summary's latency, so a genuine edit pays nothing for the
-        # earlier placement — but a non-CAD message ("combien ça coûte ?", "merci")
+        # earlier placement — but a non-CAD message ("how much does it cost?", "thanks")
         # now short-circuits at Step 2b BEFORE phase 2 spends a rules retrieval
         # (with its rerank call), a shape-change detection and two expert-tier
         # calls analyzing a design nobody asked to change.
@@ -2988,14 +2935,12 @@ class TextToCADAgent:
                 "examples_context":  "",   # nothing to carry through to code gen on the edit path
                 "session_id":        session_id,
                 "material":          state.get('material_choice', ''),
-                "user_language":     state.get('user_language', 'French'),
             }
             dfm_chain_input = {
                 "user_text":         edit_mode_user_text,
                 "retrieved_context": rules_context,
                 "material":          state.get('material_choice', ''),
                 "session_id":        session_id,
-                "user_language":     state.get('user_language', 'French'),
             }
 
             shape_detection, unified_result, dfm_result = await asyncio.wait_for(
@@ -3102,14 +3047,14 @@ class TextToCADAgent:
         self._update_session_state(session_id, edit_running_summary=updated_summary)
 
         # ── Step 4b: Perforated Sheet — unrecognized named pattern guard ────────
-        # A user may ask for a named/branded hole pattern (e.g. "motif AUBE de
-        # chez ACIANOV CREATION") that has no equivalent in our supported
-        # notation (R/C/LR/LC + T/U/Z — see data/Info/Perforated_Sheet/info.json).
-        # Nothing downstream understands "AUBE"/"ACIANOV", so code_editing_chain
-        # would silently leave the code unchanged (or hallucinate something) and
-        # still report success. Catch it here before it reaches code editing.
+        # A user may ask for a named/branded hole pattern (a vendor pattern name)
+        # that has no equivalent in our supported notation (R/C/LR/LC + T/U/Z —
+        # see data/Info/Perforated_Sheet/info.json). Nothing downstream
+        # understands such a name, so code_editing_chain would silently leave the
+        # code unchanged (or hallucinate something) and still report success.
+        # Catch it here before it reaches code editing.
         # Scope: only fires when (a) current shape is Perforated Sheet, (b) the
-        # message names a pattern/model ("motif", "modèle", "pattern"...), AND
+        # message names a pattern/model ("pattern", "model", "design"...), AND
         # (c) it contains NONE of our supported notation tokens — a genuine
         # edit like "increase thickness to 3mm" or "change to R12 T20" never
         # matches both conditions, so it falls through unaffected.
@@ -3117,22 +3062,21 @@ class TextToCADAgent:
         _shape_match_pattern = re.search(r'Type:\s*([A-Za-z0-9_\- ]+)', _summary_for_shape_check)
         _current_shape_for_pattern_check = (_shape_match_pattern.group(1).strip() if _shape_match_pattern else '').lower()
         if 'perforated' in _current_shape_for_pattern_check:
-            _pattern_kw = re.search(r'\b(motif|mod[eè]le|pattern|dessin|d[ée]cor)\b', enhanced_user_text, re.IGNORECASE)
+            _pattern_kw = re.search(r'\b(pattern|model|design|motif)\b', enhanced_user_text, re.IGNORECASE)
             _notation_kw = re.search(
-                r'\b(R\d|C\d|LR\d|LC\d|T\d|U\d|Z\d|%|vide|rond|circulaire|carr[ée]|oblong|quinconce|'
-                r'triangulaire|align[ée]|grille|square|round|staggered|inline)\b',
+                r'\b(R\d|C\d|LR\d|LC\d|T\d|U\d|Z\d|%|open area|round|circular|square|'
+                r'oblong|staggered|triangular|aligned|inline|grid|pitch)\b',
                 enhanced_user_text, re.IGNORECASE
             )
             if _pattern_kw and not _notation_kw:
-                from src.utils.language_utils import get_session_language, get_perforated_unknown_pattern_message
-                _lang_code = get_session_language(session_id)
+                from src.utils.messages import get_perforated_unknown_pattern_message
                 logger.info(
                     f"[EDIT] 🚫 Unrecognized named perforation pattern reference (no supported "
                     f"notation found) → answering directly, skipping code edit | session={session_id}"
                 )
                 return {
                     "code": None,
-                    "message": get_perforated_unknown_pattern_message(_lang_code),
+                    "message": get_perforated_unknown_pattern_message(),
                     "explanation": "Unrecognized perforation pattern name — no matching notation",
                 }
 
@@ -3155,7 +3099,7 @@ class TextToCADAgent:
                 warning_questions += list(getattr(unified_output_obj, 'questions', []) or [])
 
             warning_text = "\n".join(f"- {q}" for q in warning_questions) or \
-                "Cette modification peut manquer d'informations ou enfreindre les règles de fabrication."
+                "This change may be missing information or may break a manufacturing rule."
 
             logger.info(
                 f"[EDIT] ⚠️ DFM/unifier warning on non-shape-change edit → awaiting ack "
@@ -3171,8 +3115,8 @@ class TextToCADAgent:
             return {
                 "warning": True,
                 "message": (
-                    f"⚠️ Merci de vérifier avant de continuer :\n{warning_text}\n\n"
-                    f"Répondez OK pour continuer quand même, ou précisez/ajustez votre demande."
+                    f"⚠️ Please review before continuing:\n{warning_text}\n\n"
+                    f"Reply OK to continue anyway, or clarify/adjust your request."
                 ),
                 "questions": warning_questions,
             }
@@ -4750,7 +4694,7 @@ class TextToCADAgent:
 
                     # ── KEEP-ALIVE: emit intermediate progress before the heavy step ──
                     # _invoke_unified_with_rag() contains 4-5 sequential LLM calls
-                    # (expand_query → RAG → asyncio.gather(unified+dfm) → lang_detect)
+                    # (expand_query → RAG → asyncio.gather(unified+dfm))
                     # which can take 20-55s. Without this yield the SSE stream is
                     # completely silent → browser/proxy interprets as connection lost.
                     yield {
@@ -4812,7 +4756,7 @@ class TextToCADAgent:
                 logger.info(f"[AGENT_CHAIN] Missing info: {unified_output_obj.missing_info}")
                 logger.info(f"[AGENT_CHAIN] Questions count: {len(unified_output_obj.questions) if unified_output_obj.questions else 0}")
 
-                # ── Extract flags từ unified output ───────────────────────────────
+                # ── Extract flags from unified output ─────────────────────────────
                 skip_questions  = unified_output_obj.skip_questions_requested
                 override_intent = unified_output_obj.override_intent_detected
                 max_attempts_reached = (
@@ -4859,7 +4803,7 @@ class TextToCADAgent:
                     yield {"final_result": {"code": None, "message": decision.payload["info"], "explanation": decision.payload["info"]}}
                     return
 
-                # ── GENERATE_CODE: check confirm gate TRƯỚC khi gen code ────────
+                # ── GENERATE_CODE: check the confirm gate BEFORE generating code ──
                 # Retrieve per-session confirm state (multi-user safe)
                 #
                 # There is no "user just confirmed" case here. Reaching this point
@@ -4897,7 +4841,7 @@ class TextToCADAgent:
                     _total, _user_msg = await self._run_step_planner(
                         session_id, unified_output_obj,
                         retrieved_context_for_code_gen, expanded_user_text,
-                        empty_steps_text="  (aucune étape)",
+                        empty_steps_text="  (no steps)",
                     )
 
                     yield {"final_result": {

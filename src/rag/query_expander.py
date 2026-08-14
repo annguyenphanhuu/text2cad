@@ -4,13 +4,13 @@ Query Expansion for Manufacturing Terminology using LLM with Few-Shot Learning
 This module uses LLM with few-shot examples to intelligently expand user queries 
 by APPENDING shape type classification at the end to improve semantic search retrieval accuracy.
 
-The LLM learns from examples to identify manufacturing terminology
-in multiple languages (English, French, Vietnamese) and append the canonical English shape type.
+The LLM learns from examples to identify English manufacturing terminology
+and append the canonical shape type.
 
 Strategy: SHAPE TYPE APPEND (keep original, add classification at end)
-- "tôle avec un pli" → "tôle avec un pli\nShape type: L-bracket"
-- "cornière 55x50" → "cornière 55x50\nShape type: L-bracket"
-- "tube carré" → "tube carré\nShape type: Tube-Rectangular"
+- "sheet with one bend" → "sheet with one bend\nShape type: L-bracket"
+- "angle bracket 55x50" → "angle bracket 55x50\nShape type: L-bracket"
+- "square tube" → "square tube\nShape type: Tube-Rectangular"
 """
 
 import logging
@@ -45,8 +45,8 @@ _expansion_llm = None
 
 
 def _detect_triangle_shape(query: str) -> Optional[str]:
-    """Deterministic fallback for the Triangle shape family (EN + FR only).
-    
+    """Deterministic fallback for the Triangle shape family.
+
     NOTE: This is a quick pre-check only — keep it narrow to avoid false positives.
     The LLM (expand_query_with_llm) is the primary detector and handles typos,
     paraphrases, and edge cases much better than keyword matching.
@@ -57,42 +57,23 @@ def _detect_triangle_shape(query: str) -> Optional[str]:
         # Pre-declared type markers (highest priority)
         "shape type: triangle",
         "type: triangle",
-        # English — clear triangle identifiers
+        # Clear triangle identifiers
         "equilateral triangle",
         "isosceles triangle",
+        "scalene triangle",
+        "right triangle",
         "triangular sheet",
         "triangular plate",
         "triangular tray",
+        "triangular gusset",
+        "triangular bracket",
+        "triangular base",
+        "gusset plate",
         "triangle tray",
         "triangle",
         "triangular",
-        # French — generic
-        "plaque triangulaire",
-        "tole triangulaire",          # ASCII fallback for tôle
-        "piece triangulaire",         # ASCII fallback for pièce
-        "forme triangulaire",
-        "platine triangulaire",
-        "flan triangulaire",
-        "ebauche triangulaire",       # ASCII fallback for ébauche
-        "decoupe triangulaire",       # ASCII fallback for découpe
-        # French — industrial / usage
-        "gousset triangulaire",
-        "gousset",
-        "renfort triangulaire",
-        "equerre triangulaire",       # ASCII fallback for équerre triangulaire
-        "plaque de renfort triangulaire",
-        "base triangulaire",
-        "socle triangulaire",
     ]
-    # Also check with Unicode accents present
-    triangle_terms_unicode = [
-        "tôle triangulaire",
-        "pièce triangulaire",
-        "ébauche triangulaire",
-        "découpe triangulaire",
-        "équerre triangulaire",
-    ]
-    if any(term in query_lower for term in triangle_terms + triangle_terms_unicode):
+    if any(term in query_lower for term in triangle_terms):
         return "Triangle"
     return None
 
@@ -225,25 +206,25 @@ async def expand_query_with_llm(
 If the query mentions any capot face names, replace ALL synonym variants with these 5 STANDARD terms:
 
 **Normalization Rules:**
-- "arrière", "dessus", "haut(e)", "du haut", "plan du haut", "côté du haut", "grand côté du haut", "face longitudinale du haut", "face transversale"
-  → Replace with: **"Face arrière"**
+- "back", "rear", "top", "upper", "top side", "top plane", "long top side", "longitudinal top face", "transverse face"
+  → Replace with: **"Back face"**
 
-- "avant", "dessous", "bas(se)", "du bas", "plan du bas", "côté du bas", "grand côté du bas", "face longitudinale du bas"
-  → Replace with: **"Face avant"**
+- "front", "underside", "bottom", "lower", "bottom side", "bottom plane", "long bottom side", "longitudinal bottom face"
+  → Replace with: **"Front face"**
 
-- "base", "inférieur(e)", "embase", "référence", "plan inférieur", "face de référence"
+- "base", "bottom plate", "seat", "datum", "lower plane", "reference face"
   → Replace with: **"Base"**
 
-- "gauche", "à gauche", "de gauche", "plan gauche", "côté gauche", "latéral gauche", "petit côté gauche", "extrémité gauche"
-  → Replace with: **"Face de gauche"**
+- "left", "on the left", "left plane", "left side", "left lateral", "short left side", "left end"
+  → Replace with: **"Left face"**
 
-- "droite", "à droite", "de droite", "plan droit", "côté droit", "latéral droit", "petit côté droit", "extrémité droite"
-  → Replace with: **"Face de droite"**
+- "right", "on the right", "right plane", "right side", "right lateral", "short right side", "right end"
+  → Replace with: **"Right face"**
 
 **Normalization Examples:**
-- "Sur le plan du haut" → "Sur la Face arrière"
-- "du bas avec perçage" → "Face avant avec perçage"
-- "côté gauche et côté droit" → "Face de gauche et Face de droite"
+- "On the top plane" → "On the Back face"
+- "bottom with drilling" → "Front face with drilling"
+- "left side and right side" → "Left face and Right face"
 
 **STEP 2: SHAPE TYPE DETECTION**
 
@@ -254,75 +235,74 @@ After normalization, detect shape type and APPEND it.
 Shape type: [DETECTED SHAPE]
 
 **Synonym Mapping & Core Categories:**
-*Note: French terms 'languette', 'patte', 'oreille', 'rebord', 'flasque', 'bride' and English 'tab', 'lug', 'ear', 'lip', 'flange' represent folds/bends/returns/flanges.*
+*Note: 'tab', 'lug', 'ear', 'lip', 'flange', 'return' all represent folds/bends/returns/flanges.*
 
 1. **Sheet Metal (Flat, Unbent):**
-   - French/English flat plate keywords: tôle, platine, plaque, sheet, plate, flat panel, flat part.
+   - Flat plate keywords: sheet, plate, flat panel, flat part, blank.
    - If rectangular or unspecified: **Sheet**
-   - If circular/round/disc: **Sheet-Circular** (keywords: disque, tôle ronde, plaque ronde, rond, disc, round plate, circular sheet, circular disc, diameter/Ø with no length, bride, mặt bích).
+   - If circular/round/disc: **Sheet-Circular** (keywords: disc, disk, round plate, circular sheet, circular disc, flange plate, diameter/Ø with no length).
 
 2. **L-bracket (1 bend/tab/lug):**
-   - French/English L keywords: cornière, équerre, console en L, tôle un pli, équerre pliée, une languette/patte pliée.
+   - L keywords: angle bracket, angle iron, L-bracket, L-profile, L-shaped bracket, sheet with one bend, one bent tab.
    - If base is rectangular: **L-bracket**
-   - If base is circular/round: **L-bracket-Circular** (keywords: équerre ronde, tôle ronde un pli, circular L-bracket, bride un pli).
-   - **CRITICAL KEYWORD OVERRIDE**: If the query contains `cornière` or `équerre` (without the adjective "triangulaire"), classify as **L-bracket** regardless of the number of bends mentioned. Example: "équerre pliée avec 2 plis" → **L-bracket** (not U-shaped), because équerre is an explicit L-bracket keyword.
+   - If base is circular/round: **L-bracket-Circular** (keywords: round bracket, round sheet with one bend, circular L-bracket).
+   - **CRITICAL KEYWORD OVERRIDE**: If the query contains `angle bracket` or `angle iron` (without the adjective "triangular"), classify as **L-bracket** regardless of the number of bends mentioned. Example: "angle bracket bent with 2 bends" → **L-bracket** (not U-shaped), because angle bracket is an explicit L-bracket keyword.
 
 3. **U-Shaped (2 bends/tabs in same direction):**
-   - French/English U keywords: profilé U, U, tôle deux plis, console en U, channel, deux retours/ailes parallèles, deux languettes/pattes pliées (dans le même sens / même côté).
+   - U keywords: U-profile, U-channel, channel, U-bracket, sheet with two bends, two parallel returns/flanges, two tabs bent the same way.
    - If base is rectangular: **U-shaped**
-   - If base is circular/round: **U-shaped-Circular** (keywords: tôle ronde deux plis même sens, circular U-shaped, bride deux plis, mặt bích hai nếp gấp).
+   - If base is circular/round: **U-shaped-Circular** (keywords: round sheet with two bends in the same direction, circular U-shaped).
 
-4. **Z-Shaped (2 bends/tabs in opposite directions OR "selon Z" / "en Z"):**
-   - French/English Z keywords: profilé Z, Z, tôle en Z, deux plis opposés, plis en sens opposés, pliage en Z, pli en Z.
+4. **Z-Shaped (2 bends/tabs in opposite directions OR "Z-bend" / "in a Z"):**
+   - Z keywords: Z-profile, Z-bracket, Z-shaped sheet, two opposite bends, bends in opposite directions, Z-bend, offset bracket.
    - If base is rectangular: **Z-shaped**
-   - If base is circular/round: **Z-shaped-Circular** (keywords: tôle ronde en Z, circular Z-shaped, bride pliée en Z, mặt bích gập chữ Z).
+   - If base is circular/round: **Z-shaped-Circular** (keywords: round sheet bent in a Z, circular Z-shaped).
 
 5. **Tubes:**
-   - If circular cross-section: **Tube-Circular** (French: tube rond, tube cylindrique, pipe, cylindre creux, solid round bar, rond plein, barre ronde).
-   - If rectangular/square cross-section: **Tube-Rectangular** (French: tube carré, tube rectangulaire, square tube).
+   - If circular cross-section: **Tube-Circular** (round tube, cylindrical tube, pipe, hollow cylinder, solid round bar, round bar).
+   - If rectangular/square cross-section: **Tube-Rectangular** (square tube, rectangular tube).
 
 6. **CAPOT / Covers (3-4 walls/bends):**
-   - French: bac, couvercle, capot, boîte ouverte, capot ouvert, tôle trois/quatre plis, plis sur 3/4 sides.
+   - Keywords: cover, hood, tray, open box, open cover, enclosure, sheet with three/four bends, bends on 3/4 sides.
    - Shape type: **CAPOT** (default — all walls bend the same angle/direction, built with makeTub)
-   - **SUBTYPE OVERRIDE** — if walls bend in independent/different directions or each wall has its own distinct angle (e.g. "chaque côté a son propre pli", "plis indépendants", "un côté vers le haut, l'autre vers le bas", "mixed direction"), use **CAPOT-mixed-direction** instead.
-   - **CRITICAL DISAMBIGUATION** — `couvercle` + shape adjective (circulaire, carré, rectangulaire, rond) = **flat plate**, NOT CAPOT.
-     Examples: "couvercle circulaire Ø200" → Sheet-Circular. "couvercle carré 300x300" → Sheet. "couvercle rectangulaire" → Sheet.
-     Only classify as CAPOT when "couvercle" describes an enclosure/box with walls (e.g. "capot avec trois parois", "bac acier avec dimensions L×l×H").
-   - **CRITICAL DISAMBIGUATION** — `fond circulaire` / `base circulaire` / `base ronde` as standalone parts = **flat plate** (Sheet-Circular). Only treat as face names when they appear in a capot context.
+   - **SUBTYPE OVERRIDE** — if walls bend in independent/different directions or each wall has its own distinct angle (e.g. "each side has its own bend", "independent bends", "one side up, the other down", "mixed direction"), use **CAPOT-mixed-direction** instead.
+   - **CRITICAL DISAMBIGUATION** — `cover`/`lid` + shape adjective (circular, square, rectangular, round) = **flat plate**, NOT CAPOT.
+     Examples: "circular cover Ø200" → Sheet-Circular. "square cover 300x300" → Sheet. "rectangular cover" → Sheet.
+     Only classify as CAPOT when "cover" describes an enclosure/box with walls (e.g. "cover with three walls", "steel tray with dimensions L×W×H").
+   - **CRITICAL DISAMBIGUATION** — `circular bottom` / `circular base` / `round base` as standalone parts = **flat plate** (Sheet-Circular). Only treat as face names when they appear in a capot context.
 
 7. **I-Shaped / T-Shaped Profiles:**
-   - I-Shaped: profilé I, poutre en I, I-beam → **I-Shaped**
-   - T-Shaped: profilé T, fer en T, T-bar → **T-Shaped**
+   - I-Shaped: I-profile, I-beam → **I-Shaped**
+   - T-Shaped: T-profile, T-bar → **T-Shaped**
 
 8. **Triangle (triangular sheet/plate, flat or with edge flanges):**
-   - Keywords (EN): triangle, triangular, triangular plate, triangular sheet, equilateral triangle, isosceles triangle, triangular tray.
-   - Keywords (FR — unambiguous compounds only): plaque triangulaire, tôle triangulaire, platine triangulaire, flan triangulaire, plaque en triangle, gousset triangulaire, renfort triangulaire, équerre triangulaire.
+   - Keywords: triangle, triangular, triangular plate, triangular sheet, equilateral triangle, isosceles triangle, triangular tray, triangular gusset, gusset plate, triangular bracket.
    - Shape type: **Triangle**
    - A triangular base with edge flanges remains **Triangle**. Do NOT reclassify as L-bracket, U-shaped, Z-shaped, or CAPOT based only on flange count.
-   - **CRITICAL**: "équerre triangulaire" → **Triangle**, NOT L-bracket. "gousset triangulaire" → **Triangle**, NOT plate.
+   - **CRITICAL**: "triangular bracket" → **Triangle**, NOT L-bracket. "triangular gusset" → **Triangle**, NOT plate.
 
 **CRITICAL RULES (Priority Order):**
 - **PRIORITY 0: Pre-declared Type:** If query has "Type: [Shape]" or "Shape type: [Shape]", use that exact type.
-- **PRIORITY 1: Circular vs Rectangular:** Make sure to distinguish circular flat/folded plates (`Sheet-Circular`, `L-bracket-Circular`, `U-shaped-Circular`, `Z-shaped-Circular`) from their rectangular counterparts when the base shape is circular (disc, circle, Ø diameter, disque, tôle ronde, plaque ronde, bride).
-- **PRIORITY 2: Structural:** console/tablette/équerre murale with components → Z-shaped shelf-bracket.
-- **PRIORITY 3: Explicit Keywords:** cornière/équerre → L-bracket; profilé U/console U → U-shaped; profilé Z/fixation Z → Z-shaped; tube/cylindre → Tube-Circular / Tube-Rectangular; capot/cover → CAPOT.
-- **PRIORITY 3b: Triangular base shape:** triangle/triangular/plaque triangulaire/gousset triangulaire → Triangle. Triangle overrides generic sheet/plate wording and its edge flanges do NOT imply L/U/Z/CAPOT. "gousset" WITHOUT "triangulaire" is ambiguous — do NOT auto-classify as Triangle.
+- **PRIORITY 1: Circular vs Rectangular:** Make sure to distinguish circular flat/folded plates (`Sheet-Circular`, `L-bracket-Circular`, `U-shaped-Circular`, `Z-shaped-Circular`) from their rectangular counterparts when the base shape is circular (disc, circle, Ø diameter, round plate, round sheet).
+- **PRIORITY 2: Structural:** shelf/wall bracket with components → Z-shaped shelf-bracket.
+- **PRIORITY 3: Explicit Keywords:** angle bracket/angle iron → L-bracket; U-profile/U-channel → U-shaped; Z-profile/Z-bracket → Z-shaped; tube/cylinder → Tube-Circular / Tube-Rectangular; cover/hood → CAPOT.
+- **PRIORITY 3b: Triangular base shape:** triangle/triangular/triangular plate/triangular gusset → Triangle. Triangle overrides generic sheet/plate wording and its edge flanges do NOT imply L/U/Z/CAPOT. "gusset" WITHOUT "triangular" is ambiguous — do NOT auto-classify as Triangle.
 - **PRIORITY 4: Return Bends / Secondary Folds & Flat Plate Operations (MANDATORY override):**
   * Before counting bends, decide whether each fold is a **primary profile bend** or a **secondary edge treatment**.
   * Primary profile bends create the main section shape (L/U/Z/CAPOT), usually structural flanges/walls.
   * Secondary edge treatments modify a flat sheet edge without changing the core shape family.
-  * Bends folded on top of other bends (e.g. "pli retour", "retour d'aile", "double pli", "return bend", "hem", "lip") are **secondary operations**, not primary profile bends.
-  * Crushed folds / plis écrasés (180° hem bends) and offsets / soyages are **secondary operations** / flat plate operations.
-  * Crushed fold detection must be semantic, not exact keyword matching. Treat terms such as "pli ecrase"/"pli écrasé", "repli ecrase"/"repli écrasé", "pli a 180"/"pli à 180", "ourlet ouvert", "rabat", "rabattement", "pli anglais"/"plis anglais", "pli aplati", "crushed fold", "hem fold", "open hem", and "return fold" as examples of the same 180° hem/return concept. Also tolerate minor typos when the manufacturing meaning is clear (e.g. "ourlett ouvert", "plis anglai"). These examples are NOT an exhaustive keyword list.
-  * If a sheet has ONLY crushed folds (plis écrasés) and/or offsets (soyages) without any other standard profile bends (e.g., 90° bends), it MUST be classified as **Sheet** (or **Sheet-Circular** if circular), NOT L-bracket/U-shaped/Z-shaped.
-  * Do **NOT** count return/secondary bends, crushed folds (plis écrasés), or offsets (soyages) when counting bends for shape classification.
+  * Bends folded on top of other bends (e.g. "return bend", "flange return", "double bend", "hem", "lip") are **secondary operations**, not primary profile bends.
+  * Crushed folds (180° hem bends) and offsets / joggles are **secondary operations** / flat plate operations.
+  * Crushed fold detection must be semantic, not exact keyword matching. Treat terms such as "crushed fold", "flattened fold", "180 degree bend", "open hem", "closed hem", "hem fold", "return fold", and "folded back on itself" as examples of the same 180° hem/return concept. Also tolerate minor typos when the manufacturing meaning is clear (e.g. "opn hem", "crushd fold"). These examples are NOT an exhaustive keyword list.
+  * If a sheet has ONLY crushed folds and/or offsets (joggles) without any other standard profile bends (e.g., 90° bends), it MUST be classified as **Sheet** (or **Sheet-Circular** if circular), NOT L-bracket/U-shaped/Z-shaped.
+  * Do **NOT** count return/secondary bends, crushed folds, or offsets (joggles) when counting bends for shape classification.
   * *Example 1*: 1 primary bend + 1 return bend → count = **1 primary bend** → Shape type: L-bracket.
-  * *Example 2*: Flat sheet + 1 crushed fold (pli écrasé) → count = **0 primary bends** → Shape type: Sheet.
-  * *Example 3*: Flat sheet + 1 crushed fold + 1 soyage → count = **0 primary bends** → Shape type: Sheet.
+  * *Example 2*: Flat sheet + 1 crushed fold → count = **0 primary bends** → Shape type: Sheet.
+  * *Example 3*: Flat sheet + 1 crushed fold + 1 joggle → count = **0 primary bends** → Shape type: Sheet.
 - **PRIORITY 5: Bend Pattern Analysis:**
   * 1 bend / 1 tab / 1 flange → Shape type: L-bracket (or L-bracket-Circular if circular)
-  * 2 bends/tabs (same direction/parallel/same sens) → Shape type: U-shaped (or U-shaped-Circular if circular)
-  * 2 bends/tabs (opposite directions/opposés/selon Z/en Z) → Shape type: Z-shaped (or Z-shaped-Circular if circular)
+  * 2 bends/tabs (same direction/parallel) → Shape type: U-shaped (or U-shaped-Circular if circular)
+  * 2 bends/tabs (opposite directions/Z-bend) → Shape type: Z-shaped (or Z-shaped-Circular if circular)
   * 3 or 4 bends/walls, same angle/direction on every wall (default) → Shape type: CAPOT
   * 3 or 4 bends/walls, each wall with its own independent angle/direction → Shape type: CAPOT-mixed-direction
 
@@ -341,73 +321,73 @@ Example 1 (Pre-declared Type):
 Input: "Type: L-bracket\nOperations: Main bend at 160 mm. 20 mm return on the opposite end, 90°"
 Output: {{"expanded_query": "Type: L-bracket\nOperations: Main bend at 160 mm. 20 mm return on the opposite end, 90°\nShape type: L-bracket", "detected_shape_type": "L-bracket"}}
 
-Example 2 (Explicit keyword - cornière):
-Input: "cornière de section 55x50x5"
-Output: {{"expanded_query": "cornière de section 55x50x5\nShape type: L-bracket", "detected_shape_type": "L-bracket"}}
+Example 2 (Explicit keyword - angle bracket):
+Input: "angle bracket with section 55x50x5"
+Output: {{"expanded_query": "angle bracket with section 55x50x5\nShape type: L-bracket", "detected_shape_type": "L-bracket"}}
 
 Example 3 (Explicit keyword - tube):
-Input: "tube carré 25x25x2"
-Output: {{"expanded_query": "tube carré 25x25x2\nShape type: Tube-Rectangular", "detected_shape_type": "Tube-Rectangular"}}
+Input: "square tube 25x25x2"
+Output: {{"expanded_query": "square tube 25x25x2\nShape type: Tube-Rectangular", "detected_shape_type": "Tube-Rectangular"}}
 
 Example 4 (No shape - flat sheet):
-Input: "platine 200x150 épaisseur 4mm"
-Output: {{"expanded_query": "platine 200x150 épaisseur 4mm\nShape type: Sheet", "detected_shape_type": "Sheet"}}
+Input: "plate 200x150 thickness 4mm"
+Output: {{"expanded_query": "plate 200x150 thickness 4mm\nShape type: Sheet", "detected_shape_type": "Sheet"}}
 
 Example 5 (Circular flat sheet):
-Input: "disque de diamètre 200mm et épaisseur 3mm"
-Output: {{"expanded_query": "disque de diamètre 200mm et épaisseur 3mm\nShape type: Sheet-Circular", "detected_shape_type": "Sheet-Circular"}}
+Input: "disc with diameter 200mm and thickness 3mm"
+Output: {{"expanded_query": "disc with diameter 200mm and thickness 3mm\nShape type: Sheet-Circular", "detected_shape_type": "Sheet-Circular"}}
 
 Example 6 (Circular L-bracket):
-Input: "tôle ronde diamètre 180 mm épaisseur 2 mm avec un pli à 90 degrés à offset 40 mm du centre"
-Output: {{"expanded_query": "tôle ronde diamètre 180 mm épaisseur 2 mm avec un pli à 90 degrés à offset 40 mm du centre\nShape type: L-bracket-Circular", "detected_shape_type": "L-bracket-Circular"}}
+Input: "round sheet diameter 180 mm thickness 2 mm with one bend at 90 degrees at offset 40 mm from the center"
+Output: {{"expanded_query": "round sheet diameter 180 mm thickness 2 mm with one bend at 90 degrees at offset 40 mm from the center\nShape type: L-bracket-Circular", "detected_shape_type": "L-bracket-Circular"}}
 
 Example 7 (Circular U-shaped):
-Input: "tấm tròn đường kính 200mm dày 2mm gập 2 lần cùng chiều hướng lên ở khoảng cách -30mm et 30mm"
-Output: {{"expanded_query": "tấm tròn đường kính 200mm dày 2mm gập 2 lần cùng chiều hướng lên ở khoảng cách -30mm et 30mm\nShape type: U-shaped-Circular", "detected_shape_type": "U-shaped-Circular"}}
+Input: "round plate diameter 200mm thickness 2mm bent twice in the same direction upward at -30mm and 30mm"
+Output: {{"expanded_query": "round plate diameter 200mm thickness 2mm bent twice in the same direction upward at -30mm and 30mm\nShape type: U-shaped-Circular", "detected_shape_type": "U-shaped-Circular"}}
 
 Example 8 (Circular Z-shaped):
-Input: "plaque ronde Ø150 épaisseur 1.5mm pliée en Z avec un pli vers le haut à -35mm et un pli vers le bas à 35mm"
-Output: {{"expanded_query": "plaque ronde Ø150 épaisseur 1.5mm pliée en Z avec un pli vers le haut à -35mm et un pli vers le bas à 35mm\nShape type: Z-shaped-Circular", "detected_shape_type": "Z-shaped-Circular"}}
+Input: "round plate Ø150 thickness 1.5mm bent in a Z with one bend upward at -35mm and one bend downward at 35mm"
+Output: {{"expanded_query": "round plate Ø150 thickness 1.5mm bent in a Z with one bend upward at -35mm and one bend downward at 35mm\nShape type: Z-shaped-Circular", "detected_shape_type": "Z-shaped-Circular"}}
 
 Example 9 (CONTEXTUAL - 2 parallel bends = U-shaped):
-Input: "tôle avec deux plis parallèles"
-Output: {{"expanded_query": "tôle avec deux plis parallèles\nShape type: U-shaped", "detected_shape_type": "U-shaped"}}
+Input: "sheet with two parallel bends"
+Output: {{"expanded_query": "sheet with two parallel bends\nShape type: U-shaped", "detected_shape_type": "U-shaped"}}
 
 Example 10 (CONTEXTUAL - 4 bends = CAPOT):
-Input: "tôle pliée avec quatre plis à 90° formant un bac"
-Output: {{"expanded_query": "tôle pliée avec quatre plis à 90° formant un bac\nShape type: CAPOT", "detected_shape_type": "CAPOT"}}
+Input: "bent sheet with four bends at 90° forming a tray"
+Output: {{"expanded_query": "bent sheet with four bends at 90° forming a tray\nShape type: CAPOT", "detected_shape_type": "CAPOT"}}
 
 Example 10b (CAPOT with independent per-wall directions = CAPOT-mixed-direction):
-Input: "boite avec 4 plis, plis haut et droit vers le haut, plis bas et gauche vers le bas"
-Output: {{"expanded_query": "boite avec 4 plis, plis haut et droit vers le haut, plis bas et gauche vers le bas\nShape type: CAPOT-mixed-direction", "detected_shape_type": "CAPOT-mixed-direction"}}
+Input: "box with 4 bends, top and right bends upward, bottom and left bends downward"
+Output: {{"expanded_query": "box with 4 bends, top and right bends upward, bottom and left bends downward\nShape type: CAPOT-mixed-direction", "detected_shape_type": "CAPOT-mixed-direction"}}
 
 Example 11 (No manufacturing terms):
 Input: "create a simple box"
 Output: {{"expanded_query": "create a simple box", "detected_shape_type": null}}
 
 Example 12 (Sheet with crushed fold):
-Input: "longueur de la tôle 500mm, largeur de la tôle 300mm, côté vue de gauche: un pli écrasé avec longueur 20mm"
-Output: {{"expanded_query": "longueur de la tôle 500mm, largeur de la tôle 300mm, côté vue de gauche: un pli écrasé avec longueur 20mm\nShape type: Sheet", "detected_shape_type": "Sheet"}}
+Input: "sheet length 500mm, sheet width 300mm, left side view: a crushed fold with length 20mm"
+Output: {{"expanded_query": "sheet length 500mm, sheet width 300mm, left side view: a crushed fold with length 20mm\nShape type: Sheet", "detected_shape_type": "Sheet"}}
 
-Example 13 (Triangle - EN keyword):
-Input: "triangular sheet épaisseur 2mm"
-Output: {{"expanded_query": "triangular sheet épaisseur 2mm\nShape type: Triangle", "detected_shape_type": "Triangle"}}
+Example 13 (Triangle - explicit keyword):
+Input: "triangular sheet thickness 2mm"
+Output: {{"expanded_query": "triangular sheet thickness 2mm\nShape type: Triangle", "detected_shape_type": "Triangle"}}
 
-Example 14 (Triangle - FR compound term, gousset triangulaire):
-Input: "gousset triangulaire épaisseur 5mm"
-Output: {{"expanded_query": "gousset triangulaire épaisseur 5mm\nShape type: Triangle", "detected_shape_type": "Triangle"}}
+Example 14 (Triangle - gusset compound term):
+Input: "triangular gusset thickness 5mm"
+Output: {{"expanded_query": "triangular gusset thickness 5mm\nShape type: Triangle", "detected_shape_type": "Triangle"}}
 
-Example 15 (Équerre keyword OVERRIDES bend count → L-bracket):
-Input: "équerre pliée avec 2 plis à 90°"
-Output: {{"expanded_query": "équerre pliée avec 2 plis à 90°\nShape type: L-bracket", "detected_shape_type": "L-bracket"}}
+Example 15 (Angle bracket keyword OVERRIDES bend count → L-bracket):
+Input: "angle bracket bent with 2 bends at 90°"
+Output: {{"expanded_query": "angle bracket bent with 2 bends at 90°\nShape type: L-bracket", "detected_shape_type": "L-bracket"}}
 
-Example 16 (Couvercle + circulaire = flat plate, NOT CAPOT):
-Input: "couvercle circulaire Ø200 épaisseur 3mm avec 8 trous"
-Output: {{"expanded_query": "couvercle circulaire Ø200 épaisseur 3mm avec 8 trous\nShape type: Sheet-Circular", "detected_shape_type": "Sheet-Circular"}}
+Example 16 (Cover + circular = flat plate, NOT CAPOT):
+Input: "circular cover Ø200 thickness 3mm with 8 holes"
+Output: {{"expanded_query": "circular cover Ø200 thickness 3mm with 8 holes\nShape type: Sheet-Circular", "detected_shape_type": "Sheet-Circular"}}
 
-Example 17 (Couvercle + rectangulaire = flat plate, NOT CAPOT):
-Input: "couvercle rectangulaire 400x300 épaisseur 4mm"
-Output: {{"expanded_query": "couvercle rectangulaire 400x300 épaisseur 4mm\nShape type: Sheet", "detected_shape_type": "Sheet"}}
+Example 17 (Cover + rectangular = flat plate, NOT CAPOT):
+Input: "rectangular cover 400x300 thickness 4mm"
+Output: {{"expanded_query": "rectangular cover 400x300 thickness 4mm\nShape type: Sheet", "detected_shape_type": "Sheet"}}
 
 **CRITICAL: Return ONLY valid JSON, no other text.**
 

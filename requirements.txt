@@ -12,7 +12,6 @@ openai==1.78.1
 pydantic==2.11.4
 faiss-cpu==1.10.0
 python-multipart
-langdetect
 psutil
 paho-mqtt==2.1.0
 openpyxl==3.1.5

@@ -216,17 +216,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const normalized = String(text || "").toLowerCase();
     return (
       normalized.includes("reply yes/ok") ||
-      normalized.includes("répondez oui/ok") ||
-      normalized.includes("repondez oui/ok") ||
       normalized.includes("awaiting description confirmation") ||
-      normalized.includes("pour générer le fichier cao") ||
       normalized.includes("to generate")
     );
   }
 
   function isShortConfirmReply(text) {
     const normalized = String(text || "").trim().toLowerCase();
-    return /^(yes|y|ok|okay|oui|o|confirm|confirmed|go|go ahead|generate|générer|generer)$/.test(normalized);
+    return /^(yes|y|ok|okay|confirm|confirmed|go|go ahead|generate)$/.test(normalized);
   }
 
   function markAwaitingConfirmReply(enabled, reason = "") {
@@ -716,7 +713,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function processFiles(files, additionalText = "", endpoint = "/api/chat-to-cad") {
     console.log("Processing files:", files);
 
-    // ✅ Lock UI khi bắt đầu upload/xử lý file
+    // ✅ Lock the UI when the file upload/processing starts
     setUILocked(true);
 
     // Hide welcome message when user starts any interaction
@@ -788,7 +785,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .then((data) => {
         hideInlineLoading(loadingId);
         hideAIThinkingMessage();
-        // ✅ Unlock UI sau khi file được xử lý thành công
+        // ✅ Unlock the UI after the file is processed successfully
         setUILocked(false);
 
         if (data.session_id) {
@@ -878,7 +875,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .catch((error) => {
         hideInlineLoading(loadingId);
         hideAIThinkingMessage();
-        // ✅ Unlock UI khi file xử lý lỗi
+        // ✅ Unlock the UI when file processing fails
         setUILocked(false);
         handleAPIError(loadingId, error);
       });
@@ -2098,7 +2095,7 @@ document.addEventListener("DOMContentLoaded", function () {
       eventSource.close();
     }
 
-    // ✅ Lock UI ngay khi bắt đầu stream
+    // ✅ Lock the UI as soon as the stream starts
     setUILocked(true);
 
     // Pre-flight authentication check
@@ -2214,7 +2211,7 @@ document.addEventListener("DOMContentLoaded", function () {
           hideProcessingProgress();
           hideAIThinkingMessage(); // Hide AI thinking message
           eventSource.close();
-          // ✅ Unlock UI sau khi stream hoàn thành thành công
+          // ✅ Unlock the UI after the stream completes successfully
           setUILocked(false);
 
           const finalData = data.final_response;
@@ -2325,7 +2322,7 @@ document.addEventListener("DOMContentLoaded", function () {
           hideAIThinkingMessage(); // Hide AI thinking message
           addChatMessage("Error: " + data.error, "bot");
           eventSource.close();
-          // ✅ Unlock UI khi stream lỗi
+          // ✅ Unlock the UI when the stream errors
           setUILocked(false);
 
           // Ensure results section is visible
@@ -2360,7 +2357,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         addChatMessage("Error: " + errorMessage + " Please try again.", "bot");
         eventSource.close();
-        // ✅ Unlock UI khi EventSource mất kết nối
+        // ✅ Unlock the UI when the EventSource loses its connection
         setUILocked(false);
 
         // Ensure results section is visible
@@ -3330,7 +3327,7 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("handleChatSubmission called");
     const message = userInput ? userInput.value.trim() : "";
 
-    // ✅ Guard: Nếu đang streaming thì chặn hoàn toàn, không cho submit
+    // ✅ Guard: while streaming, block submission entirely
     if (isStreaming && !(awaitingConfirmReply && isShortConfirmReply(message))) {
       console.warn("⛔ [UI LOCK] Submission blocked - chatbot is currently streaming a response");
       return;
@@ -3450,7 +3447,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // Show processing progress
       showProcessingProgress();
-      // ✅ startRealtimeProgress sẽ tự gọi setUILocked(true) bên trong
+      // ✅ startRealtimeProgress calls setUILocked(true) itself
       startRealtimeProgress(message, isEditMode, currentSessionId);
     }
   }
@@ -3460,7 +3457,7 @@ document.addEventListener("DOMContentLoaded", function () {
     userInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        // ✅ Cũng bị chặn bởi isStreaming guard trong handleChatSubmission
+        // ✅ Also blocked by the isStreaming guard inside handleChatSubmission
         if (!isStreaming || awaitingConfirmReply) {
           const hasContent = userInput.value.trim() !== "" || selectedPdfFile || selectedImageFile;
           if (hasContent) {

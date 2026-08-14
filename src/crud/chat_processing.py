@@ -21,7 +21,7 @@ from ..schemas.sessions import ChatRequest, ChatResponse
 from ..core.text_to_cad_agent import TextToCADAgent
 from .sessions import create_session, get_session_by_id, update_session, get_latest_code, add_chat_history_entry
 from ..utils.web_search_handler import WebSearchProcessor
-from ..utils.language_utils import detect_language, get_success_message, get_error_message, get_session_language
+from ..utils.messages import get_success_message, get_error_message
 from ..database.db_retry import retry_db_operation, DatabaseRetryError, is_connection_error
 from ..utils.download_url import build_download_url
 
@@ -439,15 +439,11 @@ def _process_agent_result(
         chat_response_content = agent_result.get("message")
         logger.info(f"[RESULT_PROCESS] Using agent message as response (no code generated)")
     elif agent_result.get("code"):
-        # Use session-cached language (detected from first substantive message by gpt-4.1-nano)
-        # Avoids false EN detection when current message is a short word like "ok", "yes"
-        session_lang = get_session_language(session_id)
-        chat_response_content = get_success_message(session_lang)
-        logger.info(f"[RESULT_PROCESS] Code generated successfully, using success message (lang={session_lang})")
+        chat_response_content = get_success_message()
+        logger.info(f"[RESULT_PROCESS] Code generated successfully, using success message")
     else:
-        session_lang = get_session_language(session_id)
-        chat_response_content = get_error_message(session_lang, "processing_completed")
-        logger.info(f"[RESULT_PROCESS] Using default completion message (lang={session_lang})")
+        chat_response_content = get_error_message("processing_completed")
+        logger.info(f"[RESULT_PROCESS] Using default completion message")
 
     # Add response to agent_result for database storage
     agent_result["response"] = chat_response_content
@@ -490,10 +486,6 @@ def _process_agent_result(
     if web_search_metadata:
         logger.info(f"[RESULT_PROCESS] Including web_search_metadata with {len(web_search_metadata.get('web_contents', []))} contents")
 
-    # Use session-cached language (populated by gpt-4.1-nano on first turn)
-    detected_lang = get_session_language(session_id)
-    logger.info(f"[RESULT_PROCESS] Session language: {detected_lang}")
-
     return ChatResponse(
         chat_response=chat_response_content,
         session_id=session_id,
@@ -504,7 +496,6 @@ def _process_agent_result(
         attribute_and_transientid_map=None,
         manufacturing_errors=[],
         web_search_metadata=web_search_metadata,
-        detected_language=detected_lang
     )
 
 
@@ -710,13 +701,8 @@ async def generate_cad_realtime_stream(
         # 🆕 EMIT SESSION_ID IMMEDIATELY - Send to frontend before any processing steps
         logger.info(f"[STREAM_SESSION] Emitting session_id to frontend: {resolved_session_id}")
         
-        # detect_language is sync (langdetect) — run in thread pool to avoid blocking event loop
-        detected_lang = await asyncio.to_thread(detect_language, message)
-        logger.info(f"[STREAM_SESSION] Detected language for session {resolved_session_id}: {detected_lang}")
-        
         yield {
             "session_id": resolved_session_id,
-            "detected_language": detected_lang,
             "step": "session_initialized",
             "status": f"Session initialized: {resolved_session_id}",
             "message": "Session created",
@@ -921,7 +907,6 @@ async def generate_cad_realtime_stream(
                                 tessellated_export=None,
                                 attribute_and_transientid_map=None,
                                 manufacturing_errors=[],
-                                detected_language=detected_lang
                             )
                         logger.debug(f"[STREAM_FINAL] Successfully created final response for session {resolved_session_id}")
                     else:
@@ -935,7 +920,6 @@ async def generate_cad_realtime_stream(
                             tessellated_export=None,
                             attribute_and_transientid_map=None,
                             manufacturing_errors=[],
-                            detected_language=detected_lang
                         )
                 # Connection is released here automatically
 

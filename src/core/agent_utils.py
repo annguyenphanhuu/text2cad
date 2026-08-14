@@ -10,39 +10,19 @@ from langchain_core.documents import Document
 
 from .models import AnalysisAndParameterCheckOutput, ShapeRequirement, DesignRequirements
 from src.utils import path_manager
-from src.utils.language_utils import (
-    detect_language,
-    get_success_message,
-    get_session_language,
-    SUPPORTED_LANGUAGES,
-)
 
 logger = logging.getLogger(__name__)
 
-def _create_fallback_response(error_type: str = "json_parse", user_text: str = "") -> AnalysisAndParameterCheckOutput:
-    """Create a fallback response when parsing fails, with language detection."""
+_FALLBACK_QUESTIONS = {
+    "json_parse": "I encountered an error processing your request. Could you please rephrase your design requirements more clearly?",
+    "general": "Something went wrong while processing your request. Please try describing your design in a different way.",
+}
 
-    # Detect language from user text (sync, no LLM, no session cache)
-    language = detect_language(user_text) if user_text else "fr"
 
-    # Error messages in different languages
-    error_messages = {
-        "json_parse": {
-            "en": "I encountered an error processing your request. Could you please rephrase your design requirements more clearly?",
-            "fr": "J'ai rencontré une erreur lors du traitement de votre demande. Pourriez-vous reformuler vos exigences de conception plus clairement?",
-            "es": "Encontré un error al procesar su solicitud. ¿Podría reformular sus requisitos de diseño más claramente?",
-            "de": "Ich habe einen Fehler bei der Verarbeitung Ihrer Anfrage festgestellt. Könnten Sie Ihre Designanforderungen klarer formulieren?",
-        },
-        "general": {
-            "en": "Something went wrong while processing your request. Please try describing your design in a different way.",
-            "fr": "Quelque chose s'est mal passé lors du traitement de votre demande. Veuillez essayer de décrire votre conception d'une manière différente.",
-            "es": "Algo salió mal al procesar su solicitud. Intente describir su diseño de una manera diferente.",
-            "de": "Beim Verarbeiten Ihrer Anfrage ist etwas schief gelaufen. Versuchen Sie, Ihr Design anders zu beschreiben.",
-        },
-    }
+def _create_fallback_response(error_type: str = "json_parse") -> AnalysisAndParameterCheckOutput:
+    """Create a fallback response when parsing fails."""
 
-    messages_for_type = error_messages.get(error_type, error_messages["json_parse"])
-    question = messages_for_type.get(language) or messages_for_type.get("fr", "")
+    question = _FALLBACK_QUESTIONS.get(error_type, _FALLBACK_QUESTIONS["json_parse"])
 
     description = "System Error - Invalid Response Format" if error_type == "json_parse" else "System Error - Processing Failed"
 
@@ -68,7 +48,6 @@ def detect_detailed_explanation_request(user_text: str) -> bool:
     # If user clearly wants to SKIP steps, also not a detailed explanation request.
     step_negation_keywords = [
         "skip the steps", "skip the build plan", "let's skip the steps",
-        "passons les étapes", "passons directement", "sautez les étapes",
     ]
     for kw in step_negation_keywords:
         if kw in user_lower:
@@ -78,8 +57,6 @@ def detect_detailed_explanation_request(user_text: str) -> bool:
     step_positive_keywords = [
         "show me the steps", "give me the steps", "step by step", "step-by-step",
         "what are the steps", "walk me through the steps",
-        "montre-moi les étapes", "montrez-moi les étapes", "donne-moi les étapes",
-        "quelles sont les étapes", "étape par étape", "par étapes",
     ]
     for kw in step_positive_keywords:
         if kw in user_lower:
@@ -91,12 +68,6 @@ def detect_detailed_explanation_request(user_text: str) -> bool:
         "clarify", "elaborate", "more info", "tell me more", "be specific",
         "list", "available", "options", "choices",
         "what are", "which", "can you provide", "provide me", "tell me about",
-        # French
-        "expliquer", "pourquoi", "détail", "spécifique", "donnez-moi",
-        "liste", "disponible", "fournir",
-        # Spanish
-        "explicar", "por qué", "detalle", "específico", "dame",
-        "lista", "opciones", "proporcionar"
     ]
     return any(keyword in user_lower for keyword in detailed_keywords)
 
@@ -203,7 +174,7 @@ def _clean_json_string(json_str: str) -> str:
 
     return json_str
 
-def parse_unified_analysis(json_str, user_text: str = "") -> AnalysisAndParameterCheckOutput:
+def parse_unified_analysis(json_str) -> AnalysisAndParameterCheckOutput:
     """Convert JSON string or dict to AnalysisAndParameterCheckOutput Pydantic model"""
     original_json_str = json_str  # Keep original for logging
 
@@ -272,7 +243,7 @@ def parse_unified_analysis(json_str, user_text: str = "") -> AnalysisAndParamete
         except Exception as alt_e2:
             logger.warning(f"Aggressive quote fixing strategy failed: {alt_e2}")
 
-        return _create_fallback_response("json_parse", user_text)
+        return _create_fallback_response("json_parse")
 
 
 def _fix_json_quotes_aggressive(json_str: str) -> str:

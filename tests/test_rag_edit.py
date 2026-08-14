@@ -29,7 +29,7 @@ async def test_edit_rag():
     
     # Mock data
     session_id = "test_edit_rag_session_123"
-    user_text = "Ajouter un perçage rectangulaire de 20x10 mm, bien centré."
+    user_text = "Add a 20x10 mm rectangular hole, properly centred."
     original_code = "Part.makeZShape(...)"
     
     # Simulate step 1.5 from text_to_cad_agent.py -> process_edit_request

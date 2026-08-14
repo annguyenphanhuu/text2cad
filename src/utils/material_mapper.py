@@ -14,7 +14,7 @@ def map_material_to_geometry_analyzer(user_material: str) -> str:
         GeometryAnalyzer-compatible material name (steel, stainless_steel, aluminum)
     
     Mapping Rules:
-        - STEEL, ACIER → steel
+        - STEEL → steel
         - INOX, STAINLESS, GALVA → stainless_steel  
         - ALUMINUM, ALUMINIUM, ALU → aluminum
         - Default → steel (if unknown)
@@ -35,7 +35,7 @@ def map_material_to_geometry_analyzer(user_material: str) -> str:
     material_upper = user_material.upper().strip()
     
     # Steel variants
-    if material_upper in ["STEEL", "ACIER"]:
+    if material_upper in ["STEEL"]:
         return "steel"
     
     # Stainless steel variants

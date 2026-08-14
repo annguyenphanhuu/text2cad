@@ -40,11 +40,11 @@ async def test_query_expansion():
     set_expansion_llm(llm)
     
     test_queries = [
-        "cornière de section 55x50x5",
-        "profilé U 100x50 longueur 500",
-        "tôle avec deux plis à 90° dans le même sens",
+        "angle bracket with section 55x50x5",
+        "U-profile 100x50 length 500",
+        "sheet with two 90° bends in the same direction",
         "capot rectangulaire 400x300",
-        "platine 200x150 épaisseur 4mm"
+        "plate 200x150 thickness 4mm"
     ]
     
     for query in test_queries:
@@ -106,7 +106,7 @@ async def test_retrieval_filtering():
     set_expansion_llm(llm)
     
     # Test query for L-bracket
-    query = "Je veux créer une cornière en L de 100x60x2mm"
+    query = "I want to create an L-shaped angle bracket 100x60x2mm"
     print(f"\n📝 Test Query: '{query}'")
     print(f"   Expected shape type: L-bracket")
     

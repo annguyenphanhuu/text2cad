@@ -37,13 +37,13 @@ class AnalysisAndParameterCheckOutput(BaseModel):
 
     # Assembly Detection Fields
     design_type: str = Field(default="part", description="Type of design: 'part' (single object) or 'assembly' (multiple separate objects)")
-    assembly_warning: Optional[str] = Field(None, description="Warning message if assembly detected (in user's language: English or French)")
+    assembly_warning: Optional[str] = Field(None, description="Warning message if assembly detected")
     assembly_confirmed: bool = Field(default=False, description="Whether user confirmed assembly generation after warning")
 
     # Confirm intent fields (for description confirm flow)
     confirm_intent_detected: bool = Field(
         default=False,
-        description="True when the user's latest message is confirming a 📋 description preview (e.g., 'yes', 'oui', 'ok'). False when making a new or modified request."
+        description="True when the user's latest message is confirming a 📋 description preview (e.g., 'yes', 'ok'). False when making a new or modified request."
     )
 
     # Shape type detection (for description_confirm template selection)
@@ -53,7 +53,7 @@ class AnalysisAndParameterCheckOutput(BaseModel):
             "The canonical shape type detected from the user's request. "
             "Must be one of: 'L-bracket', 'L-bracket-Circular', 'U-shaped', 'U-shaped-Circular', 'Z-shaped', 'Z-shaped-Circular', "
             "'CAPOT', 'Tube-Circular', 'Tube-Rectangular', 'Sheet', 'Sheet-Circular', 'Perforated Sheet', 'Triangle'. "
-            "Use 'Perforated Sheet' when user mentions perforated sheet / tôle perforée / R+T notation. "
+            "Use 'Perforated Sheet' when user mentions perforated sheet / perforated plate / R+T notation. "
             "Use 'unknown' if ambiguous or not yet determined."
         )
     )
@@ -61,12 +61,12 @@ class AnalysisAndParameterCheckOutput(BaseModel):
     # Step-by-step plan request (intent-based, NOT complexity-based)
     step_by_step_requested: bool = Field(
         default=False,
-        description="True ONLY when user explicitly asks to see a step-by-step build plan before generating (e.g., 'show me the steps', 'montre-moi les étapes'). Never set true based on complexity alone."
+        description="True ONLY when user explicitly asks to see a step-by-step build plan before generating (e.g., 'show me the steps', 'walk me through the steps'). Never set true based on complexity alone."
     )
 
 class DFMValidationOutput(BaseModel):
     """Output from the DFM Rule Validation Agent."""
     has_violations: bool = Field(default=False, description="Whether any DFM rule violations were detected")
-    violations: List[str] = Field(default_factory=list, description="List of violation warning messages in user's language")
+    violations: List[str] = Field(default_factory=list, description="List of violation warning messages")
     override_intent_detected: bool = Field(default=False, description="Whether user intends to override manufacturing rules")
     thickness_warning: Optional[str] = Field(None, description="Thickness validation warning message if any")

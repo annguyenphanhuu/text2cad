@@ -17,8 +17,6 @@ mock_agent_utils.parse_unified_analysis = MagicMock()
 mock_agent_utils.clean_code = MagicMock()
 mock_agent_utils.create_rag_query = MagicMock()
 mock_agent_utils.format_retrieved_context = MagicMock()
-mock_agent_utils.detect_language = MagicMock(return_value='en')
-mock_agent_utils.get_success_message = MagicMock(return_value='Success')
 mock_agent_utils.combine_and_format_contexts = MagicMock()
 mock_agent_utils.detect_detailed_explanation_request = MagicMock(return_value=False)
 sys.modules['src.core.agent_utils'] = mock_agent_utils

@@ -74,14 +74,13 @@ def format_duration(seconds: int) -> str:
     return f"~{hrs}h {mins:02d} min"
 
 
-def estimate_freecad_time(n_holes: int, shape_letter: str, lang: str = "fr") -> str:
+def estimate_freecad_time(n_holes: int, shape_letter: str) -> str:
     """
     Estimate FreeCAD boolean cut time for a perforated sheet.
 
     Args:
         n_holes:      Number of holes (from perf_calc_result['open_area']['hole_count'])
         shape_letter: Shape type letter — 'R', 'C', 'LR', or 'LC'
-        lang:         Kept for backward compatibility; no language-specific suffix is added.
 
     Returns:
         Human-readable string, e.g. "~2 min 15 sec"
