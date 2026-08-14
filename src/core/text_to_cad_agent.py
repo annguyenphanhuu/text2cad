@@ -3346,7 +3346,8 @@ class TextToCADAgent:
         try:
             result = await get_rag_split_context(
                 query=rag_query,
-                k_rules=0,          # ← no rules for edit mode
+                k_rules=0,          # ← no rules for edit mode; skips the rules
+                                    #   retrieval and its nano rerank entirely
                 k_examples=5,
                 reranking_llm=self.reranking_llm,
                 cost_tracker=self._get_cost_tracker(session_id),
@@ -3377,11 +3378,13 @@ class TextToCADAgent:
             result = await get_rag_split_context(
                 query=rag_query,
                 k_rules=10,
-                # NOTE: k_examples=0 crashes FAISS (`assert k > 0` in vector_store.search_index)
-                # — the examples retrieval path always does a vector search regardless of k,
-                # unlike the rules path which is metadata/class-based and tolerates k=0.
-                # Use the minimum nonzero value and simply discard examples_context below.
-                k_examples=1,
+                # k_examples=0 asks get_rag_split_context to skip the examples half
+                # entirely. It must not reach retrieve_examples_only — that path
+                # always runs a vector search and trips `assert k > 0` in
+                # vector_store.search_index. Previously this passed k_examples=1 and
+                # threw the result away, paying for a vector search + a nano rerank
+                # on every edit turn.
+                k_examples=0,
                 reranking_llm=self.reranking_llm,
                 cost_tracker=self._get_cost_tracker(session_id),
                 session_id=session_id

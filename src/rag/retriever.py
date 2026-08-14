@@ -775,11 +775,19 @@ async def retrieve_rules_only(
         List of Document objects containing ONLY rules (no example code)
     """
     retrieved_documents: List[Document] = []
-    
+
+    # k_rules <= 0 means the caller wants no rules at all (edit mode asks for
+    # examples only). Returning early skips the class detection, the metadata
+    # retrieval AND the nano rerank call whose result was sliced away by
+    # `[:k_rules]` anyway — same output, one fewer LLM call per edit turn.
+    if k_rules <= 0:
+        logger.info("[RAG_RULES] k_rules=0 → skipping rules retrieval and rerank")
+        return retrieved_documents
+
     if not faiss_index_instance:
         logger.warning("[RAG_RULES] ❌ FAISS index not available")
         return retrieved_documents
-    
+
     # STEP 1: Class detection (keyword matching only)
     detected_classes = classify_user_query_for_rules(query, None)  # Force keyword matching
     

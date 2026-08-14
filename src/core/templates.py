@@ -673,7 +673,7 @@ This is a **wording rule only**. It never makes anything `missing_info` and neve
 | 1 | Base shape only, no operations |
 | 2 | 1–3 operations, same type |
 | 3 | Mixed operations, ≤ 5 |
-| 4 | 3+ bends OR complex geometry (CAPOT, CAPOT, formed box) |
+| 4 | 3+ bends OR complex geometry (CAPOT, formed box) |
 | 5 | Multi-bend + multiple cutouts + hole patterns |
 
 Any operation mentioned → level ≥ 2. Two different operation types → level ≥ 3.
@@ -700,7 +700,7 @@ Any operation mentioned → level ≥ 2. Two different operation types → level
 **`shape_type` values** — use EXACT canonical string (case-sensitive):
 - Bracket shapes: `"L-bracket"` | `"U-shaped"` | `"Z-shaped"`
 - Structural shapes: `"I-Shaped"` | `"T-Shaped"`
-- Enclosure: `"CAPOT"` | `"CAPOT"`
+- Enclosure: `"CAPOT"`
 - Tubes: `"Tube-Circular"` | `"Tube-Rectangular"`
 - Flat part: `"Sheet"`
 - Triangular sheet/plate: `"Triangle"` - use for flat triangular plates and triangular sheet-metal parts with one or more edge flanges.
@@ -734,7 +734,7 @@ You extract EXACTLY the parameters needed for perforated sheet open-area calcula
 Do NOT generate CAD code. Do NOT describe the part. Only extract parameters and decide what is missing.
 
 ## LANGUAGE RULE
-All `questions` items MUST be written in: {user_language}.
+All `questions` items MUST be written in: `user_language`.
 
 ## UNIT CONVERSION RULE (MANDATORY)
 ALL numeric values you extract — hole size, pitch value, AND sheet length/width/thickness —
@@ -880,11 +880,6 @@ When `missing` is not empty, build one clear, focused question per missing item:
 | `pitch_ratio` | Ask: for a rectangular grid (U pY×pX), two pitch values are needed. Please provide both (e.g. U25x60) or specify which direction you want as the pitch. |
 | `pitch_type` | Ask: what grid type? T (staggered 60°/triangulaire), U (inline/carre), or Z (generic stagger)? |
 
-## INPUTS
-- user_text: {user_text}
-- user_language: {user_language}
-- sheet_dims: {sheet_dims}  (cheap regex pre-parse hint, may be "unknown" — YOUR OWN extraction below is authoritative, use this only as a cross-check)
-
 ## OUTPUT (JSON only, no markdown)
 ```json
 {{
@@ -908,7 +903,7 @@ When `missing` is not empty, build one clear, focused question per missing item:
 - `pct_vide`: float (e.g. 20.0) or `null`.
 - `calc_mode`: `"forward"` | `"reverse_C"` | `"reverse_D"` | `"unknown"`.
 - `missing`: list of missing item keys (see table above). Empty list `[]` means ready to compute.
-- `questions`: list of question strings in `{user_language}`. One question per missing item. Empty if `missing=[]`.
+- `questions`: list of question strings in `user_language`. One question per missing item. Empty if `missing=[]`.
 - `sheet_length_mm` / `sheet_width_mm` / `sheet_thickness_mm`: float in millimeters (unit-converted per rule above), or `null` if that dimension was never stated anywhere in `user_text`. Independent of `missing`/`calc_mode`.
 
 **EXAMPLES:**
@@ -942,6 +937,18 @@ Output: {{"shape_notation": "R", "pitch_notation": "T16", "pitch_type_known": tr
 
 Input: "perforated 200x200x2 T16 30%"  ← NO shape token at all (not even bare R/C)
 Output: {{"shape_notation": null, "pitch_notation": "T16", "pitch_type_known": true, "pct_vide": 30.0, "calc_mode": "unknown", "missing": ["shape"], "questions": ["What hole shape/type do you want? For example: R for round holes, C for square holes, or LR/LC for oblong slots."]}}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST (same marker as the greeting/unified templates)
+# Everything above is identical on every call and is served from the prompt
+# cache. A placeholder moved above this marker truncates the cacheable prefix
+# there and the rest is billed in full on every turn.
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUTS
+- user_language: {user_language}
+- sheet_dims: {sheet_dims}  (cheap regex pre-parse hint, may be "unknown" — YOUR OWN extraction above is authoritative, use this only as a cross-check)
+- user_text: {user_text}
 """
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -955,11 +962,6 @@ You are an expert DFM (Design for Manufacturing) rule validator. Your SOLE purpo
 - Detect thickness violations (non-standard thickness)
 - Auto-calculate derived distances (e.g., hole-to-edge) and check against rules
 - Detect if user wants to override/skip warnings
-
-## INPUTS
-- user_text: MATERIAL: {material} \n{user_text}
-- retrieved_context: {retrieved_context}
-- user_language: {user_language}  ← reply ONLY in this language for ALL messages
 
 ## UNIT CONVERSION RULE (MANDATORY)
 If the user provides dimensions in meters ("m", "M", "mét", "mètre", "meter"), you MUST convert them to millimeters (multiply by 1000) BEFORE checking against manufacturing rules. Example: "2M" → 2000 mm.
@@ -1003,7 +1005,7 @@ If the user provides dimensions in meters ("m", "M", "mét", "mètre", "meter"),
 ### Step 1: Extract Parameters from user_text
 - Parse `user_text` to identify: shape_type, dimensions (length, width, thickness, bend_radius, etc.), operations (holes, bends, cuts)
 - **CONVERSATION CONTEXT**: `user_text` contains conversation history in `[USER]`/`[CHATBOT]` format. Use LATEST values.
-- **Language**: Use `user_language` input directly. Do NOT re-detect — it is already resolved. All violation messages MUST be in `{user_language}`.
+- **Language**: Use `user_language` input directly. Do NOT re-detect — it is already resolved. All violation messages MUST be in `user_language`.
 - **Threading extraction**: If threading is mentioned, extract `thread_type` (Standard ISO / Fine ISO), `nominal_diameter` (e.g. M10), and `pitch` (if provided).
 
 **Resolve these description patterns:**
@@ -1035,8 +1037,8 @@ For each rule in `retrieved_context`:
 1. Read the rule's `description`, `position_resolution` (if present), and `rule` fields to understand what to validate
 2. Apply the formula/logic described **in that rule** to the extracted parameters
 3. **If validation fails**:
-   - If rule has `error_message` → **TRANSLATE it to `{user_language}`**, keeping all technical values/numbers/placeholders intact
-   - If rule has NO `error_message` → Create violation message from rule description in `{user_language}`
+   - If rule has `error_message` → **TRANSLATE it to `user_language`**, keeping all technical values/numbers/placeholders intact
+   - If rule has NO `error_message` → Create violation message from rule description in `user_language`
 4. **If validation passes**: Do nothing (no violation)
 
 **IMPORTANT**: Use ONLY rules from `retrieved_context`. Do NOT invent or assume rules. Do NOT apply a rule if it is not in retrieved_context.
@@ -1082,9 +1084,9 @@ For each rule in `retrieved_context`:
 - `violations`: List of violation messages from manufacturing rules (NOT thickness). Empty list if no violations.
 - `override_intent_detected`: `true` if user wants to override/skip warnings
 - `thickness_warning`: The thickness warning message string, or `null` if thickness is valid/not specified
-- **Language of violations**: ALL violation messages and thickness warnings MUST be in `{user_language}`. This is non-negotiable.
+- **Language of violations**: ALL violation messages and thickness warnings MUST be in `user_language`. This is non-negotiable.
 - **NO DUPLICATES**: Each violation message should appear only once
-- **TRANSLATE error_message faithfully**: When a rule is violated, translate the `Error Message` from `retrieved_context` into `{user_language}`. Preserve all technical terms, numbers, and process names. Replace placeholders and allowed threshold tokens using the rules below BEFORE translating.
+- **TRANSLATE error_message faithfully**: When a rule is violated, translate the `Error Message` from `retrieved_context` into `user_language`. Preserve all technical terms, numbers, and process names. Replace placeholders and allowed threshold tokens using the rules below BEFORE translating.
 - **Allowed threshold substitution inside rule error_messages (this is NOT adding a new explanation)**:
   - Replace `{{min_edge_distance}}` with `thickness` in mm. Example: t=2mm → `2mm`.
   - Replace `{{min_diameter}}` with `0.7 × thickness` in mm. Example: t=2mm → `1.4mm`.
@@ -1101,53 +1103,25 @@ For each rule in `retrieved_context`:
   - If a table-derived value cannot be determined, leave the placeholder unchanged and state the missing dependency in `scratchpad`.
 - **violations contains ONLY rule error_messages — nothing else**: Do NOT add geometric explanations, calculation details, or any text not present in the rule's `error_message`. Placeholder/threshold substitution inside the existing message is allowed. All reasoning belongs in `scratchpad` only. Even if the hole exits the boundary, report only the translated and substituted `error_message` of the violated rule (e.g. LC_02 or B_05), not a custom description of the geometry problem.
 
-"""
-
-code_generation_template = """# ROLE: FreeCAD Code Generator
-Expert Python scripter for 3D CAD models with manufacturing constraints.
-
-## 📌 DATA SOURCE & EXTRACTION RULES
-1. **user_request = GROUND TRUTH (Highest Priority):** ALL dimensions, features (holes, cuts, bends), counts, and spacing MUST be extracted strictly from `user_request`.
-2. **retrieved_context = API SYNTAX ONLY:** Study examples purely for function names, parameter order, try/except structure, and variable naming conventions. NEVER copy dimension values or feature counts from examples.
-3. **MANDATORY CHECK:** Before coding, list all features requested by the user. Your generated script must implement EVERY single operation described without omitting or inventing features.
-4. **NO INVENTED PARAMETERS (CRITICAL):** Never pass any parameter/argument to FreeCAD API or utility functions (e.g. `Part.make*` shape makers) that is not explicitly present in the signature shown in the example code in `retrieved_context`. Ignore any extra options in the user request if they are not supported by the template signatures.
-5. **MUTATING IMMUTABLE SHAPES (CRITICAL):** In FreeCAD, shapes returned by custom helper functions (such as `Part.makeCircularZShape`, etc.) or retrieved from document objects (such as `obj.Shape`) are immutable. To transform them (e.g., `.rotate()` or `.translate()`), you MUST call `.copy()` first. Example: `shape = shape.copy(); shape.rotate(...)`.
-
-> 🔴 **HEADLESS MODE WARNING**: FreeCAD runs without a GUI in production. `doc_object.ViewObject` is `None` in headless mode. **NEVER write** `obj.ViewObject.ShapeColor = (...)` directly — this crashes the entire script with `AttributeError`. To record finish/color metadata, use `addProperty` instead:
-> ```
-> obj.addProperty("App::PropertyString", "Finish", "Metadata", "")
-> obj.Finish = "<finish_value_from_user_request>"
-> ```
-
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST (same marker as the greeting/unified templates)
+# Everything above is identical on every call and is served from the prompt
+# cache. A placeholder moved above this marker truncates the cacheable prefix
+# there and the rest is billed in full on every turn.
+# ═══════════════════════════════════════════════════════════════════════════
 
 ## INPUTS
-- user_request: {user_text}
+- user_language: {user_language}  ← reply ONLY in this language for ALL messages
 - retrieved_context: {retrieved_context}
+- user_text: MATERIAL: {material} \n{user_text}
+"""
 
-## ANALYSIS STEPS
-1. **Parse Description**: Extract shape type and dimensions directly from `user_request`.
-2. **Feature Extraction (MANDATORY)**: List ALL features from user_request before writing code (Base shape, Holes, Fillets/chamfers, Cuts/slots, Bends, etc.).
-3. **Repetition Pattern Analysis**:
-   - **CRITICAL**: When user_text says "repeated N times", it ALWAYS means N+1 total instances.
-   - **Example**: "repeated 5 times along length" means 6 holes total.
-
-> ⚠️ **L/U/Z BRACKET — `final_description` PARSING RULE (MANDATORY)**
-> In `final_description`, every section is formatted as `[Section]: dim_1×dim_2 mm` where:
-> - `dim_2` (the **second** number after `×`) = **`bend_along_side`** — identical across ALL sections.
-> - `dim_1` (the **first** number before `×`) = the section's OWN non-shared dimension:
->   - `Horizontal base: A×B` → `base_length = A`, `bend_along_side = B`
->   - `Vertical wall: C×B` → `flange_height = C`, `bend_along_side = B` (same B as above)
-> - ⚠️ `flange_height` is **always** the first number of `Vertical wall` — even if it equals `base_length` (symmetric shape). NEVER reuse `base_length` or `bend_along_side` as `flange_height`.
-> - **Cross-check**: After extracting, verify `base_length ≠ bend_along_side` and `flange_height ≠ bend_along_side`.
-
-
-**Format: Oblong — variable definitions**
-```python
-# "Ø6×20 oblong" → D=6 (minor diameter = shorter end-cap), L=20 (total slot length)
-slot_diameter = 6.0    # D = minor diameter (the SMALLER number)
-slot_length   = 20.0   # L = total slot length (the LARGER number)
-```
-
+# ── Shared by code_generation_template and code_editing_template ────────────
+# Cut-direction / axis-swap / CAPOT-wall-frame geometry contract. These two
+# templates are mutually exclusive at runtime (generate vs edit), so sharing
+# this block saves no request tokens — it exists so the two prompts cannot
+# drift apart again, which they already had.
+_CUT_DIRECTION_AND_AXIS_SWAP_RULES = """
 ---
 
 ### ⚠️ MANDATORY — `dir` = CUT DIRECTION | `pnt` = start of cutting tool
@@ -1200,7 +1174,50 @@ It snaps the analytically-computed `(u, v)` position onto the real bent wall fac
 - **Sheet-Circular and Partial Circular Plates**: Use `Part.makeCylinder(radius, thickness, App.Vector(0, 0, 0), App.Vector(0, 0, 1), arc_angle)` to create the base shape of the plate.
 - **Arc Angle Parameter**: `arc_angle` is the angle of the circular arc in degrees. For a full circle, it is 360.0 (or default). For a semi-circle/half-circular/demi-circulaire, `arc_angle = 180.0`. For a quarter-circle, `arc_angle = 90.0`.
 - **Default value**: If the user wants a full circle or does not mention a fractional shape, use 360.0.
+"""
 
+
+code_generation_template = """# ROLE: FreeCAD Code Generator
+Expert Python scripter for 3D CAD models with manufacturing constraints.
+
+## 📌 DATA SOURCE & EXTRACTION RULES
+1. **user_request = GROUND TRUTH (Highest Priority):** ALL dimensions, features (holes, cuts, bends), counts, and spacing MUST be extracted strictly from `user_request`.
+2. **retrieved_context = API SYNTAX ONLY:** Study examples purely for function names, parameter order, try/except structure, and variable naming conventions. NEVER copy dimension values or feature counts from examples.
+3. **MANDATORY CHECK:** Before coding, list all features requested by the user. Your generated script must implement EVERY single operation described without omitting or inventing features.
+4. **NO INVENTED PARAMETERS (CRITICAL):** Never pass any parameter/argument to FreeCAD API or utility functions (e.g. `Part.make*` shape makers) that is not explicitly present in the signature shown in the example code in `retrieved_context`. Ignore any extra options in the user request if they are not supported by the template signatures.
+5. **MUTATING IMMUTABLE SHAPES (CRITICAL):** In FreeCAD, shapes returned by custom helper functions (such as `Part.makeCircularZShape`, etc.) or retrieved from document objects (such as `obj.Shape`) are immutable. To transform them (e.g., `.rotate()` or `.translate()`), you MUST call `.copy()` first. Example: `shape = shape.copy(); shape.rotate(...)`.
+
+> 🔴 **HEADLESS MODE WARNING**: FreeCAD runs without a GUI in production. `doc_object.ViewObject` is `None` in headless mode. **NEVER write** `obj.ViewObject.ShapeColor = (...)` directly — this crashes the entire script with `AttributeError`. To record finish/color metadata, use `addProperty` instead:
+> ```
+> obj.addProperty("App::PropertyString", "Finish", "Metadata", "")
+> obj.Finish = "<finish_value_from_user_request>"
+> ```
+
+
+## ANALYSIS STEPS
+1. **Parse Description**: Extract shape type and dimensions directly from `user_request`.
+2. **Feature Extraction (MANDATORY)**: List ALL features from user_request before writing code (Base shape, Holes, Fillets/chamfers, Cuts/slots, Bends, etc.).
+3. **Repetition Pattern Analysis**:
+   - **CRITICAL**: When user_text says "repeated N times", it ALWAYS means N+1 total instances.
+   - **Example**: "repeated 5 times along length" means 6 holes total.
+
+> ⚠️ **L/U/Z BRACKET — `final_description` PARSING RULE (MANDATORY)**
+> In `final_description`, every section is formatted as `[Section]: dim_1×dim_2 mm` where:
+> - `dim_2` (the **second** number after `×`) = **`bend_along_side`** — identical across ALL sections.
+> - `dim_1` (the **first** number before `×`) = the section's OWN non-shared dimension:
+>   - `Horizontal base: A×B` → `base_length = A`, `bend_along_side = B`
+>   - `Vertical wall: C×B` → `flange_height = C`, `bend_along_side = B` (same B as above)
+> - ⚠️ `flange_height` is **always** the first number of `Vertical wall` — even if it equals `base_length` (symmetric shape). NEVER reuse `base_length` or `bend_along_side` as `flange_height`.
+> - **Cross-check**: After extracting, verify `base_length ≠ bend_along_side` and `flange_height ≠ bend_along_side`.
+
+
+**Format: Oblong — variable definitions**
+```python
+# "Ø6×20 oblong" → D=6 (minor diameter = shorter end-cap), L=20 (total slot length)
+slot_diameter = 6.0    # D = minor diameter (the SMALLER number)
+slot_length   = 20.0   # L = total slot length (the LARGER number)
+```
+""" + _CUT_DIRECTION_AND_AXIS_SWAP_RULES + """
 ### CRITICAL - Triangle Plates and Triangular Sheet-Metal Parts:
 - **Triangle helpers are mandatory**: use `get_equilateral_triangle_points`, `get_isosceles_triangle_points`, `get_right_triangle_points_from_legs`, `get_right_isosceles_triangle_points_from_hypotenuse`, `get_scalene_triangle_points_from_sides`, and `make_triangle_plate` from `FreeCadUtil`; do NOT redefine triangle point math in generated code.
 - **Triangle coordinate convention**: points[0]=A at origin, points[1]=B, points[2]=C, and thickness extrudes along `+Z`. For normal triangles A-B is the base edge. For right triangles A is the right-angle vertex, A-B/A-C are legs, and B-C is the hypotenuse.
@@ -1564,7 +1581,7 @@ CRITICAL RULES for TUBE SHAPES
 ⚠️ `Part.makeTub()` is MANDATORY for CAPOT unless user_request explicitly asks for independent/mixed bend directions per wall — never follow an SMBendWall-based retrieved_context example for a standard uniform-direction CAPOT.
 ⚠️ **Mixed-direction CAPOT (`SMBendWall`, per-wall `invert`)**: a wall folding "up"/"vers le haut" → `invert=False` (extends above `Z=thickness`); "down"/"vers le bas" → `invert=True` (extends below `Z=0`). The fixed CAPOT `dir`/`pnt` table above only covers the standard all-upward `makeTub` case — for a wall with `invert=True`, mirror its hole/cut Z-reference below the base (as in the retrieved_context example) instead of applying the table's upward Z range.
 ⚠️ **Corner overlap on a mixed-direction CAPOT flange (NOT a crushed fold, per-flange list — not a single flag)**: if the user says one or more flanges overhang/overlap their NEIGHBOR flanges at both of their own corners by a small amount (e.g. "the left wall overlaps by ~3mm", "overlap left right front", "le pli avant deborde legerement des deux cotes") — this is a DIFFERENT feature from "Crushed Fold" (which is a 180° fold of a wall onto ITSELF). Flange names are ALWAYS `front`/`back`/`left`/`right` (never "top"/"bottom" — a CAPOT has no such wall). Model it as one operation-card per named flange, e.g. `corner_overlap_operations = [{{"flange": "front", "extra": 3.0}}]` — add a card ONLY for each flange the user actually names (0 cards = no overlap anywhere = the default; 2+ flanges named = 2+ cards, each with its own "extra" mm value; naming `left` and `right` together means BOTH get their own card — never substitute them for a `front`/`back` card instead). For each flange with a card, set SMBendWall's own `extend1`/`extend2` BOTH to that card's "extra" value on that flange's bend object only; every flange without a card keeps `extend1=extend2=0.0`. Never hand-build this with extra `Part.makeBox()` fused onto the wall's Shape (SMBendWall's Shape already includes the base plate, so a box sized from its BoundBox becomes a full-width slab, not a small corner overhang).
-Origin: CAPOT and CAPOT are centered at (0, 0) in XY plane. `wall_center_z = height / 2.0`.
+Origin: CAPOT is centered at (0, 0) in XY plane. `wall_center_z = height / 2.0`.
 Part.makeTub() automatically adds the object to the document and returns a FreeCAD Part::Feature object, NOT a shape. DO NOT wrap it in doc.addObject(). Use it directly (e.g., tub_obj = Part.makeTub(...)) and pass tub_obj to AddOutwardBend. To cut holes, use tub_obj.Shape = tub_obj.Shape.cut(hole).
 
 1. **BASE FACE**: `Z = 0`.
@@ -1709,10 +1726,20 @@ Mesh.export(mesh_objects, obj_filename)
 - **NEVER** refuse, apologize, output plain text explanations, or give incomplete code snippets.
 - Use `output_dir_abs = f"/app/storage/{sanitized_title}/output"` for the export directory.
 
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST (same marker as the greeting/unified templates)
+# Everything above is identical on every call and is served from the prompt
+# cache. A placeholder moved above this marker truncates the cacheable prefix
+# there and the rest is billed in full on every turn.
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUTS
+- retrieved_context: {retrieved_context}
+
 # ============================================================
 # 🚨 FINAL REMINDER — GENERATE CODE FOR THIS user_request 🚨
 # ============================================================
-# user_request: {user_text}
+- user_request: {user_text}
 """
 
 code_editing_template = """# ROLE: FreeCAD Code Editor
@@ -1721,11 +1748,6 @@ Expert at modifying existing FreeCAD Python scripts.
 # ⚠️  CRITICAL INSTRUCTION: YOU MUST GENERATE VALID PYTHON CODE ⚠️
 # NEVER refuse to modify code. NEVER apologize. NEVER return text explanations.
 # ALWAYS return complete, working Python FreeCAD scripts.
-
-## INPUTS
-- original_code: {original_code}
-- user_request: {user_request}
-- retrieved_context: {retrieved_context}
 
 ## 📌 DATA SOURCE PRIORITY
 - `user_request` = **GROUND TRUTH (Highest Priority)**: ALL dimensions, counts, spacing, feature details MUST be extracted strictly from `user_request`.
@@ -1828,60 +1850,7 @@ slot_length   = 20.0   # L = total slot length (larger number) → pass directly
 slot_diameter = 8.0    # D = minor diameter (SMALLER number)
 slot_length   = 38.0   # L = total slot length (larger number) → pass directly
 ```
-
----
-
-### ⚠️ MANDATORY — `dir` = CUT DIRECTION | `pnt` = start of cutting tool
-**Applies to ALL cutting primitives: `Part.makeBox`, `Part.makeOblong`, `Part.makeCylinder`, `Part.makeThreaded`, ...**
-
-| Target Face | `dir` | `pnt` (start of cut) |
-|---|---|---|
-| **Base / L-Leg1 / U-Base / Z-Base/ Capot Base** | `(0,0,1)` | `pnt.z = 0.0` (flat base: `-1.0` for Capot centered at origin) |
-| **I-Shaped Bottom Flange / T-Shaped Flange** | `(0,0,1)` | `pnt.z = 0.0` |
-| **I-Shaped Top Flange** | `(0,0,1)` | `pnt.z = height + thickness` |
-| **L-bracket Vertical Wall** | `(1,0,0)` | `pnt.x = 0.0` |
-| **U Left Flange / Z-shaped Top Flange / Capot Left Wall** | `(1,0,0)` | `pnt.x = 0` (U/Z) \| `pnt.x = -dim_x/2` (Capot Left) |
-| **U Right Flange / Z-shaped Bottom Flange / Capot Right Wall** | `(1,0,0)` | `pnt.x = dim_x - thickness` (U/Z) \| `pnt.x = dim_x/2 - thickness` (Capot Right) |
-| **I-Shaped Web / T-Shaped Web** | `(1,0,0)` | `pnt.x = dim_x/2 - thickness/2` |
-| **Capot Front Wall** | `(0,1,0)` | `pnt.y = -dim_y/2` |
-| **Capot Back Wall** | `(0,1,0)` | `pnt.y = +dim_y/2 - thickness` |
-
-⚠️ **FreeCAD AXIS-SWAP — `makeBox` / `makeOblong` / `makeKeyhole` / `makeCylinder` (non-default `dir`)**
-FreeCAD remaps axes internally for non-Z directions. Use this table — applies identically to ALL cutting primitives:
-
-| `dir`      | param1 (size_?) | param2 (size_?) | param3      | `pnt` corrections |
-|------------|-----------------|-----------------|-------------|-------------------|
-| `(0,0,1)`  | X extent        | Y extent        | Z depth     | `pnt.x = cx - p1/2`, `pnt.y = cy - p2/2`, `pnt.z = 0.0` |
-| `(1,0,0)`  | **Z extent** ⚠️ | Y extent        | X depth     | `pnt.z = cz - p1/2` (**SUBTRACT**), `pnt.y = cy + p2/2` (**ADD**), `pnt.x = outer_face_x` |
-| `(0,1,0)`  | **Z extent** ⚠️ | X extent        | Y depth     | `pnt.z = cz - p1/2` (**SUBTRACT**), `pnt.x = cx - p2/2` (**SUBTRACT**), `pnt.y = outer_face_y` |
-
-⛔ **Common mistake for `dir=(1,0,0)`**: NEVER pass `cut_depth` as param1 — it becomes the Z dimension!
-```python
-# ✅ CORRECT: Part.makeBox(size_z, size_y, cut_depth_x, pnt, App.Vector(1,0,0))
-# ❌ WRONG:   Part.makeBox(cut_depth_x, size_y, size_z, pnt, App.Vector(1,0,0))
-```
-
-⚠️ **CAPOT walls with `bend_angle != 90` (MANDATORY)**: the fixed `dir`/`pnt` table above is only valid at 90°. For any other bend_angle, DO NOT compute the cut position by hand from `get_capot_wall_frame()` alone — at extreme angles SMBendWall's corner relief/merge shifts the real wall surface by an amount a fixed `bend_radius` offset does not reliably capture (validated: cuts silently missed the material entirely at 40° while the same formula worked fine at 90°/125°). Instead use:
-```python
-start, n_dir, depth = resolve_capot_wall_hole_position(
-    shape,           # the CURRENT real shape (e.g. tub_obj.Shape) to snap the position against - MUST be the actual bent geometry, not a theoretical one
-    wall,            # "front" | "back"/"rear" | "left" | "right"
-    bend_angle, dim_x, dim_y, thickness,
-    u, v,            # nominal position along the wall (u = along wall length, v = distance from the bend line - same values you'd already compute)
-    cut_depth,       # desired through-cut depth, e.g. thickness + 2.0
-    bend_radius
-)
-```
-It snaps the analytically-computed `(u, v)` position onto the real bent wall face before cutting, so it stays correct at any bend_angle. Returns `(start, n_dir, depth)` already padded/pulled-back - use directly.
-- For `makeCylinder`/`makeHexagon`/`makeThreaded`/`makeCountersink` (rotationally symmetric): pass `start` as `pnt`, `n_dir` as `dir`, `depth` as the cut depth - done.
-- For `makeBox`/`makeOblong`/`makeKeyhole` (asymmetric): build the tool at local origin (X=u,Y=v,Z=depth), then get `u_dir`/`v_dir` from `get_capot_wall_frame(wall, bend_angle, dim_x, dim_y, thickness)` (orientation only, not position) and call `place_on_capot_wall(tool, start, u_dir, v_dir, n_dir)` before cutting.
----
-
-### CRITICAL - Sheet-Circular and Partial Circular Plates:
-- **Sheet-Circular and Partial Circular Plates**: Use `Part.makeCylinder(radius, thickness, App.Vector(0, 0, 0), App.Vector(0, 0, 1), arc_angle)` to create the base shape of the plate.
-- **Arc Angle Parameter**: `arc_angle` is the angle of the circular arc in degrees. For a full circle, it is 360.0 (or default). For a semi-circle/half-circular/demi-circulaire, `arc_angle = 180.0`. For a quarter-circle, `arc_angle = 90.0`.
-- **Default value**: If the user wants a full circle or does not mention a fractional shape, use 360.0.
-
+""" + _CUT_DIRECTION_AND_AXIS_SWAP_RULES + """
 ### CRITICAL - Crushed Fold / Pli Écrasé:
 - **Crushed Fold / Pli Écrasé mapping**: The technical term "crushed fold" (French: "pli écrasé") corresponds to a 180-degree return fold / bend ("retournés à 180°"). When the user requests a crushed fold or pli écrasé, you MUST use 180.0 degrees (or 180) as the bend angle in the FreeCAD script (e.g. `bend_angle_deg = 180.0`, `top_bend_angle_deg = 180.0`, etc.).
 
@@ -2152,8 +2121,8 @@ row's last hole overhang the free edge. `min_edge_distance` stays the FREE-edge 
 
 
 
-**CAPOT / CAPOT FACE DEFINITIONS & HOLE PLACEMENT (CRITICAL)**:
-Origin: CAPOT and CAPOT are centered at (0, 0) in XY plane. `wall_center_z = height / 2.0`.
+**CAPOT FACE DEFINITIONS & HOLE PLACEMENT (CRITICAL)**:
+Origin: CAPOT is centered at (0, 0) in XY plane. `wall_center_z = height / 2.0`.
 Part.makeTub() automatically adds the object to the document and returns a FreeCAD Part::Feature object, NOT a shape. DO NOT wrap it in doc.addObject(). Use it directly (e.g., tub_obj = Part.makeTub(...)) and pass tub_obj to AddOutwardBend. To cut holes, use tub_obj.Shape = tub_obj.Shape.cut(hole).
 
 1. **BASE FACE**: `Z = 0`.
@@ -2280,9 +2249,7 @@ Parse FACE SELECTION + Shape type to clearly determine which face the user wants
                my = (edge.BoundBox.YMin + edge.BoundBox.YMax) / 2.0
                mz = (edge.BoundBox.ZMin + edge.BoundBox.ZMax) / 2.0
                # check if midpoint lies within the face's bounding box
-               if (min_x - 1.0 <= mx <= max_x + 1.0) and \
-                  (min_y - 1.0 <= my <= max_y + 1.0) and \
-                  (min_z - 1.0 <= mz <= max_z + 1.0):
+               if (min_x - 1.0 <= mx <= max_x + 1.0) and                   (min_y - 1.0 <= my <= max_y + 1.0) and                   (min_z - 1.0 <= mz <= max_z + 1.0):
                    # check if edge is at the Y extremes (corners)
                    if abs(my - min_y) < 1.0 or abs(my - max_y) < 1.0:
                        # ensure it doesn't span along the Y axis
@@ -2302,9 +2269,7 @@ Parse FACE SELECTION + Shape type to clearly determine which face the user wants
                mx = (edge.BoundBox.XMin + edge.BoundBox.XMax) / 2.0
                my = (edge.BoundBox.YMin + edge.BoundBox.YMax) / 2.0
                mz = (edge.BoundBox.ZMin + edge.BoundBox.ZMax) / 2.0
-               if (min_x - 1.0 <= mx <= max_x + 1.0) and \
-                  (min_y - 1.0 <= my <= max_y + 1.0) and \
-                  (min_z - 1.0 <= mz <= max_z + 1.0):
+               if (min_x - 1.0 <= mx <= max_x + 1.0) and                   (min_y - 1.0 <= my <= max_y + 1.0) and                   (min_z - 1.0 <= mz <= max_z + 1.0):
                    if abs(mx - min_x) < 1.0 or abs(mx - max_x) < 1.0:
                        if edge.BoundBox.XLength < 0.1:
                            fillet_edges.append(edge)
@@ -2395,7 +2360,24 @@ Before making any edit, you MUST insert this exact 1-line comment to anchor your
 - Validate face selection before operations
 - Use enhanced face identification for precise targeting
 
-Return complete modified script only."""
+Return complete modified script only.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST (same marker as the greeting/unified templates)
+# Everything above is identical on every call and is served from the prompt
+# cache. A placeholder moved above this marker truncates the cacheable prefix
+# there and the rest is billed in full on every turn.
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUTS
+- retrieved_context: {retrieved_context}
+- original_code: {original_code}
+
+# ============================================================
+# 🚨 FINAL REMINDER — APPLY THIS EDIT TO THE CODE ABOVE 🚨
+# ============================================================
+- user_request: {user_request}
+"""
 
 
 
@@ -2426,7 +2408,7 @@ Format exactly like `confirm_message` Parameters block:
 - Max 6 steps total. Merge trivial operations if needed.
 
 **Step description format** (same rules as `confirm_message`):
-- Write in {user_language}
+- Write in `user_language`
 - MAX 2 short sentences per operation:
   * Sentence 1: What + where. (e.g. "2 trous Ø8mm sur la base horizontale.")
   * Sentence 2 (optional): Key positioning detail. (e.g. "Entraxe 60mm, axe à 30mm du bord inférieur.")
@@ -2435,7 +2417,7 @@ Format exactly like `confirm_message` Parameters block:
 - NEVER explain coordinate systems, angles, or calculation methods
 - ⚠️ **FR ONLY**: NEVER write `lumière(s)` — always use `perçage(s)`.
 
-## FACE LABELS (use the label matching {user_language} in step descriptions)
+## FACE LABELS (use the label matching `user_language` in step descriptions)
 | Shape     | Face key     | EN label                        | FR label                    |
 |-----------|-------------|----------------------------------|-----------------------------|
 | L-bracket | leg1        | **horizontal base**              | **Base horizontale**        |
@@ -2461,35 +2443,30 @@ Format exactly like `confirm_message` Parameters block:
 5. `complex_feature` → Special cutouts, angular geometry, lamelles
 6. `corner_finish`   → All fillets (congés) / chamfers — LAST step always
 
-## INPUTS
-- full_description: {description}
-- complexity_level: {complexity_level}
-- user_language: {user_language}
-
 ## OUTPUT (JSON only — no markdown wrapper, no extra text)
 {{
   "steps": [
     {{
       "step_number": 1,
-      "title": "Short title in {user_language} (3-5 words max)",
-      "description": "Base shape description in {user_language} — parameters only, NO operations",
+      "title": "Short title in `user_language` (3-5 words max)",
+      "description": "Base shape description in `user_language` — parameters only, NO operations",
       "operation_type": "base_shape"
     }},
     {{
       "step_number": 2,
       "title": "Short title",
-      "description": "Max 2 sentences: what+where, then key position. In {user_language}.",
+      "description": "Max 2 sentences: what+where, then key position. In `user_language`.",
       "operation_type": "holes_face"
     }}
   ],
   "total_steps": 2,
-  "plan_summary": "1-sentence summary in {user_language}",
+  "plan_summary": "1-sentence summary in `user_language`",
   "user_message": "See FORMAT below"
 }}
 
 ## user_message FORMAT
 
-The `user_message` field must follow this exact structure (adapt language to {user_language}).
+The `user_message` field must follow this exact structure (adapt language to `user_language`).
 Write as if you are a helpful assistant GUIDING the user through the plan — NOT listing a technical summary.
 Use first-person voice ("Je vais...", "I'll...") and action verbs for each step.
 
@@ -2535,7 +2512,7 @@ Building the part sequentially guarantees a clean and robust 3D model.
 
 ## EXAMPLES
 
-> Both examples below show how {user_language} controls ALL labels.
+> Both examples below show how `user_language` controls ALL labels.
 > FR example → French face labels. EN example → English face labels. Never mix.
 
 ### Example 1 — L-bracket, French (user_language: French)
@@ -2609,6 +2586,18 @@ complexity_level: 3, user_language: English
   "plan_summary": "U-shaped 100×50×50×200mm, thickness 3mm, with 6 holes in 3 steps.",
   "user_message": "🔧 **Great! Here's how I'll build your part step by step (3 steps):**\\n\\n**Step 1 — Base U-shaped**\\n👉 I'll start by creating the U-shaped: base 100x200mm, left flange 50x200mm, right flange 50x200mm, thickness=3mm.\\n\\n**Step 2 — Holes on base**\\n👉 Next, I'll add 4 through holes Ø6mm on the base. 2 rows of 2, centered along the width, 30mm from each end.\\n\\n**Step 3 — Holes on flanges**\\n👉 Finally, I'll drill 1 through hole Ø5mm on each flange, centered, 20mm from the top edge.\\n\\n✅ Does this plan work for you? Confirm and I'll start step by step — or say **no** to generate directly."
 }}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST (same marker as the greeting/unified templates)
+# Everything above is identical on every call and is served from the prompt
+# cache. A placeholder moved above this marker truncates the cacheable prefix
+# there and the rest is billed in full on every turn.
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUTS
+- user_language: {user_language}
+- complexity_level: {complexity_level}
+- full_description: {description}
 """
 
 
@@ -2625,13 +2614,6 @@ _CONFIRM_BASE = """# ROLE: CAD Description Formatter
 
 Derive a precise technical description from the conversation history, then format two outputs.
 **Your job: extract values verbatim from user_text, assign them to correct geometric roles, and format outputs. Geometric dim assignment (which value = dim_1, which = dim_2 = bend_along_side) is REQUIRED — it is semantic work, not numerical calculation.**
-
-## INPUTS
-- user_text (GROUND TRUTH — full [USER]/[CHATBOT] conversation): {user_text}
-- confirm_round: {confirm_round}
-- user_language: {user_language}
-- shape_type: {shape_type}
-- perf_info (pre-computed open area result — USE AS-IS, do NOT recompute): {perf_info}
 
 ## SOURCE RULE
 **`user_text` = single source of truth. Latest [USER] message wins for every parameter.**
@@ -2838,12 +2820,12 @@ Operations:
 • [Structural operations like return flanges or bends]: Do NOT assign these to a specific face prefix. Preserve the user's exact dimension reference. (e.g. `• 50 mm return flange on the 400 mm side`)
 • [Face]: [count] [size] [hole_type], [positioning in natural English — same as confirm_message]```
 
-**OUTPUT 2 — `confirm_message`** (ENTIRELY in {user_language}, HUMAN LANGUAGE — for user verification):
+**OUTPUT 2 — `confirm_message`** (ENTIRELY in `user_language`, HUMAN LANGUAGE — for user verification):
   - Axis references: use the user's OWN directional words from their request — `"dans le sens de la longueur"`, `"en largeur"`, `"bord bas"`
   - NEVER use internal technical codes like `"sens 200 mm"`, `"axe selon 200 mm"`, `"bord 150 mm de la face"` — these are unreadable to users
   - Goal: user should immediately recognise their own request in the confirm_message
 
-**LANGUAGE TABLE — pick the column matching {user_language}, use it everywhere:**
+**LANGUAGE TABLE — pick the column matching `user_language`, use it everywhere:**
 | Element | French | English |
 |---|---|---|
 | Header | `📋 **Voici comment je comprends votre demande :**` | `📋 **Here is how I understand your request:**` |
@@ -2925,7 +2907,7 @@ _BRACKET_RULES = """
 | Z-shaped | Upper flange | **Upper flange** | **Aile supérieure** |
 | Z-shaped | Lower flange | **Lower flange** | **Aile inférieure** |
 
-> A1 applies: use exact EN label in `final_description`, exact FR label in `confirm_message` (or EN label if {user_language}=English).
+> A1 applies: use exact EN label in `final_description`, exact FR label in `confirm_message` (or EN label if `user_language`=English).
 
 ### RELATIVE SIZE FACE MAPPING (grande/petite partie)
 
@@ -3287,7 +3269,7 @@ in `confirm_message` AND `final_description` (same decision, both languages).
 
 # ── SHAPE RULES: CAPOT ────────────────────────────────────────
 _CAPOT_RULES = """
-## SHAPE RULES -- CAPOT / CAPOT (enclosure / box)
+## SHAPE RULES -- CAPOT (enclosure / box)
 
 ### FACE NAMES
 | Face | EN label | FR label |
@@ -3300,7 +3282,7 @@ _CAPOT_RULES = """
 | left-flange (6-bend) | Left flange | Aile gauche |
 | right-flange (6-bend) | Right flange | Aile droite |
 
-### CAPOT / CAPOT GEOMETRY
+### CAPOT GEOMETRY
 Given Base = L×W mm, height = H mm:
 - **Front wall** / **Back wall** span the LENGTH → L×H mm each
 - **Left wall** / **Right wall** span the WIDTH → W×H mm each
@@ -3598,7 +3580,7 @@ Operations:
 • Tube: steel material
 • Both Short faces (s mm each): N holes ØD mm, start d mm from End A, every step mm → N holes total, centered along the short side
 ```
-**confirm_message** (FR — apply EN labels if {user_language}=English):
+**confirm_message** (FR — apply EN labels if `user_language`=English):
 ```
 📋 **Voici comment je comprends votre demande :**
 **Important** : Avez-vous bien décrit votre pièce en fonction du cube d'orientation ?
@@ -3633,7 +3615,7 @@ Parameters:
 Operations:
   - N holes ØD mm, arranged in N1×N2 grid, centered on the sheet, spaced spa_x mm along length and spa_y mm along width
 ```
-**confirm_message** (FR — apply EN labels if {user_language}=English):
+**confirm_message** (FR — apply EN labels if `user_language`=English):
 ```
 📋 **Voici comment je comprends votre demande :**
 **Important** : Avez-vous bien décrit votre pièce en fonction du cube d'orientation ?
@@ -3709,8 +3691,8 @@ _PERF_RULES = """
 ## PERFORATED SHEET RULES (apply ONLY when shape_type = Perforated Sheet)
 
 **P0 - LANGUAGE OVERRIDE (CRITICAL):**
-`confirm_message` MUST be entirely in `{user_language}`.
-If `{user_language}` is French, do NOT write English labels such as `Perforated Sheet`,
+`confirm_message` MUST be entirely in `user_language`.
+If `user_language` is French, do NOT write English labels such as `Perforated Sheet`,
 `Parameters`, `Thickness`, `Open area`, `real`, `theoretical`, `Estimated generation time`,
 or `Reply yes/ok`.
 Only `final_description` remains English for code generation.
@@ -3737,7 +3719,7 @@ NEVER leave placeholders - the `notation=` key always has the complete value.
 | English | `mode=reverse_D` or `mode=reverse_C` **AND** perf_info contains `hole_count=` | `• **Open area** : [actual_pct]% actual ([hole_count] holes) - [theoretical_pct]% theoretical (target: [target_pct]%)` THEN `• **Estimated generation time** : [est_time]` |
 | English | `mode=reverse_D` or `mode=reverse_C` **AND** perf_info has NO `hole_count=` | `• **Open area** : [target_pct]%` (no time estimate) |
 
-**P4 - confirm_message FORMAT (use the column matching `{user_language}`, no extras):**
+**P4 - confirm_message FORMAT (use the column matching `user_language`, no extras):**
 
 French:
 ```
@@ -3781,7 +3763,7 @@ For `final_description` of a Perforated Sheet, you MUST include the Notation. Us
 - ~~Calculated pitch =~~
 The notation line already tells the full story.
 
-**P7 - perf_info blank/empty?** Write in `{user_language}`:
+**P7 - perf_info blank/empty?** Write in `user_language`:
 - French: `📊 Calcul % vide non disponible - vérifiez la notation (R? T? ou R? U?).`
 - English: `📊 Open-area calculation unavailable - check the notation (R? T? or R? U?).`
 """
@@ -3944,7 +3926,7 @@ Type: Z-shaped-Circular
 Operations:
 ```
 
-**confirm_message** (FR — apply EN labels if {user_language}=English):
+**confirm_message** (FR — apply EN labels if `user_language`=English):
 ```
 📋 **Voici comment je comprends votre demande :**
 **Paramètres** :
@@ -3964,7 +3946,7 @@ _CONFIRM_OUTPUT = """
 ## OUTPUT (strict JSON only, no markdown wrapper)
 {{
   "final_description": "Type: [Shape Type]\\n• Thickness: t mm\\n• Base: L×W mm\\n• [section/walls]: [dims — for CAPOT walls use height ONLY, for brackets use dim_1×dim_2]\\n• Bends: angle° (radius: r mm)\\nOperations:\\n• [Structural ops — e.g. 50mm return flange on 400mm side]\\n• [Face (optional)]: [count] [size] [hole_type], [positioning — MUST match confirm_message ops 1-to-1]",
-  "confirm_message": "[📋 formatted message in {user_language}]"
+  "confirm_message": "[📋 formatted message in `user_language`]"
 }}
 
 ⚠️ MANDATORY FINAL CHECK before outputting JSON:
@@ -3987,6 +3969,26 @@ _CONFIRM_OUTPUT = """
 """
 
 
+# ── INPUTS: always LAST, after the shape rules and the output spec ───────────
+# Everything before this block is identical for a given shape_type on every
+# call and is served from the prompt cache. A placeholder moved above this
+# block truncates the cacheable prefix there and the rest is billed in full on
+# every turn — which is why the body refers to `user_language` by name instead
+# of interpolating it (same convention as the unified/greeting templates).
+_CONFIRM_INPUTS = """
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUTS
+- user_language: {user_language}
+- shape_type: {shape_type}
+- confirm_round: {confirm_round}
+- perf_info (pre-computed open area result — USE AS-IS, do NOT recompute): {perf_info}
+- user_text (GROUND TRUTH — full [USER]/[CHATBOT] conversation): {user_text}
+"""
+
+
 def build_confirm_template(shape_type: str) -> str:
     """
     Build the description_confirm template for the given shape_type.
@@ -3995,6 +3997,9 @@ def build_confirm_template(shape_type: str) -> str:
       - CAPOT          : ~55% reduction
       - Tube           : ~70% reduction
       - Sheet          : ~75% reduction
+
+    `_CONFIRM_INPUTS` is appended LAST so that everything before it is a stable
+    per-shape prefix the provider can serve from the prompt cache.
     """
     shape_type_lower = shape_type.lower()
 
@@ -4002,7 +4007,7 @@ def build_confirm_template(shape_type: str) -> str:
         shape_rules = _CIRCULAR_RULES
     elif shape_type_lower in ("l-bracket", "u-shaped", "z-shaped"):
         shape_rules = _BRACKET_RULES
-    elif shape_type_lower in ("capot", "capot", "capot"):
+    elif shape_type_lower == "capot":
         shape_rules = _CAPOT_RULES
     elif shape_type_lower in ("tube-circular", "tube-rectangular", "tube"):
         shape_rules = _TUBE_RULES
@@ -4018,7 +4023,7 @@ def build_confirm_template(shape_type: str) -> str:
         # Fallback: unknown / off-topic shape — use dedicated lightweight rules
         shape_rules = _UNKNOWN_SHAPE_RULES
 
-    return _CONFIRM_BASE + shape_rules + _CONFIRM_OUTPUT
+    return _CONFIRM_BASE + shape_rules + _CONFIRM_OUTPUT + _CONFIRM_INPUTS
 
 
 # ============================================================
@@ -4031,10 +4036,6 @@ shape_change_detector_template = """# ROLE: Shape Change Classifier for CAD Edit
 
 Determine if an edit request changes the **fundamental shape type** of the part.
 If yes, write a merged description of the NEW shape.
-
-## INPUTS
-- user_request: {user_request}
-- current_description: {current_description}
 
 ## STEP 1 — EXTRACT CURRENT SHAPE SIGNAL
 
@@ -4323,6 +4324,17 @@ Only after all 5 lines are written, produce the JSON. The JSON's "reason" field 
   "merged_description": "[complete description if shape_change=true, else empty string]",
   "reason": "[one sentence explanation]"
 }}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST (same marker as the greeting/unified templates)
+# Everything above is identical on every call and is served from the prompt
+# cache. A placeholder moved above this marker truncates the cacheable prefix
+# there and the rest is billed in full on every turn.
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUTS
+- current_description: {current_description}
+- user_request: {user_request}
 """
 
 
@@ -4336,10 +4348,6 @@ turn-by-turn. The user may ADD, MOVE, RESIZE, or DELETE features (holes, slots,
 bends, chamfers...) across many separate edit messages. Your job is to fold the
 `new_edit_request` into `previous_description` and output the resulting NET
 state — never a transcript of what happened, only what is TRUE now.
-
-## INPUTS
-- previous_description: {previous_description}
-- new_edit_request: {new_edit_request}
 
 ## RULES
 1. Start from `previous_description` as ground truth.
@@ -4378,6 +4386,14 @@ state — never a transcript of what happened, only what is TRUE now.
    on top of that as per rules 1-4.
 7. Output ONLY the updated description text — no explanations, no JSON,
    no markdown fences.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INPUTS — MUST STAY LAST (same marker as the greeting/unified templates)
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INPUTS
+- previous_description: {previous_description}
+- new_edit_request: {new_edit_request}
 """
 
 

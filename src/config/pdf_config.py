@@ -27,35 +27,10 @@ ALLOWED_EXTENSIONS = [".pdf"]
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 
-# Prompt Templates
-PDF_ANALYSIS_PROMPT = """
-Analyze the following PDF content and provide a comprehensive summary:
-
-Content: {content}
-
-Please provide:
-1. Main topics and themes
-2. Key technical specifications or requirements
-3. Important details that would be relevant for CAD design
-4. Any manufacturing or design constraints mentioned
-
-Format your response in a clear, structured manner.
-"""
-
-CAD_GENERATION_PROMPT = """
-Based on the following PDF analysis, generate detailed CAD instructions:
-
-Analysis: {analysis}
-
-Please provide:
-1. Detailed geometric specifications
-2. Material requirements
-3. Manufacturing considerations
-4. Assembly instructions if applicable
-5. Quality control parameters
-
-Format as clear, actionable CAD instructions.
-"""
+# NOTE: PDF_ANALYSIS_PROMPT / CAD_GENERATION_PROMPT used to live here. They were
+# imported by pdf_handler.py but never referenced by any call site, so they were
+# never sent to a model. Removed rather than left as dead prompt text. The live
+# PDF prompt is built by PDFHandler._prepare_prompt().
 
 # Error Messages
 ERROR_MESSAGES = {

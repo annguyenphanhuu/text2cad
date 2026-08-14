@@ -172,13 +172,10 @@ class ImageProcessor:
             # Encode image to base64
             base64_image = self._encode_image_to_base64(file_path)
             
-            # Prepare prompt
-            default_prompt = "Analyze this image and identify if it shows a ['Perforated sheet','Tole','Countersink hole']. Return in this exact format: 'Class: [perforated sheet/tole/countersink hole], Name/code: [value]'. If you can see specific dimensions, hole patterns, or model codes, include them. No other text."
-            prompt = default_prompt
-            
-            if user_input and user_input.strip():
-                prompt = f"{default_prompt} Additional context: {user_input}"
-                
+            # Prepare prompt (shared with pdf_handler — see utils/media_prompts.py)
+            from src.utils.media_prompts import build_media_classification_prompt
+            prompt = build_media_classification_prompt("image", user_input)
+
             logger.info(f"Using prompt for image analysis: {prompt}")
 
             image_analysis_text = ""

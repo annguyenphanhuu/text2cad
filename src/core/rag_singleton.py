@@ -157,8 +157,17 @@ async def get_rag_split_context(
         
         logger.info(f"[RAG_SPLIT] 🎯 Single retrieval for query: {query[:80]}...")
         
-        # PARALLEL RETRIEVAL: Rules and Examples at the same time
-        rules_documents, examples_documents = await asyncio.gather(
+        # PARALLEL RETRIEVAL: Rules and Examples at the same time.
+        # A half the caller asked for zero of is not retrieved at all — its
+        # result was discarded downstream anyway, and skipping it drops a
+        # vector search plus a nano rerank call. `retrieve_rules_only` also
+        # short-circuits on k_rules<=0, but building the coroutine here is what
+        # lets the examples half be skipped: calling it with k_examples=0 trips
+        # `assert k > 0` in vector_store.search_index.
+        async def _no_docs():
+            return []
+
+        rules_coro = (
             retrieve_rules_only(
                 query=query,
                 faiss_index_instance=faiss_index_instance,
@@ -167,7 +176,10 @@ async def get_rag_split_context(
                 k_rules=k_rules,
                 cost_tracker=cost_tracker,
                 session_id=session_id
-            ),
+            )
+            if k_rules > 0 else _no_docs()
+        )
+        examples_coro = (
             retrieve_examples_only(
                 query=query,
                 faiss_index_instance=faiss_index_instance,
@@ -179,8 +191,16 @@ async def get_rag_split_context(
                 pre_expanded_query=pre_expanded_query,
                 pre_detected_shape_type=pre_detected_shape_type,
             )
+            if k_examples > 0 else _no_docs()
         )
-        
+        if k_rules <= 0 or k_examples <= 0:
+            logger.info(
+                f"[RAG_SPLIT] half-retrieval: k_rules={k_rules}, k_examples={k_examples} "
+                f"→ skipping the zero half entirely"
+            )
+
+        rules_documents, examples_documents = await asyncio.gather(rules_coro, examples_coro)
+
         # Format contexts
         from src.core.agent_utils import format_retrieved_context
         rules_context = format_retrieved_context(rules_documents)

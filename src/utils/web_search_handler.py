@@ -118,8 +118,8 @@ class WebSearchProcessor:
         "Perforated sheet": "Perforated Sheet",
         "Tube":             "Tube-Circular",   # generic tube from URL → circular (rectangular URLs usually say "carré" etc.)
         "sheet":            "Sheet",
-        "L-shaped bracket": "L-Bracket",
-        "U-shaped":         "U-Bracket",
+        "L-shaped bracket": "L-bracket",
+        "U-shaped":         "U-shaped",
         "I-Shaped":         "I-Shaped",
         "T-Shaped":         "T-Shaped",
     }
@@ -491,7 +491,8 @@ class WebSearchProcessor:
         try:
             # Natural language prompt for simple, readable output
             prompt = f"""
-Access link {url} and analyze this product page to extract technical specifications.
+Access the product page whose URL is given in the `TARGET URL` section at the
+very END of this prompt, and analyze it to extract technical specifications.
 
 CRITICAL EXTRACTION RULES:
 1. Extract ONLY the dimensions and specifications that are clearly provided
@@ -522,9 +523,9 @@ Use your understanding of the product — name, form, cross-section — to pick 
 | Perforated Sheet         | Tôle perforée. Détecté si AU MOINS UN des indicateurs suivants est présent: (1) code de perforation (R12 T16, C20 U40, LR5x20 Z9x24, LC10x100 U30x40...) OU (2) mot-clé explicite ("perforated" / "perforée" / "tôle perforée" / "tôle à trous"). ⚠️ Trous individuels (fixation, coins, centre) seuls SANS ces indicateurs → Sheet. |
 | Tube-Circular           | (A) Hollow tube: tube rond / tube cylindrique / pipe / round pipe. Has wall thickness (épaisseur de paroi). (B) Solid bar: **rond plein / barre ronde / tige ronde / solid round bar** — NO wall thickness (plein = solid). Both subtypes → Tube-Circular. |
 | Tube-Rectangular        | Square or rectangular hollow section: tube carré, carré creux, carré plein (solid square bar also maps here), tube rectangulaire, profilé carré, SHS, RHS, box section, profilé creux |
-| L-Bracket               | Angle / cornière / équerre / L-shaped bracket / angle iron               |
-| U-Bracket               | U-channel / profilé en U / U-shaped / chute en U                        |
-| Z-Bracket               | Z-section / profilé en Z / Z-shaped                                      |
+| L-bracket               | Angle / cornière / équerre / L-shaped bracket / angle iron               |
+| U-shaped                | U-channel / profilé en U / U-shaped / chute en U                        |
+| Z-shaped                | Z-section / profilé en Z / Z-shaped                                      |
 | CAPOT                   | Box / enclosure / capot / coffret / boîtier plié                         |
 | I-Shaped              | I-beam / poutre en I / poutrelle / profilé en I      |
 | T-Shaped              | T-beam / fer en T / profilé en T      |
@@ -704,6 +705,13 @@ IMPORTANT RULES:
 6. **LANGUAGE ENFORCEMENT**: The final output description MUST be written in the same language as the web page. Do NOT default to English if the page is in French, German, or any other language. Technical codes and numbers are always kept as-is.
 7. **SHAPE TYPE PREFIX (MANDATORY)**: Every output line MUST start with `[Shape type: <canonical>]`. This prefix is a machine tag — do NOT translate it, do NOT omit it, do NOT place it anywhere other than the very beginning of the output. The canonical value must match exactly one entry from the SHAPE TYPE CLASSIFICATION table above.
 
+# ═══════════════════════════════════════════════════════════════════════════
+# TARGET URL — MUST STAY LAST. Everything above is identical on every call and
+# is served from the provider's prompt cache; moving the URL above this marker
+# truncates the cacheable prefix there and bills the rest in full every time.
+# ═══════════════════════════════════════════════════════════════════════════
+
+TARGET URL: {url}
 """
 
             logger.debug(f"[WEB_EXTRACT] Extracting content from URL: {url}")

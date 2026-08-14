@@ -24,10 +24,16 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     # src/database/database.py connects with auth_plugin="mysql_native_password",
     # which is not MySQL 8's default (caching_sha2_password).
+    # Dev-only tuning: MySQL 8 mặc định giữ ~400 MB (buffer pool 128M +
+    # performance_schema). Dataset local rất nhỏ nên hạ xuống ~150 MB.
     command:
       - mysqld
       - --default-authentication-plugin=mysql_native_password
       - --bind-address=0.0.0.0
+      - --innodb-buffer-pool-size=64M
+      - --performance-schema=OFF
+      - --max-connections=50
+    mem_limit: 512m
     ports:
       - "3307:3306"
     volumes:

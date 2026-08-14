@@ -103,34 +103,47 @@ def create_optimized_engine():
     
     return engine
 
-# Replace the complex connection logic with optimized version
-try:
-    print("Creating optimized database engine...")
-    engine = create_optimized_engine()
-    
-    # Test connection once
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT 1"))
-        print(f"Database connection successful! Test result: {result.scalar()}")
-        
-except Exception as e:
-    print(f"Database connection failed: {e}")
-    # Fallback to engine with adequate pool size for concurrent operations
-    engine = create_engine(
-        DATABASE_URL,
-        pool_size=30,  # Increased from 2 to handle concurrent requests
-        max_overflow=50,  # Increased from 2 to allow more overflow connections
-        pool_timeout=60,  # Add timeout for connection acquisition
-        pool_recycle=1800,
+# SQLite fallback: used when SKIP_DB is set or MySQL is unreachable, so the API
+# keeps working (sessions/chat history are stored locally instead of in MySQL).
+SQLITE_PATH = Path(__file__).parent.parent.parent / "local_fallback.db"
+SQLITE_URL = f"sqlite:///{SQLITE_PATH.as_posix()}"
+
+USING_SQLITE_FALLBACK = False
+
+
+def create_sqlite_engine():
+    """Local file-based engine used when MySQL is not available."""
+    return create_engine(
+        SQLITE_URL,
+        connect_args={"check_same_thread": False},
         pool_pre_ping=True,
-        connect_args={
-            "connect_timeout": 30,
-            "use_pure": True,
-            "auth_plugin": "mysql_native_password",
-            "ssl_disabled": True,  # Disable SSL to avoid connection issues
-            "raise_on_warnings": False
-        }
     )
+
+
+def _skip_db_requested():
+    return os.getenv("SKIP_DB", "").lower() in ("1", "true", "yes")
+
+
+# Replace the complex connection logic with optimized version
+if _skip_db_requested():
+    print(f"SKIP_DB is set - using local SQLite database at {SQLITE_PATH}")
+    engine = create_sqlite_engine()
+    USING_SQLITE_FALLBACK = True
+else:
+    try:
+        print("Creating optimized database engine...")
+        engine = create_optimized_engine()
+
+        # Test connection once
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            print(f"Database connection successful! Test result: {result.scalar()}")
+
+    except Exception as e:
+        print(f"Database connection failed: {e}")
+        print(f"Falling back to local SQLite database at {SQLITE_PATH}")
+        engine = create_sqlite_engine()
+        USING_SQLITE_FALLBACK = True
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -144,11 +157,11 @@ def init_db():
     Initialize database by creating all tables.
 
     Set SKIP_DB=1 to boot without a reachable MySQL server (local dev only);
-    the table creation is skipped and any endpoint touching the DB will fail.
+    the tables are then created in the local SQLite fallback file instead, so
+    every endpoint keeps working.
     """
-    if os.getenv("SKIP_DB", "").lower() in ("1", "true", "yes"):
-        logger.warning("SKIP_DB is set - skipping database initialization")
-        return
+    if USING_SQLITE_FALLBACK:
+        logger.warning(f"Using SQLite fallback database: {SQLITE_PATH}")
     Base.metadata.create_all(bind=engine)
 
 def _session_scope():

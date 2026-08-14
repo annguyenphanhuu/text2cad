@@ -16,7 +16,6 @@ import random
 from src.config.pdf_config import (
     OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE,
     CAD_MODEL, CAD_MAX_TOKENS, CAD_TEMPERATURE,
-    PDF_ANALYSIS_PROMPT, CAD_GENERATION_PROMPT,
     ERROR_MESSAGES, SUCCESS_MESSAGES,
     get_temp_dir, validate_file_size, validate_file_extension,
     get_error_message, get_success_message,
@@ -349,11 +348,9 @@ class PDFProcessor:
         Returns:
             str: Complete prompt for analysis
         """
-        default_prompt = "Analyze this PDF and identify if it shows a ['Perforated sheet','Tole','Countersink hole']. Return in this exact format: 'Class: [perforated sheet/tole/countersink hole], Name/code: [value]'. If you can see specific dimensions, hole patterns, or model codes, include them. No other text."
-        
-        if user_input and user_input.strip():
-            return f"{default_prompt} Additional context: {user_input}"
-        return default_prompt
+        # Shared with image_handler — see utils/media_prompts.py
+        from src.utils.media_prompts import build_media_classification_prompt
+        return build_media_classification_prompt("PDF", user_input)
 
     async def process_pdf(self, db: Session, session_id: str, file_path: str, user_input: str = "") -> Tuple[bool, str, Optional[dict]]:
         """
