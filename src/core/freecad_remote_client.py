@@ -37,24 +37,194 @@ def _get_filename(path: str) -> str:
 
 # Custom Exception Classes for FreeCAD Server Communication
 class FreeCADServerError(Exception):
-    """Base exception for FreeCAD server related errors"""
-    pass
+    """Base exception for FreeCAD server related errors.
+
+    Every raise site sets `code` to the entry of the error table
+    (src/core/error_codes.py) that matches the failure exactly. Callers read
+    that attribute instead of searching the message for keywords: the message
+    is free text, `str(asyncio.TimeoutError())` is empty and matches nothing,
+    and each re-wrap of an exception erodes it further.
+    """
+
+    #: Default code for the class, overridden per raise site when a more
+    #: precise one applies.
+    code = None
+
+    def __init__(self, message: str = "", code: str = None):
+        super().__init__(message)
+        if code:
+            self.code = code
 
 class FreeCADConnectionError(FreeCADServerError):
     """Raised when unable to connect to FreeCAD server"""
-    pass
+    code = "102.1"
 
 class FreeCADTimeoutError(FreeCADServerError):
-    """Raised when FreeCAD server request times out"""
-    pass
+    """Raised when an HTTP call to the FreeCAD server times out"""
+    code = "101.2"
 
 class FreeCADServerNotAvailableError(FreeCADServerError):
     """Raised when FreeCAD server is not available or not responding"""
-    pass
+    code = "102.1"
 
 class FreeCADProcessingError(FreeCADServerError):
-    """Raised when FreeCAD server encounters processing errors"""
-    pass
+    """Raised when FreeCAD server encounters processing errors.
+
+    Deliberately has no default code — every raise site names the one that
+    applies, so a processing error is never reported as a generic failure.
+    """
+    code = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# READING THE SERVER'S VERDICT
+#
+# The FreeCAD server ends every job with one outcome envelope (its
+# job_contract.py) carrying `status`, `code` and an `error` object. It is the
+# only side that watched the job fail, so its code is taken as given — the
+# client's job is to read it, not to re-derive it.
+#
+# _classify_job_failure below exists for one case only: a server older than the
+# contract, which sends a status and prose but no code.
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Terminal statuses the server can report. 'error'/'finished'/'completed'/
+#: 'success' are accepted as synonyms because RQ and older builds use them.
+_SUCCESS_STATUSES = frozenset({'complete', 'completed', 'success', 'finished'})
+_PARTIAL_STATUSES = frozenset({'partial_success', 'warning'})
+_FAILURE_STATUSES = frozenset({'failed', 'error'})
+
+#: Outputs whose absence must NOT fail a job. The PDF is a visualisation: STEP
+#: and OBJ have already been exported by the time it is produced, so losing it
+#: costs the user a drawing, not the model.
+_OPTIONAL_OUTPUTS = frozenset({'pdf'})
+
+#: Fallback only — see the note above. Order matters: specific before generic.
+_JOB_FAILURE_SIGNATURES = (
+    # "exceeded" alone is NOT a timeout signal: "maximum recursion depth
+    # exceeded" is a script failure, while a real timeout says "timed out".
+    (("timeout", "timed out", "timed_out", "time out"), "101.1"),
+    (("charmap", "codec", "unicodeencode", "unicodedecode"), "104.2"),
+    (("missing required outputs", "no step", "no files generated",
+      "could not be collected"), "104.3"),
+    (("unexpected error", "server failed"), "104.5"),
+)
+
+
+def _classify_job_failure(*texts: str) -> str:
+    """Map a failed job's server-side text to an error code.
+
+    Falls back to 104.1 — the script ran and failed — because that is what a
+    bare `status=failed` from the worker means when nothing more specific
+    matches.
+    """
+    haystack = " ".join(t for t in texts if t).lower()
+    for keywords, code in _JOB_FAILURE_SIGNATURES:
+        if any(keyword in haystack for keyword in keywords):
+            return code
+    return "104.1"
+
+
+def _as_dict(value) -> Dict[str, Any]:
+    """Coerce an envelope field to a dict.
+
+    New servers send a real JSON object. Older ones sent the same content
+    json.dumps()'d into a string field, so a string is parsed rather than
+    rejected — that is the whole reason this used to be lost so easily.
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {"message": value}
+        except (json.JSONDecodeError, TypeError):
+            return {"message": value}
+    return {}
+
+
+def read_job_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Interpret one server payload (MQTT message, /status or /result body).
+
+    Returns:
+        is_terminal: whether the job has reached a final state at all
+        succeeded:   whether the user got a usable model
+        code:        error code, or None when the job succeeded
+        message:     the server's human-readable line
+        detail:      the most specific technical cause available
+        error:       the full error object from the server
+    """
+    status = str(payload.get('status') or '').lower()
+    message = payload.get('message') or ''
+    error = _as_dict(payload.get('error'))
+    details = _as_dict(payload.get('details'))
+
+    is_terminal = status in _SUCCESS_STATUSES | _PARTIAL_STATUSES | _FAILURE_STATUSES
+    verdict = {
+        'status': status,
+        'is_terminal': is_terminal,
+        'succeeded': status in _SUCCESS_STATUSES,
+        'code': None,
+        'message': message,
+        'detail': message,
+        'error': error,
+        'details': details,
+    }
+    if not is_terminal or verdict['succeeded']:
+        return verdict
+
+    # The server names the failure; only fall back to reading its prose when
+    # talking to a build that predates the contract.
+    code = payload.get('code') or error.get('code')
+
+    specific_exception = error.get('specific_exception') or error.get('error_message')
+    error_hint = error.get('error_hint') or details.get('error_hint')
+
+    if status in _PARTIAL_STATUSES:
+        # A partial success is only a failure if something REQUIRED is missing.
+        # Trusting the declared list beats searching the sentence for "pdf":
+        # a message can mention the PDF while the real loss is the STEP.
+        missing = [str(kind).lower() for kind in (error.get('missing_types') or [])]
+        if missing and set(missing) <= _OPTIONAL_OUTPUTS:
+            verdict['succeeded'] = True
+            verdict['message'] = message or 'Optional export missing'
+            return verdict
+        if not missing and 'pdf' in message.lower():
+            # Older server: no declared list, only prose to go on.
+            verdict['succeeded'] = True
+            return verdict
+        verdict['code'] = code or "104.6"
+        verdict['detail'] = message or 'Partial export'
+        return verdict
+
+    verdict['code'] = code or _classify_job_failure(message, specific_exception, error_hint)
+    verdict['detail'] = specific_exception or error_hint or message or 'EXECUTION_FAILED'
+    return verdict
+
+
+def _log_job_verdict(log, user_id: str, verdict: Dict[str, Any]) -> None:
+    """Log a terminal verdict with everything support needs, once."""
+    if verdict['succeeded']:
+        if verdict['status'] in _PARTIAL_STATUSES:
+            log.warning(
+                f"[JOB] ⚠️ Optional export missing (job kept) | user_id={user_id} | "
+                f"{verdict['message'][:160]}"
+            )
+        return
+
+    error = verdict['error']
+    log.error(
+        "[JOB] ❌ Failed | user_id=%s | code=%s | status=%s | message=%s | "
+        "specific_exception=%s | error_hint=%s",
+        user_id, verdict['code'], verdict['status'], verdict['message'],
+        error.get('specific_exception'), error.get('error_hint'),
+    )
+    for stream in ('stdout_tail', 'stderr_tail'):
+        tail = error.get(stream)
+        if isinstance(tail, list) and tail:
+            log.error("[JOB] %s (last %d lines):\n%s", stream, len(tail), "\n".join(tail))
+        elif tail:
+            log.error("[JOB] %s:\n%s", stream, tail)
 
 
 class AsyncFreeCADClient:
@@ -158,8 +328,11 @@ class AsyncFreeCADClient:
             - metadata_sent: Whether metadata file was included (if provided)
 
         Raises:
-            FileNotFoundError: If script file doesn't exist
-            FreeCADProcessingError: If server response is invalid or missing required fields
+            FreeCADProcessingError: If the script file is unusable (105.4) or the
+                server response is invalid / missing required fields (102.3-102.6)
+            FreeCADConnectionError: If the server cannot be reached (102.1)
+            FreeCADServerNotAvailableError: If the server answers 503 (102.1)
+            FreeCADTimeoutError: If the request times out (101.2)
         """
         async with self.semaphore:  # Limit concurrent requests
             try:
@@ -169,7 +342,7 @@ class AsyncFreeCADClient:
                 if not os.path.exists(script_path):
                     error_msg = f"Script file not found: {script_path}"
                     logger.error(f"[FreeCAD] ❌ {error_msg}")
-                    raise FileNotFoundError(error_msg)
+                    raise FreeCADProcessingError(error_msg, code="105.4")
 
                 # Log file info (compact)
                 file_size = os.path.getsize(script_path)
@@ -191,7 +364,7 @@ class AsyncFreeCADClient:
                 if not file_content:
                     error_msg = f"Script file is empty: {script_path}"
                     logger.error(f"[FreeCAD] ❌ {error_msg}")
-                    raise FreeCADProcessingError(error_msg)
+                    raise FreeCADProcessingError(error_msg, code="105.4")
 
                 logger.debug(f"[FreeCAD] File read | file={filename} | size={len(file_content)}B")
 
@@ -252,11 +425,15 @@ class AsyncFreeCADClient:
                         if response.status == 503:
                             raise FreeCADServerNotAvailableError("FreeCAD server is temporarily unavailable (503)")
                         elif response.status >= 500:
-                            raise FreeCADProcessingError(f"FreeCAD server internal error (status: {response.status})")
+                            raise FreeCADProcessingError(
+                                f"FreeCAD server internal error (status: {response.status})", code="102.1"
+                            )
                         elif response.status == 404:
                             raise FreeCADConnectionError(f"FreeCAD server endpoint not found (404): {url}")
                         elif response.status >= 400:
-                            raise FreeCADProcessingError(f"FreeCAD server request error (status: {response.status})")
+                            raise FreeCADProcessingError(
+                                f"FreeCAD server request error (status: {response.status})", code="102.2"
+                            )
 
                         response.raise_for_status()
 
@@ -270,7 +447,7 @@ class AsyncFreeCADClient:
                         except json_module.JSONDecodeError as e:
                             error_msg = f"Failed to parse server response as JSON: {response_text[:500]}"
                             logger.error(f"[FreeCAD] ❌ {error_msg}")
-                            raise FreeCADProcessingError(error_msg)
+                            raise FreeCADProcessingError(error_msg, code="102.3")
 
                         # ============================================================
                         # STEP 5: VERIFY RESPONSE CONTAINS REQUIRED FIELDS
@@ -282,27 +459,27 @@ class AsyncFreeCADClient:
                         if not job_ack.get('user_id'):
                             error_msg = f"Server response missing user_id: {job_ack}"
                             logger.error(f"[FreeCAD] ❌ {error_msg}")
-                            raise FreeCADProcessingError(error_msg)
+                            raise FreeCADProcessingError(error_msg, code="102.3")
 
                         # Verify user_id matches what we sent
                         if job_ack.get('user_id') != user_id:
                             error_msg = f"Server returned different user_id. Expected: {user_id}, Got: {job_ack.get('user_id')}"
                             logger.error(f"[FreeCAD] ❌ {error_msg}")
-                            raise FreeCADProcessingError(error_msg)
+                            raise FreeCADProcessingError(error_msg, code="102.4")
 
                         # Check status must be 'queued'
                         response_status = job_ack.get('status')
                         if response_status != 'queued':
                             error_msg = f"Server returned invalid status. Expected: 'queued', Got: '{response_status}'. Response: {job_ack}"
                             logger.error(f"[FreeCAD] ❌ {error_msg}")
-                            raise FreeCADProcessingError(error_msg)
+                            raise FreeCADProcessingError(error_msg, code="102.5")
 
                         # Check MQTT must be published successfully
                         mqtt_published = job_ack.get('mqtt_published', False)
                         if not mqtt_published:
                             error_msg = f"Server did not publish MQTT message. Job may not have been queued. Response: {job_ack}"
                             logger.error(f"[FreeCAD] ❌ {error_msg}")
-                            raise FreeCADProcessingError(error_msg)
+                            raise FreeCADProcessingError(error_msg, code="102.6")
 
                         # ============================================================
                         # STEP 6: VALIDATE FILES RECEIVED BY SERVER
@@ -330,7 +507,8 @@ class AsyncFreeCADClient:
                                 )
                                 raise FreeCADProcessingError(
                                     "Server did not receive metadata file. "
-                                    "This may cause threaded holes to not be detected correctly."
+                                    "This may cause threaded holes to not be detected correctly.",
+                                    code="102.3"
                                 )
                             else:
                                 # Server received metadata - log details
@@ -357,18 +535,31 @@ class AsyncFreeCADClient:
                         )
                         return job_ack
 
+            except FreeCADServerError:
+                # Re-raise our custom exceptions first — they already carry the
+                # code for the exact failure, and re-wrapping would replace it
+                # with a coarser one.
+                raise
             except aiohttp.ClientConnectorError as e:
                 logger.error(f"[FreeCAD] ❌ Connection failed | url={self.base_url} | error={e}")
                 raise FreeCADConnectionError(f"Unable to connect to FreeCAD server at {self.base_url}: {e}")
+            except asyncio.TimeoutError as e:
+                # aiohttp raises this for connect/read/total timeouts. str(e) is
+                # EMPTY, so any keyword-based classification downstream sees a
+                # blank message and mislabels it — the type is the only signal.
+                logger.error(f"[FreeCAD] ❌ Request timed out | url={self.base_url}")
+                raise FreeCADTimeoutError(f"Timed out submitting job to FreeCAD server at {self.base_url}")
             except aiohttp.ClientResponseError as e:
                 logger.error(f"[FreeCAD] ❌ HTTP error | status={e.status} | error={e}")
-                raise FreeCADProcessingError(f"HTTP error from FreeCAD server: {e}")
-            except (FreeCADConnectionError, FreeCADProcessingError, FreeCADServerNotAvailableError):
-                # Re-raise our custom exceptions
-                raise
+                raise FreeCADProcessingError(
+                    f"HTTP error from FreeCAD server: {e}",
+                    code="102.1" if e.status >= 500 else "102.2"
+                )
             except Exception as e:
                 logger.error(f"[FreeCAD] ❌ Unexpected error | error={e}")
-                raise FreeCADProcessingError(f"Unexpected error during FreeCAD generation: {e}")
+                raise FreeCADProcessingError(
+                    f"Unexpected error during FreeCAD generation: {e}", code="102.2"
+                )
 
     async def get_execution_status_async(self, user_id: str) -> Dict[str, Any]:
         """
@@ -381,7 +572,7 @@ class AsyncFreeCADClient:
             Dictionary containing detailed execution status
         """
         if not user_id:
-            raise FreeCADProcessingError("user_id is required for execution status check")
+            raise FreeCADProcessingError("user_id is required for execution status check", code="105.2")
 
         try:
             url = f"{self.base_url}/freecad/status/{user_id}"
@@ -390,17 +581,25 @@ class AsyncFreeCADClient:
             async with self.session.get(url) as response:
                 # Handle different HTTP status codes
                 if response.status == 404:
-                    raise FreeCADProcessingError(f"No execution status found for user {user_id}")
+                    # The server has no record of this job — it was lost, not
+                    # merely slow to answer.
+                    raise FreeCADProcessingError(f"No execution status found for user {user_id}", code="102.7")
                 elif response.status >= 500:
-                    raise FreeCADProcessingError(f"FreeCAD server internal error (status: {response.status})")
+                    raise FreeCADProcessingError(
+                        f"FreeCAD server internal error (status: {response.status})", code="102.1"
+                    )
                 elif response.status >= 400:
-                    raise FreeCADProcessingError(f"FreeCAD server request error (status: {response.status})")
+                    raise FreeCADProcessingError(
+                        f"FreeCAD server request error (status: {response.status})", code="102.2"
+                    )
 
                 response.raise_for_status()
 
                 status_data = await response.json()
 
-                # Normalize the response format
+                # Normalize the response format. `code`, `error` and `details`
+                # are passed through untouched: they are the server's verdict,
+                # and read_job_verdict() is the only thing that interprets them.
                 normalized_status = {
                     'status': status_data.get('status', 'unknown'),
                     'progress': status_data.get('progress', 0),
@@ -409,8 +608,11 @@ class AsyncFreeCADClient:
                     'timestamp': status_data.get('timestamp', datetime.now().isoformat()),
                     'user_id': status_data.get('user_id', user_id),
                     'execution_time': status_data.get('execution_time', 0),
+                    'code': status_data.get('code'),
                     'error': status_data.get('error'),
-                    'data': status_data.get('data'),
+                    'details': status_data.get('details'),
+                    'final': bool(status_data.get('final')),
+                    'data_source': status_data.get('data_source'),
                     'server_info': {
                         'server_url': self.base_url,
                         'endpoint_used': url
@@ -421,14 +623,17 @@ class AsyncFreeCADClient:
 
                 return normalized_status
 
+        except FreeCADServerError:
+            raise
         except aiohttp.ClientConnectorError as e:
             logger.error(f"Connection to FreeCAD server failed during status check (async): {e}")
             raise FreeCADConnectionError(f"Unable to connect to FreeCAD server for status check: {e}")
-        except (FreeCADConnectionError, FreeCADProcessingError):
-            raise
+        except asyncio.TimeoutError:
+            logger.error(f"Status check timed out (async) | user_id={user_id}")
+            raise FreeCADTimeoutError(f"Timed out reading job status for user {user_id}")
         except Exception as e:
             logger.error(f"Unexpected error during status check (async): {e}")
-            raise FreeCADProcessingError(f"Unexpected error during status check: {e}")
+            raise FreeCADProcessingError(f"Unexpected error during status check: {e}", code="102.2")
 
     async def wait_for_mqtt_completion_async(self, user_id: str, max_duration: int = None,
                                              progress_callback=None) -> Dict[str, Any]:
@@ -466,7 +671,10 @@ class AsyncFreeCADClient:
 
         start_time = time.time()
         progress_history = []
-        job_completed = {'status': None, 'result': None, 'error': None}
+        # 'code' is the error-table entry for whatever ended the job; it is set
+        # next to 'error' at every failure point so the caller never has to
+        # re-derive it from the message text.
+        job_completed = {'status': None, 'result': None, 'error': None, 'code': None}
         # Last percentage echoed to the console. The server emits an update every
         # few hundred ms, so this throttles them to roughly one line per quarter
         # of the job — enough to see a long job moving, without a wall of text.
@@ -491,6 +699,7 @@ class AsyncFreeCADClient:
                 error_msg = f"MQTT connection failed with code: {rc}"
                 logger.error(f"[MQTT] ❌ {error_msg}")
                 job_completed['error'] = error_msg
+                job_completed['code'] = "102.9"
 
         def on_message(client, userdata, msg):
             """Callback when MQTT message is received"""
@@ -561,125 +770,26 @@ class AsyncFreeCADClient:
                 # HANDLE STATUS UPDATES (COMPLETION/FAILURE)
                 # ============================================================
                 if topic_type == 'status':
-                    status = data.get('status', '')
-                    message = data.get('message', '')
+                    verdict = read_job_verdict(data)
+                    status = verdict['status']
 
-                    logger.debug(f"[MQTT] Status | user_id={user_id} | {status} | {message[:60]}")
+                    if not verdict['is_terminal']:
+                        logger.debug(f"[MQTT] Status | user_id={user_id} | {status} | {verdict['message'][:60]}")
+                        return
 
-                    # Check for successful completion
-                    if status in ['finished', 'completed', 'success', 'complete']:
-                        elapsed = round(time.time() - start_time, 2)
+                    elapsed = round(time.time() - start_time, 2)
+                    _log_job_verdict(logger, user_id, verdict)
+
+                    if verdict['succeeded']:
                         logger.debug(f"[MQTT] Completed | user_id={user_id} | time={elapsed}s")
                         job_completed['status'] = 'completed'
                         job_completed['result'] = data
-                        client.disconnect()
-
-                    # Check for failure
-                    elif status in ['failed', 'error']:
-                        # Extract and LOG detailed error information from new format
-                        error_obj = data.get('error', {})
-                        details_obj = data.get('details', {})
-
-                        # Normalize error_obj to dict
-                        if isinstance(error_obj, str):
-                            try:
-                                error_obj = json.loads(error_obj)
-                            except (json.JSONDecodeError, TypeError):
-                                error_obj = {"error_message": error_obj}
-                        if not isinstance(error_obj, dict):
-                            error_obj = {"error_message": str(error_obj)}
-                        
-                        # Normalize details_obj to dict
-                        if isinstance(details_obj, str):
-                            try:
-                                details_obj = json.loads(details_obj)
-                            except (json.JSONDecodeError, TypeError):
-                                details_obj = {}
-                        if not isinstance(details_obj, dict):
-                            details_obj = {}
-
-                        # Pull useful fields for logging from both error and details
-                        specific_exception = (
-                            error_obj.get('specific_exception')
-                            or error_obj.get('error_message')
-                            or details_obj.get('specific_exception')
-                        )
-                        error_hint = (
-                            error_obj.get('error_hint')
-                            or details_obj.get('error_hint')
-                        )
-                        stdout_tail = error_obj.get('stdout_tail') or details_obj.get('stdout_tail')
-                        stderr_tail = error_obj.get('stderr_tail') or details_obj.get('stderr_tail')
-
-                        # Log full technical details for developers/admins only
-                        try:
-                            logger.error(
-                                "[MQTT] ❌ Job failed | "
-                                "user_id=%s | status=%s | message=%s | "
-                                "specific_exception=%s | error_hint=%s",
-                                user_id, status, message, specific_exception, error_hint
-                            )
-                            # Log tails if present
-                            if stdout_tail:
-                                logger.error(
-                                    "[MQTT] stdout_tail (last %d lines):\n%s",
-                                    len(stdout_tail) if isinstance(stdout_tail, list) else 0,
-                                    "\n".join(stdout_tail) if isinstance(stdout_tail, list) else str(stdout_tail)
-                                )
-                            if stderr_tail:
-                                logger.error(
-                                    "[MQTT] stderr_tail (last %d lines):\n%s",
-                                    len(stderr_tail) if isinstance(stderr_tail, list) else 0,
-                                    "\n".join(stderr_tail) if isinstance(stderr_tail, list) else str(stderr_tail)
-                                )
-                        except Exception as log_err:
-                            logger.debug(f"[MQTT] Error while logging technical details: {log_err}")
-
-                        # Detect if this "failed" is actually a timeout
-                        # Server sometimes reports timeouts as status='failed' instead of 'partial_success'
-                        all_error_text = f"{message} {specific_exception or ''} {error_hint or ''}".lower()
-                        is_timeout = any(kw in all_error_text for kw in [
-                            'timeout', 'timed out', 'timed_out', 'time out',
-                            'exceeded', 'deadline'
-                        ])
-                        is_partial = 'partial_success' in all_error_text
-
+                    else:
                         job_completed['status'] = 'failed'
-                        if is_timeout:
-                            logger.warning(f"[MQTT] ⏱️ Timeout detected in failed status | user_id={user_id}")
-                            job_completed['error'] = f"TIMEOUT:{message}"
-                        elif is_partial:
-                            logger.warning(f"[MQTT] ⚠️ Partial success detected in failed status | user_id={user_id}")
-                            job_completed['error'] = f"PARTIAL_SUCCESS:{message}"
-                        else:
-                            # Genuine execution failure → prefer specific error over generic message
-                            # Priority: specific_exception > error_hint > message > fallback
-                            actual_error = specific_exception or error_hint or message or 'EXECUTION_FAILED'
-                            job_completed['error'] = actual_error
-                        client.disconnect()
+                        job_completed['error'] = verdict['detail']
+                        job_completed['code'] = verdict['code']
 
-                    # Check for partial success / warning
-                    elif status in ['partial_success', 'warning']:
-                        elapsed = round(time.time() - start_time, 2)
-                        # PDF generation is optional: STEP/OBJ export already succeeded by this
-                        # point, so a PDF-only failure must not fail the whole job (see 104.6).
-                        if 'pdf' in message.lower():
-                            logger.warning(
-                                f"[MQTT] ⚠️ PDF generation failed (optional, ignored) | "
-                                f"user_id={user_id} | status={status} | "
-                                f"message={message} | time={elapsed}s"
-                            )
-                            job_completed['status'] = 'completed'
-                            job_completed['result'] = data
-                        else:
-                            logger.warning(
-                                f"[MQTT] ⚠️ Partial success / warning | "
-                                f"user_id={user_id} | status={status} | "
-                                f"message={message} | time={elapsed}s"
-                            )
-                            job_completed['status'] = 'failed'
-                            job_completed['error'] = f"PARTIAL_SUCCESS:{message}"
-                        client.disconnect()
+                    client.disconnect()
 
             except Exception as e:
                 logger.error(f"[MQTT] ❌ Error processing message | user_id={user_id} | error={e}")
@@ -700,7 +810,18 @@ class AsyncFreeCADClient:
             # CONNECT TO MQTT BROKER
             # ============================================================
             logger.debug(f"[MQTT] Connecting | broker={mqtt_config.broker_host}:{mqtt_config.broker_port} | user_id={user_id}")
-            mqtt_client.connect(mqtt_config.broker_host, mqtt_config.broker_port, keepalive=60)
+            try:
+                mqtt_client.connect(mqtt_config.broker_host, mqtt_config.broker_port, keepalive=60)
+            except Exception as connect_error:
+                # A broker we cannot even reach is a progress-channel failure
+                # (102.9), not a FreeCAD execution failure — without this the
+                # socket error fell through to the generic handler and the user
+                # was told their model could not be built.
+                raise FreeCADProcessingError(
+                    f"Unable to connect to MQTT broker "
+                    f"{mqtt_config.broker_host}:{mqtt_config.broker_port}: {connect_error}",
+                    code="102.9"
+                )
 
             # Start MQTT loop in background
             mqtt_client.loop_start()
@@ -732,91 +853,29 @@ class AsyncFreeCADClient:
                     try:
                         logger.debug(f"[MQTT] Fallback HTTP check | user_id={user_id} | elapsed={elapsed:.0f}s")
                         fallback_status = await self.get_execution_status_async(user_id)
-                        fb_status = fallback_status.get('status', 'unknown')
-                        fb_message = fallback_status.get('message', '')
 
-                        if fb_status in ['failed', 'error']:
+                        # Same reader as the MQTT path: /freecad/status serves the
+                        # same outcome envelope, so both routes reach the same
+                        # verdict instead of each guessing in its own way.
+                        verdict = read_job_verdict(fallback_status)
+                        if verdict['is_terminal']:
                             logger.warning(
-                                f"[MQTT] ⚠️ Fallback detected failure via HTTP | "
-                                f"user_id={user_id} | status={fb_status} | message={fb_message[:100]}"
+                                f"[MQTT] ⚠️ Outcome detected via HTTP fallback | user_id={user_id} | "
+                                f"status={verdict['status']} | source={fallback_status.get('data_source')}"
                             )
-                            
-                            # Try to extract specific FreeCAD error from error/data fields
-                            fb_error_obj = fallback_status.get('error') or {}
-                            fb_data_obj = fallback_status.get('data') or {}
-                            
-                            # Normalize to dict
-                            if isinstance(fb_error_obj, str):
-                                try:
-                                    fb_error_obj = json.loads(fb_error_obj)
-                                except (json.JSONDecodeError, TypeError):
-                                    fb_error_obj = {}
-                            if not isinstance(fb_error_obj, dict):
-                                fb_error_obj = {}
-                            if not isinstance(fb_data_obj, dict):
-                                fb_data_obj = {}
-                            
-                            # Extract actual FreeCAD error from various possible fields
-                            specific_error = (
-                                fb_error_obj.get('specific_exception')
-                                or fb_error_obj.get('error_hint')
-                                or fb_error_obj.get('error_message')
-                                or fb_data_obj.get('specific_exception')
-                                or fb_data_obj.get('error_hint')
-                            )
-                            
-                            if specific_error:
-                                logger.info(f"[MQTT] Fallback extracted specific error: {specific_error[:100]}")
-                            
-                            # Build detailed error message for auto-retry
-                            detailed_error = specific_error or fb_message or 'EXECUTION_FAILED'
-                            
-                            # Check if it's a timeout or partial success
-                            all_fb_text = f"{fb_message} {detailed_error}".lower()
-                            is_fb_timeout = any(kw in all_fb_text for kw in [
-                                'timeout', 'timed out'
-                            ])
-                            is_fb_partial = 'partial_success' in all_fb_text
-                            # PDF generation is optional: a partial_success/warning caused only by
-                            # a failed PDF export must not fail the whole job (see 104.6).
-                            is_fb_pdf_only = is_fb_partial and 'pdf' in all_fb_text
+                            _log_job_verdict(logger, user_id, verdict)
 
-                            if is_fb_pdf_only:
-                                logger.warning(
-                                    f"[MQTT] ⚠️ Fallback: PDF generation failed (optional, ignored) | "
-                                    f"user_id={user_id} | message={fb_message[:100]}"
-                                )
+                            if verdict['succeeded']:
                                 job_completed['status'] = 'completed'
                                 job_completed['result'] = fallback_status
-                                try:
-                                    mqtt_client.disconnect()
-                                except:
-                                    pass
-                                break
-
-                            job_completed['status'] = 'failed'
-                            if is_fb_timeout:
-                                job_completed['error'] = f"TIMEOUT:{fb_message}"
-                            elif is_fb_partial:
-                                job_completed['error'] = f"PARTIAL_SUCCESS:{fb_message}"
                             else:
-                                job_completed['error'] = detailed_error
-                            try:
-                                mqtt_client.disconnect()
-                            except:
-                                pass
-                            break
+                                job_completed['status'] = 'failed'
+                                job_completed['error'] = verdict['detail']
+                                job_completed['code'] = verdict['code']
 
-                        elif fb_status in ['completed', 'success', 'finished', 'complete']:
-                            logger.warning(
-                                f"[MQTT] ⚠️ Fallback detected completion via HTTP | "
-                                f"user_id={user_id} | status={fb_status}"
-                            )
-                            job_completed['status'] = 'completed'
-                            job_completed['result'] = fallback_status
                             try:
                                 mqtt_client.disconnect()
-                            except:
+                            except Exception:
                                 pass
                             break
 
@@ -839,9 +898,16 @@ class AsyncFreeCADClient:
                 logger.error(
                     f"[MQTT] ❌ Job failed | "
                     f"user_id={user_id} | "
+                    f"code={job_completed['code']} | "
                     f"error={job_completed['error']}"
                 )
-                raise FreeCADProcessingError(job_completed['error'])
+                raise FreeCADProcessingError(
+                    job_completed['error'],
+                    # No code set means the loop ended without any failure
+                    # classifying itself — treat it as an execution failure,
+                    # the meaning of a bare 'failed' from the worker.
+                    code=job_completed['code'] or "104.1"
+                )
 
             if job_completed['status'] == 'completed':
                 total_time = time.time() - start_time
@@ -860,7 +926,8 @@ class AsyncFreeCADClient:
                     'final_status': job_completed.get('result', {}),
                     'total_time': round(total_time, 2),
                     'progress_history': progress_history,
-                    'error': job_completed.get('error', 'Unknown error')
+                    'error': job_completed.get('error', 'Unknown error'),
+                    'code': job_completed.get('code') or "104.1"
                 }
 
         except Exception as e:
@@ -1029,7 +1096,7 @@ class AsyncFreeCADClient:
                         f"url={url} | "
                         f"response={response_text[:500]}"
                     )
-                    raise FreeCADProcessingError(f"Job result not found for user {user_id}")
+                    raise FreeCADProcessingError(f"Job result not found for user {user_id}", code="102.8")
                 elif response.status >= 500:
                     logger.error(
                         f"[RESULT] ❌ Server error | "
@@ -1037,7 +1104,9 @@ class AsyncFreeCADClient:
                         f"status={response.status} | "
                         f"response={response_text[:500]}"
                     )
-                    raise FreeCADProcessingError(f"FreeCAD server internal error (status: {response.status})")
+                    raise FreeCADProcessingError(
+                        f"FreeCAD server internal error (status: {response.status})", code="102.1"
+                    )
                 elif response.status >= 400:
                     logger.error(
                         f"[RESULT] ❌ Client error | "
@@ -1045,7 +1114,9 @@ class AsyncFreeCADClient:
                         f"status={response.status} | "
                         f"response={response_text[:500]}"
                     )
-                    raise FreeCADProcessingError(f"FreeCAD server request error (status: {response.status})")
+                    raise FreeCADProcessingError(
+                        f"FreeCAD server request error (status: {response.status})", code="102.2"
+                    )
 
                 response.raise_for_status()
 
@@ -1060,7 +1131,7 @@ class AsyncFreeCADClient:
                         f"error={e} | "
                         f"response={response_text[:500]}"
                     )
-                    raise FreeCADProcessingError(f"Failed to parse server response: {e}")
+                    raise FreeCADProcessingError(f"Failed to parse server response: {e}", code="102.3")
 
                 # Log result summary
                 if auto_download:
@@ -1075,6 +1146,8 @@ class AsyncFreeCADClient:
                     logger.debug(f"[RESULT] Info retrieved | user_id={user_id} | no_download")
                     return result_data
 
+        except FreeCADServerError:
+            raise
         except aiohttp.ClientConnectorError as e:
             logger.error(
                 f"[RESULT] ❌ Connection failed | "
@@ -1082,15 +1155,16 @@ class AsyncFreeCADClient:
                 f"error={e}"
             )
             raise FreeCADConnectionError(f"Unable to connect to FreeCAD server for result retrieval: {e}")
-        except (FreeCADConnectionError, FreeCADProcessingError):
-            raise
+        except asyncio.TimeoutError:
+            logger.error(f"[RESULT] ❌ Request timed out | user_id={user_id}")
+            raise FreeCADTimeoutError(f"Timed out retrieving job result for user {user_id}")
         except Exception as e:
             logger.error(
                 f"[RESULT] ❌ Unexpected error | "
                 f"user_id={user_id} | "
                 f"error={e}"
             )
-            raise FreeCADProcessingError(f"Unexpected error during result retrieval: {e}")
+            raise FreeCADProcessingError(f"Unexpected error during result retrieval: {e}", code="102.8")
 
     async def _download_file_with_retry(
         self,
@@ -1185,10 +1259,14 @@ class AsyncFreeCADClient:
                     else:
                         error_msg += f": {last_error}"
                     logger.error(f"[DOWNLOAD] {user_context}❌ {error_msg}")
-                    raise Exception(error_msg)
+                    # The job itself succeeded — only the transfer failed, so
+                    # this is 102.8 and never an execution failure.
+                    raise FreeCADProcessingError(error_msg, code="102.8")
 
         # Should never reach here, but just in case
-        raise Exception(f"Failed to download {file_type.upper()} file after {max_retries} attempts")
+        raise FreeCADProcessingError(
+            f"Failed to download {file_type.upper()} file after {max_retries} attempts", code="102.8"
+        )
 
     async def _handle_json_response_async(self, json_response: Dict[str, Any], user_id: str, expect_obj: bool = True) -> Dict[str, Any]:
         """
@@ -1215,26 +1293,47 @@ class AsyncFreeCADClient:
         try:
             # Check if response indicates success
             status = json_response.get('status', '')
-            if status != 'success':
-                error_msg = f'Server returned non-success status: {status}'
-                logger.error(f"[FILE_DOWNLOAD] user_id={user_id} | ❌ {error_msg}")
+            # /freecad/result now reports the job's real outcome, so the verdict
+            # is read here exactly as it is on the MQTT path. It used to answer
+            # "success" for any user whose output folder existed — a failed job
+            # was only discovered further down, by finding no files.
+            verdict = read_job_verdict(json_response)
+            if verdict['is_terminal'] and not verdict['succeeded']:
+                _log_job_verdict(logger, user_id, verdict)
                 return {
                     'success': False,
-                    'message': error_msg,
+                    'message': verdict['detail'] or f'Server returned status: {status}',
+                    'code': verdict['code'] or "104.4",
                     'response': json_response
                 }
+            if verdict['status'] in _PARTIAL_STATUSES:
+                logger.warning(
+                    f"[FILE_DOWNLOAD] user_id={user_id} | ⚠️ Optional export missing, continuing | "
+                    f"{verdict['message'][:160]}"
+                )
+            elif not verdict['is_terminal']:
+                # 'running' / 'queued': the job has not finished. Retryable, so
+                # the caller's download loop waits instead of failing the job.
+                raise FreeCADProcessingError(
+                    f"Job result not ready yet (status: {status})", code="102.8"
+                )
 
             # Check if response contains files
             files_info = json_response.get('files', [])
 
-            logger.debug(f"[FILE_DOWNLOAD] Response | user_id={user_id} | status={json_response.get('status')} | files={len(files_info)}")
+            logger.debug(f"[FILE_DOWNLOAD] Response | user_id={user_id} | status={status} | files={len(files_info)}")
 
             if not files_info:
-                error_msg = 'Job completed successfully but no files were generated'
-                logger.warning(f"[FILE_DOWNLOAD] user_id={user_id} | ⚠️ {error_msg}")
+                # A job that claims success with an empty file list produced
+                # nothing usable. Previously returned as success=True, which
+                # pushed the failure downstream into a confusing "no STEP file"
+                # much later in the export path.
+                error_msg = 'Job reported success but no files were generated'
+                logger.error(f"[FILE_DOWNLOAD] user_id={user_id} | ❌ {error_msg}")
                 return {
-                    'success': True,
+                    'success': False,
                     'message': error_msg,
+                    'code': "104.3",
                     'response': json_response
                 }
 
@@ -1265,7 +1364,7 @@ class AsyncFreeCADClient:
                 if not filename or not download_url:
                     error_msg = f"File info missing filename or download_url: {file_info}"
                     logger.error(f"[FILE_DOWNLOAD] user_id={user_id} | ❌ {error_msg}")
-                    raise Exception(error_msg)
+                    raise FreeCADProcessingError(error_msg, code="102.3")
 
                 # Fix localhost URL issue
                 if 'localhost' in download_url:
@@ -1346,7 +1445,9 @@ class AsyncFreeCADClient:
             if missing_required:
                 error_msg = f"Missing required files: {', '.join(sorted(missing_required))}. Expected {'+'.join(sorted(t.upper() for t in required_file_types))} but got {list(downloaded_types)}"
                 logger.error(f"[FILE_DOWNLOAD] user_id={user_id} | ❌ VALIDATION FAILED: {error_msg}")
-                raise Exception(error_msg)
+                # The transfer worked; the CAD output the job was supposed to
+                # produce is simply not there → 104.3, not a download error.
+                raise FreeCADProcessingError(error_msg, code="104.3")
 
             # Log warning if optional PDF/OBJ are missing, but do not fail the export
             if missing_optional:
@@ -1363,12 +1464,15 @@ class AsyncFreeCADClient:
                 'response': json_response
             }
 
+        except FreeCADServerError:
+            # Already classified above — re-wrapping it in a plain Exception
+            # (as this used to) threw away the code and left every download and
+            # validation failure to be reported as a generic execution failure.
+            raise
         except Exception as e:
             error_msg = f"Error handling JSON response: {e}"
             logger.error(f"[FILE_DOWNLOAD] user_id={user_id} | ❌ {error_msg}")
-
-            # Re-raise the exception to propagate it up
-            raise Exception(error_msg)
+            raise FreeCADProcessingError(error_msg, code="102.8")
 
 
 def create_freecad_client(use_async: bool = True, **kwargs) -> AsyncFreeCADClient:

@@ -15,6 +15,7 @@ from .models import (
     DesignRequirements, AnalysisAndParameterCheckOutput
 )
 from .agent_utils import detect_detailed_explanation_request
+from .error_codes import CadError, as_user_error, error_code_of
 from .agent_chains import (
     create_greeting_classification_chain,
     create_unified_processing_chain,
@@ -98,34 +99,6 @@ MODELS = {
     "expert": "o4-mini-2025-04-16",
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
-# ERROR CODE SYSTEM (sub-numbered for easy debugging)
-# ═══════════════════════════════════════════════════════════════════════════
-ERROR_CODES = {
-    # Error 101.x — Timeout exceeded
-    "101.1": "101.1",
-    # Error 102.x — Communication with the FreeCAD server
-    "102.1": "102.1",
-    "102.2": "102.2",
-    "102.3": "102.3",
-    "102.4": "102.4",
-    "102.5": "102.5",
-    "102.6": "102.6",
-    "102.7": "102.7",
-    "102.8": "102.8",
-    # Error 104.x — FreeCAD execution failure
-    "104.1": "104.1",
-    "104.2": "104.2",
-    "104.3": "104.3",
-    "104.4": "104.4",
-    "104.5": "104.5",
-    "104.6": "104.6",
-    # Error 105.x — Code generation failure
-    "105.1": "105.1",
-    "105.2": "105.2",
-    "105.3": "105.3",
-    "105.4": "105.4",
-}
 
 class EnhancedFaceProcessor:
     """Enhanced face identification and processing system for AI-driven face editing."""
@@ -2376,7 +2349,7 @@ class TextToCADAgent:
             error_traceback = traceback.format_exc()
             logger.error(f"[ERROR] Error during unified request processing for session {session_id}: {e}")
             logger.error(f"Traceback: {error_traceback}")
-            return {"error": f"Error processing request: {str(e)}", "code": None}
+            return {"error": as_user_error(e), "code": None}
 
     async def process_request(self, user_text, is_edit_request=False, session_id=None, request_origin='api', material_choice=None):
         """
@@ -2435,7 +2408,7 @@ class TextToCADAgent:
         
         if session_id is None:
             logger.error("ERROR: session_id is None in generate_code_from_requirements. Cannot proceed.")
-            return {"error": ERROR_CODES["105.2"], "code": None}
+            return {"error": str(CadError("105.2")), "code": None}
 
         state = self._get_session_state(session_id)
         confirmed_rag_description = (design_requirements_obj.description or "").strip()
@@ -2693,20 +2666,17 @@ class TextToCADAgent:
                     # CRITICAL FIX: Return generated code for ALL save errors
                     # Code has already been saved to session state above
                     # Common errors: complex, server communication, file I/O, etc.
-                    error_str = str(save_error)
-                    
-                    # Log the specific error type
-                    error_keywords = ["Shape too complex"]
-                    if any(keyword in error_str for keyword in error_keywords):
-                        logger.error(f"[ERROR] FreeCAD execution failed (complex shape) for session {session_id}: {save_error}")
-                    elif any(keyword in error_str.lower() for keyword in ['server', 'connection', 'network', 'communication']):
-                        logger.error(f"[ERROR] FreeCAD server communication failed for session {session_id}: {save_error}")
-                    else:
-                        logger.error(f"[ERROR] FreeCAD export failed for session {session_id}: {save_error}")
-                    
+                    # save_outputs raises CadError, so the code identifies the
+                    # failure precisely; anything else is an internal error and
+                    # becomes 105.6 rather than leaking a raw Python message.
+                    logger.error(
+                        f"[ERROR] Export failed for session {session_id} | "
+                        f"code={error_code_of(save_error)} | {save_error}"
+                    )
+
                     # Return code to user even though export failed
                     # This allows users to see and edit the generated code
-                    return {"error": error_str, "code": generated_code}
+                    return {"error": as_user_error(save_error), "code": generated_code}
             else:
                 # Update session state and return code only
                 await update_session_async()
@@ -2719,7 +2689,9 @@ class TextToCADAgent:
             import traceback
             error_traceback = traceback.format_exc()
             logger.error(f"[ERROR] Error during code generation for session {session_id}: {e}\n{error_traceback}")
-            return {"error": ERROR_CODES["105.1"], "code": None}
+            # A coded failure from further down (export, file handling) keeps its
+            # own code — only an unclassified failure is a code-generation one.
+            return {"error": as_user_error(e) if error_code_of(e) else str(CadError("105.1")), "code": None}
         finally:
             # Cost logging handled by process_request_with_progress
             pass
@@ -2729,7 +2701,7 @@ class TextToCADAgent:
 
         if session_id is None:
             logger.error("ERROR: session_id is None in process_edit_request. Cannot proceed.")
-            return {"error": "Session ID missing in process_edit_request", "code": None}
+            return {"error": str(CadError("105.2")), "code": None}
 
         # ── Load session state ─────────────────────────────────────────────────
         loop = asyncio.get_event_loop()
@@ -3247,7 +3219,7 @@ class TextToCADAgent:
 
         except Exception as e:
             logger.error(f"[ERROR] Error during code editing for session {session_id}: {e}")
-            return {"error": f"Error editing code: {e}", "code": None}
+            return {"error": str(CadError("105.3", detail=str(e))), "code": None}
 
         # ── Save files and return ───────────────────────────────────────────────
         current_requirements = self._prepare_current_requirements(state)
@@ -3267,12 +3239,11 @@ class TextToCADAgent:
                 "pdf_path": pdf_path,
             }
         except Exception as save_error:
-            error_str = str(save_error)
-            if any(k in error_str.lower() for k in ['server', 'connection', 'network', 'communication']):
-                logger.error(f"[ERROR] FreeCAD server communication failed for edit session {session_id}: {save_error}")
-            else:
-                logger.error(f"[ERROR] FreeCAD export failed for edit session {session_id}: {save_error}")
-            return {"error": error_str, "code": edited_code}
+            logger.error(
+                f"[ERROR] Export failed for edit session {session_id} | "
+                f"code={error_code_of(save_error)} | {save_error}"
+            )
+            return {"error": as_user_error(save_error), "code": edited_code}
 
     async def _retrieve_edit_context(self, rag_query: str, session_id: str) -> str:
         """
@@ -3420,15 +3391,12 @@ class TextToCADAgent:
             
         Returns:
             Tuple of (result_dict, downloaded_files_dict)
-            
+
         Raises:
-            Exception with appropriate ERROR_CODES on failure
+            CadError carrying the code of the exact failure (see error_codes.py)
         """
         from src.core.freecad_remote_client import (
-            FreeCADConnectionError,
-            FreeCADTimeoutError,
-            FreeCADServerNotAvailableError,
-            FreeCADProcessingError,
+            FreeCADServerError,
             create_freecad_client
         )
         import datetime
@@ -3444,9 +3412,8 @@ class TextToCADAgent:
             async with create_freecad_client(use_async=True) as client:
                 # Check server health before proceeding
                 if not await client.check_server_health():
-                    logger.error(ERROR_CODES["102.1"])
-                    logger.error(f"[ERROR] {ERROR_CODES['102.1']}")
-                    raise Exception(ERROR_CODES["102.1"])
+                    logger.error(f"[FreeCAD] ❌ Health check failed | url={client.base_url}")
+                    raise CadError("102.1", detail=f"Health check failed for {client.base_url}")
 
                 # Use session_id as user_id, or generate fallback
                 if session_id:
@@ -3475,34 +3442,17 @@ class TextToCADAgent:
                     priority=priority
                 )
 
-                # ============================================================
-                # VERIFY SUBMISSION RESPONSE
-                # ============================================================
-                logger.debug(f"[FreeCAD] Response received | user_id={user_id} | status={submit_result.get('status')}")
-
-                if not submit_result:
-                    logger.error(f"[FreeCAD] ❌ CHECK 1 FAILED: {ERROR_CODES['102.2']}")
-                    raise Exception(ERROR_CODES["102.2"])
-
-                if not submit_result.get('user_id'):
-                    logger.error(f"[FreeCAD] ❌ CHECK 3 FAILED: No user_id returned. Response: {submit_result}")
-                    raise Exception(ERROR_CODES["102.3"])
-
-                if submit_result.get('user_id') != user_id:
-                    logger.error(f"[FreeCAD] ❌ CHECK 4 FAILED: user_id mismatch. Expected: {user_id}, Got: {submit_result.get('user_id')}")
-                    raise Exception(ERROR_CODES["102.4"])
-
-                response_status = submit_result.get('status')
-                if response_status != 'queued':
-                    logger.error(f"[FreeCAD] ❌ CHECK 5 FAILED: Invalid status. Expected: 'queued', Got: '{response_status}'. Response: {submit_result}")
-                    raise Exception(ERROR_CODES["102.5"])
-
-                mqtt_published = submit_result.get('mqtt_published', False)
-                if not mqtt_published:
-                    logger.error(f"[FreeCAD] ❌ CHECK 6 FAILED: MQTT not published. Response: {submit_result}")
-                    raise Exception(ERROR_CODES["102.6"])
-
-                logger.debug(f"[FreeCAD] Phase 1 complete | user_id={user_id} | status={response_status} | mqtt={mqtt_published}")
+                # The submission response is fully validated inside
+                # client.generate() -- missing user_id (102.3), user_id mismatch
+                # (102.4), status != 'queued' (102.5) and mqtt_published false
+                # (102.6) all raise there before it returns. The block that used
+                # to repeat those four checks here could never run, so a real
+                # handshake failure only ever surfaced through the generic
+                # handler below as "execution failed".
+                logger.debug(
+                    f"[FreeCAD] Phase 1 complete | user_id={user_id} | "
+                    f"status={submit_result.get('status')} | mqtt={submit_result.get('mqtt_published')}"
+                )
 
                 # ============================================================
                 # PHASE 2: VERIFY JOB EXISTS ON SERVER
@@ -3514,24 +3464,28 @@ class TextToCADAgent:
                     verification_status = await client.get_execution_status_async(user_id)
 
                     if not verification_status:
-                        logger.error(f"[FreeCAD] ❌ CHECK 5 FAILED: Server returned empty status for user_id={user_id}")
-                        raise Exception(ERROR_CODES["102.7"])
+                        logger.error(f"[FreeCAD] ❌ Server returned empty status for user_id={user_id}")
+                        raise CadError("102.7", detail=f"Empty status payload for {user_id}")
 
                     server_user_id = verification_status.get('user_id')
                     server_status = verification_status.get('status')
 
                     if server_user_id != user_id:
-                        logger.error(f"[FreeCAD] ❌ CHECK 6 FAILED: user_id mismatch! Expected: {user_id}, Server returned: {server_user_id}")
-                        raise Exception(ERROR_CODES["102.7"])
+                        logger.error(f"[FreeCAD] ❌ user_id mismatch! Expected: {user_id}, Server returned: {server_user_id}")
+                        raise CadError("102.4", detail=f"Status belongs to {server_user_id}, not {user_id}")
 
                     logger.debug(f"[FreeCAD] Phase 2 complete | user_id={user_id} | status={server_status}")
 
-                except FreeCADProcessingError as verify_error:
-                    if "404" in str(verify_error) or "not found" in str(verify_error).lower():
+                except CadError:
+                    raise
+                except FreeCADServerError as verify_error:
+                    # Only "the server has no such job" (102.7) is fatal here:
+                    # the job was accepted moments ago, so anything else is the
+                    # status endpoint being slow or flaky while the job runs.
+                    if error_code_of(verify_error) == "102.7":
                         logger.error(f"[FreeCAD] ❌ CRITICAL: Job NOT FOUND on server. Error: {verify_error}")
-                        raise Exception(ERROR_CODES["102.7"])
-                    else:
-                        logger.warning(f"[FreeCAD] ⚠️ Job verification warning (continuing): {verify_error}")
+                        raise CadError("102.7", detail=str(verify_error))
+                    logger.warning(f"[FreeCAD] ⚠️ Job verification warning (continuing): {verify_error}")
                 except Exception as verify_error:
                     logger.error(f"[FreeCAD] ❌ Job verification failed with unexpected error: {verify_error}")
                     logger.warning(f"[FreeCAD] ⚠️ Continuing despite verification error - job may still be processing")
@@ -3557,22 +3511,17 @@ class TextToCADAgent:
                 # CHECK MQTT LISTENING RESULT
                 # ============================================================
                 if not monitoring_result.get('success'):
+                    # The client classified the failure while it still had the
+                    # server's own words (message + specific_exception + hint);
+                    # re-guessing here from a truncated string is what used to
+                    # turn every failure into 104.1.
                     raw_error = monitoring_result.get('error', 'Unknown error during execution')
+                    code = monitoring_result.get('code') or "104.1"
                     logger.error(
                         f"[FreeCAD] ❌ PHASE 3 FAILED: Job failed | "
-                        f"user_id={user_id} | "
-                        f"raw_error={raw_error}"
+                        f"user_id={user_id} | code={code} | raw_error={raw_error}"
                     )
-
-                    if isinstance(raw_error, str):
-                        if raw_error.startswith('TIMEOUT:') or 'timed out' in raw_error.lower():
-                            logger.error(f"[FreeCAD] ⏱️ TIMEOUT | user_id={user_id} | detail={raw_error}")
-                            raise Exception(ERROR_CODES["101.1"])
-                        if raw_error.startswith('PARTIAL_SUCCESS:') or 'partial_success' in raw_error.lower():
-                            logger.error(f"[FreeCAD] ⚠️ PARTIAL SUCCESS | user_id={user_id} | detail={raw_error}")
-                            raise Exception(ERROR_CODES["104.6"])
-
-                    raise Exception(ERROR_CODES["104.1"])
+                    raise CadError(code, detail=str(raw_error))
 
                 total_time = monitoring_result.get('total_time', 0)
                 logger.debug(f"[FreeCAD] Phase 3 complete | user_id={user_id} | time={total_time:.2f}s")
@@ -3602,11 +3551,13 @@ class TextToCADAgent:
 
                     except Exception as download_error:
                         last_error = download_error
-                        error_str = str(download_error).lower()
-
-                        is_retryable = any(keyword in error_str for keyword in [
-                            'not found', '404', 'connection', 'temporary', 'timeout', 'timed out'
-                        ])
+                        # Retry transport failures only: the job is finished, the
+                        # files are simply not fetchable yet. A 104.x means the
+                        # server has nothing to hand over, so retrying just
+                        # delays an error that will not change.
+                        is_retryable = error_code_of(download_error) in {
+                            "101.2", "102.1", "102.2", "102.7", "102.8"
+                        }
 
                         if is_retryable and attempt < max_download_retries:
                             retry_delay = base_retry_delay * attempt
@@ -3641,7 +3592,7 @@ class TextToCADAgent:
                         f"[FreeCAD] ❌ Failed to download results after {max_download_retries} attempts "
                         f"(total wait time: {total_wait_time}s). Last error: {last_error}"
                     )
-                    raise Exception(ERROR_CODES["102.8"])
+                    raise CadError("102.8", detail=str(last_error))
 
                 total_exec_time = monitoring_result.get('total_time', 0)
                 logger.info(
@@ -3650,69 +3601,45 @@ class TextToCADAgent:
                 )
             
             if not result["success"]:
-                logger.error(f"Remote FreeCAD execution failed: {result.get('message', 'Unknown error')}")
-                if any(keyword in str(result.get('message', '')).lower() for keyword in ['charmap', 'codec', 'encode', 'unicode']):
-                    raise Exception(ERROR_CODES["104.2"])
-                raise Exception(ERROR_CODES["104.1"])
+                message = result.get('message', 'Unknown error')
+                code = result.get('code') or "104.4"
+                logger.error(f"[FreeCAD] ❌ Result reports failure | code={code} | {message}")
+                raise CadError(code, detail=str(message))
 
             logger.debug("Remote FreeCAD execution successful")
 
             downloaded_files = result.get("files", {})
             return result, downloaded_files
-            
-        except (FreeCADConnectionError, FreeCADServerNotAvailableError) as e:
-            logger.error(f"[FreeCAD] Server error | user_id={current_user_id} | session_id={session_id}: {e}")
-            if any(keyword in str(e).lower() for keyword in ['timeout', 'timed out']):
-                logger.error(f"[FreeCAD] Timeout-related error: {e}")
-                raise Exception(ERROR_CODES["101.1"])
-            if any(keyword in str(e).lower() for keyword in ['partial_success']):
-                logger.error(f"[FreeCAD] Partial success error: {e}")
-                raise Exception(ERROR_CODES["104.6"])
-            raise Exception(ERROR_CODES["102.1"])
-        except FreeCADProcessingError as e:
-            error_str = str(e).lower()
-            logger.error(f"[FreeCAD] Processing error | user_id={current_user_id} | session_id={session_id}: {e}")
-            if any(keyword in error_str for keyword in ['timeout', 'timed out']):
-                logger.error(f"[FreeCAD] Timeout-related error: {e}")
-                raise Exception(ERROR_CODES["101.1"])
-            if any(keyword in error_str for keyword in ['partial_success']):
-                logger.error(f"[FreeCAD] Partial success error: {e}")
-                raise Exception(ERROR_CODES["104.6"])
-            raise Exception(ERROR_CODES["104.1"])
+
+        except CadError:
+            # Already carries the code of the exact failure.
+            raise
+        except FreeCADServerError as e:
+            # The client sets `code` at every raise site, so the failure is
+            # already identified. The keyword sniffing that used to live here
+            # ran on messages that were empty (asyncio.TimeoutError) or already
+            # re-wrapped, which is why unrelated failures all ended up as 104.1.
+            code = error_code_of(e) or "102.1"
+            logger.error(
+                f"[FreeCAD] Server error | code={code} | user_id={current_user_id} | "
+                f"session_id={session_id}: {e}"
+            )
+            raise CadError(code, detail=str(e))
+        except asyncio.TimeoutError:
+            logger.error(f"[FreeCAD] Timed out | user_id={current_user_id} | session_id={session_id}")
+            raise CadError("101.2", detail="asyncio.TimeoutError while talking to the FreeCAD server")
         except Exception as e:
-            logger.error(f"[FreeCAD] Error executing script on remote server | user_id={current_user_id} | session_id={session_id}: {e}")
-            # Re-raise immediately if already an ERROR_CODE (format: "NNN.N")
-            if re.match(r'^\d{3}\.\d+$', str(e).strip()):
-                raise
-
-            if any(keyword in str(e).lower() for keyword in ['charmap', 'codec', 'encode', 'unicode']):
-                raise Exception(ERROR_CODES["104.2"])
-
-            if any(keyword in str(e).lower() for keyword in ['timeout', 'timed out']):
-                logger.error(f"[FreeCAD] Timeout-related error: {e}")
-                raise Exception(ERROR_CODES["101.1"])
-
-            if any(keyword in str(e).lower() for keyword in ['partial_success']):
-                logger.error(f"[FreeCAD] Partial success error: {e}")
-                raise Exception(ERROR_CODES["104.6"])
-
-            if any(keyword in str(e).lower() for keyword in ['server', 'connection', 'network', 'unavailable']):
-                logger.error(f"[FreeCAD] Server-related error: {e}")
-                raise Exception(ERROR_CODES["102.1"])
-            raise Exception(ERROR_CODES["104.1"])
+            logger.error(
+                f"[FreeCAD] Unexpected error executing script on remote server | "
+                f"user_id={current_user_id} | session_id={session_id}: {e}"
+            )
+            raise CadError("105.6", detail=f"{type(e).__name__}: {e}")
 
 
 
     async def save_outputs(self, code, design_requirements, base_filename="generated_cad", user_text="", session_id=None, priority: int = 0):
 
         from src.utils.file_manager import save_code_file, save_metadata_file
-        from src.core.freecad_remote_client import (
-    FreeCADConnectionError, 
-    FreeCADTimeoutError, 
-    FreeCADServerNotAvailableError, 
-    FreeCADProcessingError,
-    create_freecad_client
-)
         from src.utils.path_manager import OBJ_OUTPUT_DIR, CAD_OUTPUT_DIR, PDF_OUTPUT_DIR, PROJECT_ROOT
         import datetime
         import asyncio
@@ -3766,7 +3693,7 @@ class TextToCADAgent:
 
         if not code_filepath:
             logger.error("Code file saving failed")
-            raise Exception(ERROR_CODES["105.4"])
+            raise CadError("105.4", detail="save_code_file returned no path")
 
         # 🆕 Generate threaded holes metadata (after code is saved)
         threaded_metadata_path = None
@@ -4012,10 +3939,16 @@ class TextToCADAgent:
             f"  {kind:<9} {path}" for kind, path in artefacts if path
         ))
 
-        # Check if required output files were created
+        # Check if required output files were created. These are two different
+        # failures and used to share one code: the server never producing a STEP
+        # (104.3) is nothing like this API failing to store one it did receive
+        # (105.5), and only the second is worth retrying as-is.
         if not step_path_to_return:
-            logger.error("No STEP file was generated by remote server")
-            raise Exception(ERROR_CODES["104.3"])
+            if "step" not in downloaded_files:
+                logger.error("No STEP file was generated by the remote server")
+                raise CadError("104.3", detail=f"downloaded types: {sorted(downloaded_files)}")
+            logger.error(f"STEP file was downloaded but could not be stored | src={downloaded_files['step']}")
+            raise CadError("105.5", detail=f"copy failed for {downloaded_files['step']}")
 
 
         # PDF is optional — pdf_path_to_return may be None (not generated/failed to copy)
@@ -4290,9 +4223,10 @@ class TextToCADAgent:
                                     })
                             except Exception as export_exc:
                                 logger.error(
-                                    f"[CONFIRM_GATE] Export error: {export_exc} | session={session_id}"
+                                    f"[CONFIRM_GATE] Export error | code={error_code_of(export_exc)} | "
+                                    f"{export_exc} | session={session_id}"
                                 )
-                                fp_result["error"] = str(export_exc)
+                                fp_result["error"] = as_user_error(export_exc)
 
                             yield {
                                 "step": "export",
@@ -4970,8 +4904,11 @@ class TextToCADAgent:
                             "pdf_path": pdf_path,
                         })
                 except Exception as e:
-                    logger.error(f"[AGENT_EXPORT] Error during file export for session {session_id}: {str(e)}")
-                    result["error"] = str(e)
+                    logger.error(
+                        f"[AGENT_EXPORT] Error during file export for session {session_id} | "
+                        f"code={error_code_of(e)} | {e}"
+                    )
+                    result["error"] = as_user_error(e)
                     # CRITICAL: Clear code so downstream logic (has_code check, _handle_export_paths)
                     # does NOT mistake this as a successful generation and serve old cached files.
                     result["code"] = None
@@ -5003,7 +4940,7 @@ class TextToCADAgent:
             total_duration = time.time() - start_time
             logger.error(f"[AGENT_PROGRESS] Error during process_request_with_progress after {total_duration:.2f}s for session {session_id}: {str(e)}")
             logger.error(f"[AGENT_PROGRESS] Traceback: {traceback.format_exc()}")
-            result = {"error": f"Error processing request: {str(e)}", "code": None}
+            result = {"error": as_user_error(e), "code": None}
             yield {"final_result": result}
             return
         finally:
