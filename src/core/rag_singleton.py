@@ -16,6 +16,7 @@ Key Benefits:
 
 import asyncio
 import logging
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -28,6 +29,8 @@ _shared_metadata: Optional[Dict] = None
 _rag_lock = asyncio.Lock()
 _initialization_time: Optional[datetime] = None
 _retrieval_count = 0
+#: Whether "index ready" has been logged — see initialize_rag_singleton().
+_index_ready_announced = False
 
 async def initialize_rag_singleton():
     """
@@ -42,7 +45,8 @@ async def initialize_rag_singleton():
     Returns:
         bool: True if initialization successful
     """
-    global _shared_rag_retriever, _shared_faiss_index, _shared_metadata, _initialization_time
+    global _shared_rag_retriever, _shared_faiss_index, _shared_metadata
+    global _initialization_time, _index_ready_announced
     
     # Double-check locking pattern
     if _shared_rag_retriever is not None:
@@ -73,7 +77,15 @@ async def initialize_rag_singleton():
             _initialization_time = datetime.now()
             duration = (_initialization_time - start_time).total_seconds()
             
-            logger.info(f"[RAG] ✓ Index ready ({duration:.2f}s)")
+            # Announced once per process. This function currently re-runs on
+            # every retrieval — `initialize_retriever()` returns None, so the
+            # `_shared_rag_retriever is not None` guard above never trips — and
+            # until that is fixed the line would otherwise repeat per request.
+            if not _index_ready_announced:
+                _index_ready_announced = True
+                logger.info(f"[RAG] Index ready ({duration:.2f}s)")
+            else:
+                logger.debug(f"[RAG] Index re-initialized ({duration:.2f}s)")
             
             return True
             
@@ -155,7 +167,8 @@ async def get_rag_split_context(
             faiss_index_instance
         )
         
-        logger.info(f"[RAG_SPLIT] 🎯 Single retrieval for query: {query[:80]}...")
+        # The query is echoed by the [RAG] summary once the retrieval is done.
+        logger.debug(f"[RAG_SPLIT] Single retrieval for query: {query[:80]}...")
         
         # PARALLEL RETRIEVAL: Rules and Examples at the same time.
         # A half the caller asked for zero of is not retrieved at all — its
@@ -194,7 +207,7 @@ async def get_rag_split_context(
             if k_examples > 0 else _no_docs()
         )
         if k_rules <= 0 or k_examples <= 0:
-            logger.info(
+            logger.debug(
                 f"[RAG_SPLIT] half-retrieval: k_rules={k_rules}, k_examples={k_examples} "
                 f"→ skipping the zero half entirely"
             )
@@ -223,13 +236,32 @@ async def get_rag_split_context(
         examples_count = len(ex_only)
         info_count = len(info_only)
         
-        # Compact summary report
-        logger.info(
-            f"\n🎯 [RAG SUMMARY] Query: '{query[:]}...'\n"
-            f"   📝 Rules: {rule_count} | 💡 Examples: {examples_count} | ℹ️  Info: {info_count}\n"
-            f"   🏷️  Classes: {detected_classes}\n"
-            f"   ⏱️  Time: {retrieval_time:.2f}s | ✅ Success"
+        # One block for the whole retrieval: counts on the first line, then what
+        # was actually picked. The retriever used to log its own [RAG_RULES] and
+        # [RAG_EXAMPLES] lines here too, restating these counts from the inside;
+        # everything they carried is derivable from the documents themselves.
+        # The expanded query is multi-line by construction, so it is flattened.
+        flat_query = ' · '.join(part.strip() for part in query.splitlines() if part.strip())
+        totals = ' · '.join(
+            f"{count} {label}"
+            for label, count in (('rules', rule_count), ('examples', examples_count),
+                                 ('info', info_count))
+            if count
         )
+        lines = [
+            f"[RAG] {totals or 'nothing retrieved'} · {retrieval_time:.1f}s "
+            f"| q='{flat_query[:70]}'"
+        ]
+        if rules_documents:
+            rule_ids = ' '.join(d.metadata.get('rule_id', '?') for d in rules_documents)
+            lines.append(f"  rules     {', '.join(detected_classes)}: {rule_ids}")
+        if ex_only:
+            # Deduplicated: the top examples are routinely several chunks of one file.
+            sources = dict.fromkeys(
+                os.path.basename(d.metadata.get('source', '?')) for d in ex_only
+            )
+            lines.append(f"  examples  {' '.join(sources)}")
+        logger.info('\n'.join(lines))
         
         # Log RERANKED context to rag_context_rerank.log
         try:

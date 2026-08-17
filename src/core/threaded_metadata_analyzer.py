@@ -200,7 +200,17 @@ class FeatureMetadataAnalyzer:
             if oblongs_missed == 0 and holes_missed == 0 and bending_missed == 0 and (llm_oblongs or llm_holes or llm_bending):
                 logger.debug(f"[VALIDATION] ✅ LLM detected all features correctly")
         
-        logger.info(f"[FeatureAnalyzer] Final merged results: {len(result['threaded_holes'])} threaded holes, {len(result['oblongs'])} oblongs, {len(result['bending_features'])} bending features, {len(result['countersinks'])} countersinks, {len(result['box_holes'])} box holes")
+        # Only the features actually present are worth naming — most parts have
+        # none of these, and "0 x, 0 y, 0 z, 0 w, 0 v" said nothing five times.
+        counts = {
+            'threaded holes': len(result['threaded_holes']),
+            'oblongs': len(result['oblongs']),
+            'bends': len(result['bending_features']),
+            'countersinks': len(result['countersinks']),
+            'box holes': len(result['box_holes']),
+        }
+        found = ', '.join(f"{n} {label}" for label, n in counts.items() if n)
+        logger.info(f"[FEATURES] {found or 'none detected'}")
         return result
     
     async def _analyze_with_llm(self, code_content: str) -> Dict[str, Any]:
@@ -4428,7 +4438,8 @@ Return JSON only, no explanation."""
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"[FeatureAnalyzer] Metadata saved to: {output_path}")
+        # Listed in the [FILES] summary at the end of the request.
+        logger.debug(f"[FeatureAnalyzer] Metadata saved to: {output_path}")
         return str(output_path)
     
     def generate_metadata_file(self, code_path: str, output_path: Optional[str] = None) -> str:

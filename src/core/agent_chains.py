@@ -82,7 +82,7 @@ def parse_greeting_classification(raw_output):
             result = json.loads(raw_output.strip())
             return result
     except Exception as e:
-        print(f"[ERROR] Failed to parse greeting classification: {e}")
+        logger.error(f"[ERROR] Failed to parse greeting classification: {e}")
         # Default to CAD request if parsing fails
         return {
             "classification": "cad_request",
@@ -116,7 +116,7 @@ def create_greeting_classification_chain(default_llm):
 
         # Only log first 100 chars to avoid cluttering logs with web content
         user_text_preview = user_text[:100] + "..." if len(user_text) > 100 else user_text
-        print(f"[AI_CLASSIFICATION] Using pure AI classification for: '{user_text_preview}'")
+        logger.debug(f"[AI_CLASSIFICATION] Using pure AI classification for: '{user_text_preview}'")
 
         ai_chain = (
             greeting_prompt
@@ -127,10 +127,10 @@ def create_greeting_classification_chain(default_llm):
 
         try:
             ai_result = await ai_chain.ainvoke(inputs)
-            print(f"[AI_CLASSIFICATION] Result: {ai_result}")
+            logger.debug(f"[AI_CLASSIFICATION] Result: {ai_result}")
             return ai_result
         except Exception as e:
-            print(f"[AI_CLASSIFICATION] Error: {e}, using fallback response")
+            logger.debug(f"[AI_CLASSIFICATION] Error: {e}, using fallback response")
             # Simple fallback if AI completely fails
             return {
                 "classification": "cad_request",
@@ -163,9 +163,9 @@ def create_unified_processing_chain(expert_llm):
         # Session prefix for logging
         session_prefix = f"{session_id[:15]}..." if len(session_id) > 15 else session_id
         
-        print(f"[UNIFIED] Session: {session_prefix} | (examples: {len(examples_context)} chars passed to code gen)")
+        logger.debug(f"[UNIFIED] Session: {session_prefix} | (examples: {len(examples_context)} chars passed to code gen)")
 
-        print(f"[UNIFIED_ANALYSIS] 🤖 Sending to LLM...")
+        logger.debug(f"[UNIFIED_ANALYSIS] 🤖 Sending to LLM...")
         
         return {
             "user_text": user_text,  # Contains full conversation history (original request + Q&A)
@@ -177,7 +177,7 @@ def create_unified_processing_chain(expert_llm):
 
     def parse_and_log_unified_result(x):
         """Parse unified analysis result and log completion"""
-        print(f"[UNIFIED_ANALYSIS] ✅ LLM response received, parsing...")
+        logger.debug(f"[UNIFIED_ANALYSIS] ✅ LLM response received, parsing...")
         
         # Print the raw JSON output for debugging
         raw_json = x["unified_analysis"]
@@ -208,7 +208,7 @@ def create_unified_processing_chain(expert_llm):
             "unified_output_obj": parse_unified_analysis(raw_json),
             "retrieved_context_for_code_gen": template_inputs.get("examples_context", "")  # Examples for code gen
         }
-        print(f"[UNIFIED_ANALYSIS] ✅ Analysis complete - parsed successfully\n")
+        logger.debug(f"[UNIFIED_ANALYSIS] ✅ Analysis complete - parsed successfully\n")
         return result
 
     chain = RunnableLambda(process_and_log_context_async) | RunnableParallel(
@@ -293,12 +293,13 @@ def create_dfm_validation_chain(expert_llm):
                 logger.error(f"[DFM_VALIDATION] Failed to log: {log_err}")
             
             result = parse_dfm_result(raw_output)
+            flags = ' '.join(filter(None, [
+                'override' if result.override_intent_detected else '',
+                'thickness-warning' if result.thickness_warning else '',
+            ]))
             logger.info(
-                f"[DFM_VALIDATION] ✅ Complete | session={session_id} | "
-                f"violations={len(result.violations)} | "
-                f"has_violations={result.has_violations} | "
-                f"override={result.override_intent_detected} | "
-                f"thickness_warning={'yes' if result.thickness_warning else 'no'}"
+                f"[DFM] {len(result.violations)} violations"
+                f"{' | ' + flags if flags else ''} | session={session_id}"
             )
             return result
         except Exception as e:
@@ -406,7 +407,7 @@ def create_description_confirm_chain(default_llm):
 
         # ── Build shape-specific template per-request (Option A) ──────────────
         template_str = build_confirm_template(shape_type)
-        logger.info(f"[DESC_CONFIRM] shape_type={shape_type!r} → template built ({len(template_str)} chars)")
+        logger.debug(f"[DESC_CONFIRM] shape_type={shape_type!r} → template built ({len(template_str)} chars)")
         confirm_prompt = ChatPromptTemplate.from_template(template_str)
         # ─────────────────────────────────────────────────────────────────────
 
@@ -765,13 +766,18 @@ def create_shape_change_detector_chain(default_llm):
                 logger.error(f"[SHAPE_DETECT] Failed to log: {log_err}")
 
             result = parse_shape_change_output(raw_output)
-            logger.info(
-                f"[SHAPE_DETECT] ✅ Complete | session={session_id} | "
-                f"shape_change={result.get('shape_change')} | "
-                f"current={result.get('current_shape_type')} | "
-                f"new={result.get('new_shape_type')} | "
-                f"reason={result.get('reason', '')[:80]}"
-            )
+            if result.get('shape_change'):
+                logger.info(
+                    f"[SHAPE_DETECT] {result.get('current_shape_type')} → "
+                    f"{result.get('new_shape_type')} | {result.get('reason', '')[:80]} | "
+                    f"session={session_id}"
+                )
+            else:
+                logger.info(
+                    f"[SHAPE_DETECT] unchanged ({result.get('current_shape_type')}) "
+                    f"| session={session_id}"
+                )
+                logger.debug(f"[SHAPE_DETECT] reason: {result.get('reason', '')}")
             return result
 
         except Exception as e:
@@ -839,8 +845,8 @@ def create_edit_summary_chain(default_llm):
             except Exception as log_err:
                 logger.error(f"[EDIT_SUMMARY] Failed to log: {log_err}")
 
-            logger.info(
-                f"[EDIT_SUMMARY] ✅ Complete | session={session_id} | "
+            logger.debug(
+                f"[EDIT_SUMMARY] Complete | session={session_id} | "
                 f"updated_len={len(updated_description)} chars"
             )
             return updated_description

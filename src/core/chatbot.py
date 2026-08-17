@@ -1,3 +1,4 @@
+import logging
 import os
 from dotenv import load_dotenv
 
@@ -8,6 +9,8 @@ from langchain_openai import ChatOpenAI
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
 
 from src.core.text_to_cad_agent import TextToCADAgent
+
+logger = logging.getLogger(__name__)
 
 # Initialize LLMs
 # Define model choices (should match those in text_to_cad_agent)
@@ -35,8 +38,6 @@ try:
     # Check if API key is available
     if not openai_api_key:
         raise ValueError("OPENAI_API_KEY environment variable is not set. Please check your .env file.")
-
-    print("[INIT] Initializing language models...")
 
     # Initialize models with different reasoning efforts for different tasks
     default_llm = ChatOpenAI(
@@ -69,19 +70,18 @@ try:
         api_key=openai_api_key
     )
 
-    print("[SUCCESS] Language models initialized")
+    # The per-role model ids are reported once by TextToCADAgent's init line.
+    logger.debug("Language models initialized")
 
 except ValueError as ve:
-    print(f"[ERROR] Configuration Error: {ve}")
-    print("   Please set the required API keys in your .env file.")
+    logger.error(f"Configuration error: {ve} — set the required API keys in your .env file.")
 
 except Exception as e:
-    print(f"[ERROR] Error initializing or connecting to LLM: {e}")
-    print("   Please check your API key and network connection.")
-
-    # Log more detailed error information for debugging
-    import traceback
-    print(f"   Error details: {traceback.format_exc()}")
+    logger.error(
+        f"Could not initialize the LLM clients: {e} — check your API key and "
+        f"network connection.",
+        exc_info=True,
+    )
 
 # --- New RAG System Setup ---
 # RAG is now initialized lazily via RAG Singleton pattern (src/core/rag_singleton.py)
@@ -89,7 +89,7 @@ except Exception as e:
 # No need for explicit initialization here to avoid duplicate initialization
 
 
-print("\n--- RAG System will initialize on first use (lazy loading via singleton) ---")
+logger.debug("RAG system will initialize on first use (lazy singleton)")
 
 # Initialize the TextToCADAgent
 # Pass the initialized LLMs and the new RAG's retrieve_context function

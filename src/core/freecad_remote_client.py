@@ -26,6 +26,9 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+#: Minimum percentage advance between two MQTT progress lines on the console.
+PROGRESS_LOG_STEP = 25
+
 
 def _get_filename(path: str) -> str:
     """Extract filename from full path"""
@@ -236,7 +239,7 @@ class AsyncFreeCADClient:
                     else:
                         logger.warning(f"[FreeCAD] Metadata file not found: {metadata_path}")
 
-                logger.info(f"[FreeCAD] Sending request | user_id={user_id} | file={filename} | metadata={'yes' if metadata_sent else 'no'} | priority={priority}")
+                logger.debug(f"[FreeCAD] Sending request | user_id={user_id} | file={filename} | metadata={'yes' if metadata_sent else 'no'} | priority={priority}")
 
                 # ============================================================
                 # STEP 3: SEND REQUEST TO SERVER
@@ -349,11 +352,8 @@ class AsyncFreeCADClient:
                         # STEP 7: LOG SUCCESS AND RETURN
                         # ============================================================
                         logger.info(
-                            f"[FreeCAD] ✅ Job submitted successfully | "
-                            f"user_id={user_id} | "
-                            f"status={job_ack.get('status')} | "
-                            f"mqtt={job_ack.get('mqtt_published', False)} | "
-                            f"metadata_received={'yes' if metadata_info else 'no'}"
+                            f"[FreeCAD] Job queued | {filename} | priority={priority} | "
+                            f"user_id={user_id}"
                         )
                         return job_ack
 
@@ -467,10 +467,14 @@ class AsyncFreeCADClient:
         start_time = time.time()
         progress_history = []
         job_completed = {'status': None, 'result': None, 'error': None}
+        # Last percentage echoed to the console. The server emits an update every
+        # few hundred ms, so this throttles them to roughly one line per quarter
+        # of the job — enough to see a long job moving, without a wall of text.
+        last_logged_progress = [-PROGRESS_LOG_STEP]
 
         mqtt_config = get_mqtt_config()
 
-        logger.info(f"[MQTT] Starting listener | user_id={user_id} | broker={mqtt_config.broker_host}:{mqtt_config.broker_port}")
+        logger.debug(f"[MQTT] Starting listener | user_id={user_id} | broker={mqtt_config.broker_host}:{mqtt_config.broker_port}")
 
         def on_connect(client, userdata, flags, rc):
             """Callback when MQTT client connects to broker"""
@@ -482,7 +486,7 @@ class AsyncFreeCADClient:
                 client.subscribe(progress_topic, qos=mqtt_config.qos_level)
                 client.subscribe(status_topic, qos=mqtt_config.qos_level)
 
-                logger.info(f"[MQTT] Connected | user_id={user_id} | qos={mqtt_config.qos_level}")
+                logger.debug(f"[MQTT] Connected | user_id={user_id} | qos={mqtt_config.qos_level}")
             else:
                 error_msg = f"MQTT connection failed with code: {rc}"
                 logger.error(f"[MQTT] ❌ {error_msg}")
@@ -523,9 +527,17 @@ class AsyncFreeCADClient:
                         'message': message
                     })
 
-                    # Only log progress milestones (0%, 25%, 50%, 75%, 100%) or important status changes
-                    if progress in [0, 25, 50, 75, 100] or status in ['running', 'complete', 'failed']:
-                        logger.info(f"[MQTT] Progress | user_id={user_id} | {progress}% | {status} | {message[:50]}")
+                    # The `status in [...]` half of the old condition matched every
+                    # update a running job sends, so "only log milestones" logged
+                    # all of them. Throttle on the percentage instead; the
+                    # terminal status is reported separately below.
+                    # 100% is skipped: "[FreeCAD] Job complete in Xs | N files"
+                    # follows immediately with the same news plus the timing.
+                    if progress >= 100:
+                        logger.debug(f"[MQTT] 100% | {message} | user_id={user_id}")
+                    elif progress - last_logged_progress[0] >= PROGRESS_LOG_STEP:
+                        last_logged_progress[0] = progress
+                        logger.info(f"[MQTT] {progress}% | {message[:60]} | user_id={user_id}")
                     else:
                         logger.debug(f"[MQTT] Progress | user_id={user_id} | {progress}% | {status}")
 
@@ -552,12 +564,12 @@ class AsyncFreeCADClient:
                     status = data.get('status', '')
                     message = data.get('message', '')
 
-                    logger.info(f"[MQTT] Status | user_id={user_id} | {status} | {message[:60]}")
+                    logger.debug(f"[MQTT] Status | user_id={user_id} | {status} | {message[:60]}")
 
                     # Check for successful completion
                     if status in ['finished', 'completed', 'success', 'complete']:
                         elapsed = round(time.time() - start_time, 2)
-                        logger.info(f"[MQTT] Completed | user_id={user_id} | time={elapsed}s")
+                        logger.debug(f"[MQTT] Completed | user_id={user_id} | time={elapsed}s")
                         job_completed['status'] = 'completed'
                         job_completed['result'] = data
                         client.disconnect()
@@ -697,8 +709,8 @@ class AsyncFreeCADClient:
             # ============================================================
             # WAIT FOR COMPLETION OR TIMEOUT
             # ============================================================
-            logger.info(
-                f"[MQTT] ⏳ Waiting for job completion | "
+            logger.debug(
+                f"[MQTT] Waiting for job completion | "
                 f"user_id={user_id} | "
                 f"max_duration={'unlimited' if max_duration is None else f'{max_duration}s'}"
             )
@@ -818,7 +830,7 @@ class AsyncFreeCADClient:
             # ============================================================
             mqtt_client.loop_stop()
             mqtt_client.disconnect()
-            logger.info(f"[MQTT] 🔌 Disconnected from broker | user_id={user_id}")
+            logger.debug(f"[MQTT] 🔌 Disconnected from broker | user_id={user_id}")
 
             # ============================================================
             # CHECK RESULT AND RETURN
@@ -833,7 +845,7 @@ class AsyncFreeCADClient:
 
             if job_completed['status'] == 'completed':
                 total_time = time.time() - start_time
-                logger.info(f"[MQTT] Completed | user_id={user_id} | time={total_time:.2f}s | updates={len(progress_history)}")
+                logger.debug(f"[MQTT] Completed | user_id={user_id} | time={total_time:.2f}s | updates={len(progress_history)}")
                 return {
                     'success': True,
                     'final_status': job_completed['result'],
@@ -858,7 +870,7 @@ class AsyncFreeCADClient:
             try:
                 mqtt_client.loop_stop()
                 mqtt_client.disconnect()
-                logger.info(f"[MQTT] 🔌 Disconnected (exception cleanup) | user_id={user_id}")
+                logger.debug(f"[MQTT] 🔌 Disconnected (exception cleanup) | user_id={user_id}")
             except Exception as cleanup_error:
                 logger.warning(f"[MQTT] ⚠️ Cleanup error | user_id={user_id} | error={cleanup_error}")
             raise
@@ -892,7 +904,7 @@ class AsyncFreeCADClient:
         progress_history = []
         last_progress = -1
 
-        logger.info(f"Starting async execution monitoring for user {user_id}")
+        logger.debug(f"Starting async execution monitoring for user {user_id}")
 
         try:
             while True:
@@ -910,7 +922,7 @@ class AsyncFreeCADClient:
 
                     # Log progress changes
                     if current_progress != last_progress:
-                        logger.info(f"Progress update for user {user_id}: {current_progress}% - {current_process}")
+                        logger.debug(f"Progress update for user {user_id}: {current_progress}% - {current_process}")
                         last_progress = current_progress
 
                     # Call progress callback if provided
@@ -928,7 +940,7 @@ class AsyncFreeCADClient:
 
                     # Check if execution is complete
                     if current_status in ['completed', 'success', 'finished']:
-                        logger.info(f"Execution completed for user {user_id} after {elapsed_time:.2f}s")
+                        logger.debug(f"Execution completed for user {user_id} after {elapsed_time:.2f}s")
                         return {
                             'success': True,
                             'final_status': status,
@@ -996,8 +1008,8 @@ class AsyncFreeCADClient:
             # Convert boolean to string for query parameter
             params = {'auto_download': str(auto_download).lower()}
 
-            logger.info(
-                f"[RESULT] 📥 Requesting job result | "
+            logger.debug(
+                f"[RESULT] Requesting job result | "
                 f"user_id={user_id} | "
                 f"url={url} | "
                 f"auto_download={auto_download}"
@@ -1053,7 +1065,7 @@ class AsyncFreeCADClient:
                 # Log result summary
                 if auto_download:
                     files = result_data.get('files', [])
-                    logger.info(f"[RESULT] Retrieved | user_id={user_id} | files={len(files)}")
+                    logger.debug(f"[RESULT] Retrieved | user_id={user_id} | files={len(files)}")
                     if raw:
                         # Return the raw file listing without triggering download/validation
                         return result_data
@@ -1215,7 +1227,7 @@ class AsyncFreeCADClient:
             # Check if response contains files
             files_info = json_response.get('files', [])
 
-            logger.info(f"[FILE_DOWNLOAD] Response | user_id={user_id} | status={json_response.get('status')} | files={len(files_info)}")
+            logger.debug(f"[FILE_DOWNLOAD] Response | user_id={user_id} | status={json_response.get('status')} | files={len(files_info)}")
 
             if not files_info:
                 error_msg = 'Job completed successfully but no files were generated'
@@ -1277,10 +1289,12 @@ class AsyncFreeCADClient:
                     'file_type': file_type
                 })
 
-            # Log all files to download in one message with URLs
+            # The source URLs are all `<base_url>/freecad/download/<user_id>/<name>`
+            # — four of them per job, ~400 characters, and none of it survives
+            # past the download. The Completed line below reports what arrived.
             if download_list:
                 file_list = ", ".join([f"{f['type']}({f['filename']}): {f['url']}" for f in download_list])
-                logger.info(f"[FILE_DOWNLOAD] Downloading {len(download_list)} files | user_id={user_id} | {file_list}")
+                logger.debug(f"[FILE_DOWNLOAD] Downloading {len(download_list)} files | user_id={user_id} | {file_list}")
 
             # Download each file using retry logic
             for file_data in prepared_files:
@@ -1340,7 +1354,7 @@ class AsyncFreeCADClient:
 
             # All validations passed - Single consolidated log entry
             file_details = ", ".join([f"{ft.upper()}({file_sizes.get(ft, 0):,}B)" for ft in sorted(downloaded_files.keys())])
-            logger.info(f"[FILE_DOWNLOAD] Completed | user_id={user_id} | files={len(downloaded_files)}/{len(files_info)} | total={total_size:,}B | {file_details}")
+            logger.debug(f"[FILE_DOWNLOAD] Completed | user_id={user_id} | files={len(downloaded_files)}/{len(files_info)} | total={total_size:,}B | {file_details}")
 
             return {
                 'success': True,

@@ -434,7 +434,7 @@ def format_retrieved_context(docs: List[Document]) -> str:
     # DEBUG: Log document counts by type
     info_docs = [d for d in docs if isinstance(d, Document) and d.metadata.get('type') == 'info']
     example_docs = [d for d in docs if isinstance(d, Document) and d.metadata.get('type') != 'info']
-    logger.info(f"[FORMAT_CONTEXT] Total docs: {len(docs)} | Examples: {len(example_docs)} | Info: {len(info_docs)}")
+    logger.debug(f"[FORMAT_CONTEXT] Total docs: {len(docs)} | Examples: {len(example_docs)} | Info: {len(info_docs)}")
 
     context_str = ""
     for i, doc in enumerate(docs):
@@ -459,9 +459,9 @@ def format_retrieved_context(docs: List[Document]) -> str:
             
             # DEBUG: Log each info document
             if doc_type == 'info':
-                logger.info(f"[FORMAT_CONTEXT] ✅ INFO included: {source} | Content length: {len(content)}")
+                logger.debug(f"[FORMAT_CONTEXT] INFO included: {source} | Content length: {len(content)}")
         else:
-            print(f"Warning: Unexpected document type in format_retrieved_context: {type(doc)}")
+            logger.debug(f"Warning: Unexpected document type in format_retrieved_context: {type(doc)}")
             context_str += f"--- Context Source {i+1} (Unknown Source) ---\n{str(doc)}\n\n"
 
     return context_str.strip()

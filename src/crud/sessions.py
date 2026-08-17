@@ -86,7 +86,7 @@ def create_session(db: Session, session_id: str, name: str = "User"):
         result = _create_session()
         
         duration = time.time() - start_time
-        logger.info(f"Successfully created session {session_id} in {duration:.3f}s")
+        logger.debug(f"Successfully created session {session_id} in {duration:.3f}s")
         return result
         
     except HTTPException:
@@ -547,7 +547,7 @@ def get_latest_code(db: Session, session_id: str) -> Optional[str]:
     Returns:
         Optional[str]: Latest code if found, None otherwise.
     """
-    logger.info(f"[LATEST_CODE] Retrieving latest code for session: {session_id}")
+    logger.debug(f"[LATEST_CODE] Retrieving latest code for session: {session_id}")
     
     try:
         latest_chat = (
@@ -560,10 +560,10 @@ def get_latest_code(db: Session, session_id: str) -> Optional[str]:
         
         if latest_chat and latest_chat.lasted_code:
             code_length = len(latest_chat.lasted_code)
-            logger.info(f"[LATEST_CODE] Found latest code for session {session_id}: {code_length} characters")
+            logger.debug(f"[LATEST_CODE] Found latest code for session {session_id}: {code_length} characters")
             return latest_chat.lasted_code
         else:
-            logger.info(f"[LATEST_CODE] No latest code found for session: {session_id}")
+            logger.debug(f"[LATEST_CODE] No latest code found for session: {session_id}")
             return None
             
     except Exception as e:

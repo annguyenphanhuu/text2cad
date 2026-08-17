@@ -282,8 +282,9 @@ def classify_user_query_for_info(user_query: str, detected_shape_type: Optional[
                     f"[RAG_INFO] Shape-guard suppressed for '{detected_shape_type}': {removed}"
                 )
 
-    logger.info(f"[RAG_INFO] classify_user_query_for_info → {info_classes} "
-                f"(shape={detected_shape_type!r})")
+    # Usually an empty list; the count reaches the console via the [RAG] summary.
+    logger.debug(f"[RAG_INFO] classify_user_query_for_info → {info_classes} "
+                 f"(shape={detected_shape_type!r})")
     return info_classes
 
 
@@ -324,7 +325,7 @@ def initialize_retriever(force_reload: bool = False):
         logger.debug(f"Loading FAISS index from {FAISS_INDEX_PATH}...")
         faiss_index_instance = load_index(index_name=FAISS_INDEX_NAME)
         if faiss_index_instance:
-            logger.info(f"FAISS index loaded with {faiss_index_instance.ntotal} vectors, {len(faiss_metadata)} metadata entries")
+            logger.debug(f"FAISS index loaded with {faiss_index_instance.ntotal} vectors, {len(faiss_metadata)} metadata entries")
             memory_monitor.log_memory_diff("After FAISS Index Load")
         else:
             logger.error(f"Failed to load FAISS index '{FAISS_INDEX_NAME}'. Semantic search will be unavailable.")
@@ -516,9 +517,8 @@ def _search_by_class(class_name: str, faiss_index_instance, kind: _DocKind, k: i
     # Import metadata store directly
     from src.rag.vector_store import METADATA_STORE
 
-    logger.info(f"[{kind.log_tag}] Searching {kind.label} for class: {class_name} "
-                f"(short: {class_name.split('/')[-1].lower()})")
-    logger.debug(f"[{kind.log_tag}] Total metadata entries: {len(METADATA_STORE)}")
+    logger.debug(f"[{kind.log_tag}] Searching {kind.label} for class: {class_name} "
+                 f"({len(METADATA_STORE)} metadata entries)")
 
     matches = []
     for entry in METADATA_STORE:
@@ -527,12 +527,14 @@ def _search_by_class(class_name: str, faiss_index_instance, kind: _DocKind, k: i
 
         if _class_matches(entry.get('class_name', ''), class_name):
             matches.append(entry)
-            logger.info(f"[{kind.log_tag}] ✅ Found {kind.label}: "
-                        f"{entry.get(kind.id_field, 'N/A')} from {entry.get('source', '')}")
             if len(matches) >= k:
                 break
 
-    logger.info(f"[{kind.log_tag}] Total {kind.label} found for {class_name}: {len(matches)}")
+    # One line per class instead of one per hit — the ids all come from the same
+    # rules.json, so the per-hit lines were the same path repeated N times.
+    ids = ', '.join(str(e.get(kind.id_field, 'N/A')) for e in matches)
+    logger.debug(f"[{kind.log_tag}] {class_name}: {len(matches)} {kind.label}"
+                 f"{f' ({ids})' if ids else ''}")
     return matches
 
 
@@ -769,7 +771,7 @@ async def retrieve_rules_only(
     # retrieval AND the nano rerank call whose result was sliced away by
     # `[:k_rules]` anyway — same output, one fewer LLM call per edit turn.
     if k_rules <= 0:
-        logger.info("[RAG_RULES] k_rules=0 → skipping rules retrieval and rerank")
+        logger.debug("[RAG_RULES] k_rules=0 → skipping rules retrieval and rerank")
         return retrieved_documents
 
     if not faiss_index_instance:
@@ -780,7 +782,7 @@ async def retrieve_rules_only(
     detected_classes = classify_user_query_for_rules(query, None)  # Force keyword matching
     
     if not detected_classes:
-        logger.info("[RAG_RULES] ⚠️ No classes detected")
+        logger.debug("[RAG_RULES] No classes detected")
         return retrieved_documents
     
     # STEP 2: Metadata retrieval (get more candidates for reranking)
@@ -821,15 +823,14 @@ async def retrieve_rules_only(
         retrieved_documents = retrieved_documents[:k_rules]
         reranked = False
     
-    # Compact summary with session tracking
-    session_prefix = f"{session_id[:15]}..." if len(session_id) > 15 else session_id
-    logger.info(
-        f"📝 [RULES] Session: {session_prefix} | "
-        f"Classes: {detected_classes} | "
+    # The counts and classes reappear in the [RAG] summary line that
+    # get_rag_split_context() logs once both halves have returned.
+    logger.debug(
+        f"[RAG_RULES] Classes: {detected_classes} | "
         f"Retrieved: {initial_count} → Reranked: {len(retrieved_documents)} | "
-        f"Status: {'✅ Reranked' if reranked else '⚠️ No rerank'}"
+        f"{'reranked' if reranked else 'no rerank'}"
     )
-    
+
     return retrieved_documents
 
 
@@ -893,8 +894,9 @@ async def retrieve_examples_only(
     if pre_expanded_query is not None:
         expanded_query = pre_expanded_query
         detected_shape_type_llm = pre_detected_shape_type
-        logger.info(
-            f"[RAG_EXAMPLES] ♻️  Reusing caller's query expansion "
+        # An optimization that fired as expected — only its absence is news.
+        logger.debug(
+            f"[RAG_EXAMPLES] Reusing caller's query expansion "
             f"(shape_type={detected_shape_type_llm}) — skipped duplicate LLM call"
         )
     else:
@@ -1085,25 +1087,18 @@ async def retrieve_examples_only(
     examples_count = len(retrieved_documents) - info_count
     total_docs = len(retrieved_documents)
     
-    # Log retrieved example sources for debugging
-    if example_candidates:
-        example_sources = []
-        for doc in example_candidates[:5]:  # Show top 5
-            source = doc.metadata.get('source', 'Unknown')
-            # Extract filename only
-            filename = os.path.basename(source)
-            example_sources.append(filename)
-        
-        logger.info(
-            f"💡 [EXAMPLES] Candidates: {len(example_candidates)} → Reranked: {examples_count} + Info: {info_count} = Total: {total_docs} | "
-            f"{'✅ Reranked' if examples_reranked else '⚠️ No rerank'}\n"
-            f"  Top 5 sources: {', '.join(example_sources)}"
-        )
-    else:
-        logger.info(
-            f"💡 [EXAMPLES] Candidates: {len(example_candidates)} → Reranked: {examples_count} + Info: {info_count} = Total: {total_docs} | "
-            f"{'✅ Reranked' if examples_reranked else '⚠️ No rerank'}"
-        )
+    # Which files were picked is the part that is not in the [RAG] summary, so
+    # that is what this line carries — deduplicated, because the top 5 are
+    # routinely four copies of one filename.
+    sources = list(dict.fromkeys(
+        os.path.basename(doc.metadata.get('source', 'Unknown'))
+        for doc in retrieved_documents
+    ))
+    logger.debug(
+        f"[RAG_EXAMPLES] {len(example_candidates)} candidates → {examples_count} kept"
+        f"{'' if examples_reranked else ' (no rerank)'}"
+        f"{' | ' + ', '.join(sources) if sources else ''}"
+    )
 
     # LOG RAW EXAMPLES (BEFORE reranking) - This should show all 18 candidates
     try:

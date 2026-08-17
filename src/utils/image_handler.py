@@ -64,7 +64,7 @@ class ImageProcessor:
         if self.api_key:
             try:
                 self.client = AsyncOpenAI(api_key=self.api_key)  # Changed to AsyncOpenAI for non-blocking I/O
-                logger.info("AsyncOpenAI client initialized successfully for image processing")
+                logger.debug("AsyncOpenAI client initialized successfully for image processing")
             except Exception as e:
                 logger.error(f"Failed to initialize AsyncOpenAI client: {e}")
                 self.client = None
@@ -74,7 +74,7 @@ class ImageProcessor:
 
         self.cad_agent = cad_agent
         if self.cad_agent and TextToCADAgent and isinstance(self.cad_agent, TextToCADAgent):
-            logger.info("TextToCADAgent instance provided to ImageProcessor.")
+            logger.debug("TextToCADAgent instance provided to ImageProcessor.")
         elif cad_agent:
             logger.warning("A cad_agent was provided, but TextToCADAgent class was not imported or type mismatch.")
         else:

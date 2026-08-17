@@ -3,11 +3,14 @@ File finder utilities for CAD outputs.
 This module provides efficient methods to find recently created STEP and OBJ files.
 """
 
+import logging
 import time
 import re
 from pathlib import Path
 from typing import Optional, List
 from src.utils.path_manager import PROJECT_ROOT
+
+logger = logging.getLogger(__name__)
 
 
 def sanitize_title(title: str) -> str:
@@ -35,7 +38,7 @@ def find_step_file(design_requirements=None, time_window: int = 120) -> Optional
     cad_outputs_dir = PROJECT_ROOT / "outputs" / "code" / "cad_outputs_generated"
     
     if not cad_outputs_dir.exists():
-        print(f"[WARNING] CAD outputs directory not found: {cad_outputs_dir}")
+        logger.warning(f"CAD outputs directory not found: {cad_outputs_dir}")
         return None
     
     # Strategy 1: Find STEP file matching the design title
@@ -47,7 +50,7 @@ def find_step_file(design_requirements=None, time_window: int = 120) -> Optional
             if matching_files:
                 # Get the most recently modified file
                 latest_file = max(matching_files, key=lambda p: p.stat().st_mtime)
-                print(f"[DEBUG] Found STEP file matching title '{sanitized_title}': {latest_file}")
+                logger.debug(f"Found STEP file matching title '{sanitized_title}': {latest_file}")
                 return latest_file
     
     # Strategy 2: Find the most recently created STEP file (within time window)
@@ -60,17 +63,17 @@ def find_step_file(design_requirements=None, time_window: int = 120) -> Optional
     
     if recent_files:
         latest_file = max(recent_files, key=lambda p: p.stat().st_mtime)
-        print(f"[DEBUG] Found recently created STEP file: {latest_file}")
+        logger.debug(f"Found recently created STEP file: {latest_file}")
         return latest_file
     
     # Strategy 3: Fallback to the newest STEP file in the directory
     all_step_files = list(cad_outputs_dir.glob("*.step"))
     if all_step_files:
         latest_file = max(all_step_files, key=lambda p: p.stat().st_mtime)
-        print(f"[DEBUG] Fallback: Using newest STEP file: {latest_file}")
+        logger.debug(f"Fallback: Using newest STEP file: {latest_file}")
         return latest_file
     
-    print(f"[WARNING] No STEP files found in {cad_outputs_dir}")
+    logger.warning(f"No STEP files found in {cad_outputs_dir}")
     return None
 
 
@@ -96,9 +99,9 @@ def find_obj_files(time_window: int = 300) -> List[Path]:
     obj_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     
     if obj_files:
-        print(f"[DEBUG] Found {len(obj_files)} recent OBJ files")
+        logger.debug(f"Found {len(obj_files)} recent OBJ files")
     else:
-        print(f"[WARNING] No recent OBJ files found")
+        logger.warning("No recent OBJ files found")
     
     return obj_files
 

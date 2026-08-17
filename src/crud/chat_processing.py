@@ -124,7 +124,8 @@ def _sync_latest_code_from_db(db, agent, session_id: str, tag: str) -> None:
     db_latest_code = get_latest_code(db, session_id)
     if db_latest_code:
         agent._update_session_state(session_id, latest_code=db_latest_code)
-        logger.info(
+        # The [EDIT_GATE] line reports whether edit mode actually engaged.
+        logger.debug(
             f"[{tag}_EDIT] Synced latest_code from DB → agent state "
             f"({len(db_latest_code)} chars) | session={session_id}"
         )
@@ -152,35 +153,27 @@ async def handle_chat_request(
     # Get user_id from context (set by auth middleware)
     user_id = get_user_id() or "anonymous"
     
-    logger.info(f"[FLOW] Starting chat request handling - Origin: {request_origin} | user_id={user_id}")
-    logger.info(f"[FLOW] Request details: message='{chat_req.message[:100]}...', session_id={chat_req.session_id}, is_edit={chat_req.is_edit_request}")
-    
-    print("\n" + "="*80)
-    print(f"[DEBUG] CHATBOT REQUEST INFO (Origin: {request_origin})")
-    print("-"*80)
-    print(f"User ID: {user_id}")
-    print(f"Message: {chat_req.message}")
-    print(f"Session ID: {chat_req.session_id}")
-    print(f"Is Edit Request: {chat_req.is_edit_request}")
-
-    if hasattr(chat_req, 'image_path') and chat_req.image_path:
-        print(f"Image Path: {chat_req.image_path}")
-        logger.info(f"[FLOW] Image path provided: {chat_req.image_path}")
-    if hasattr(chat_req, 'part_file_name') and chat_req.part_file_name:
-        print(f"Part File Name: {chat_req.part_file_name}")
-        logger.info(f"[FLOW] Part file name: {chat_req.part_file_name}")
-    if hasattr(chat_req, 'export_format') and chat_req.export_format:
-        print(f"Export Format: {chat_req.export_format}")
-        logger.info(f"[FLOW] Export format: {chat_req.export_format}")
-    if hasattr(chat_req, 'material_choice') and chat_req.material_choice:
-        print(f"Material Choice: {chat_req.material_choice}")
-        logger.info(f"[FLOW] Material choice: {chat_req.material_choice}")
-    if hasattr(chat_req, 'selected_feature_uuid') and chat_req.selected_feature_uuid:
-        print(f"Selected Feature UUID: {chat_req.selected_feature_uuid}")
-        logger.info(f"[FLOW] Selected feature UUID: {chat_req.selected_feature_uuid}")
+    # The optional attributes below are absent on almost every request, so they
+    # are appended to the one request line rather than printed as their own.
+    # This whole block used to be duplicated as a 12-line print() banner that
+    # said the same thing outside the logging stack.
+    extras = ' '.join(
+        f"{label}={value}"
+        for label, attr in (
+            ('image', 'image_path'), ('part_file', 'part_file_name'),
+            ('export', 'export_format'), ('material', 'material_choice'),
+            ('feature_uuid', 'selected_feature_uuid'),
+        )
+        for value in [getattr(chat_req, attr, None)] if value
+    )
+    logger.info(
+        f"[FLOW] Chat request ({request_origin}) '{chat_req.message[:60]}' | "
+        f"user={user_id} | edit={chat_req.is_edit_request}"
+        f"{' | ' + extras if extras else ''}"
+    )
 
     try:
-        logger.info(f"[SESSION] Resolving session ID for request | user_id={user_id}")
+        logger.debug(f"[SESSION] Resolving session ID for request | user_id={user_id}")
         
         # Wrap database operations with retry logic
         @retry_db_operation(max_retries=3, delay=1.0)
@@ -192,52 +185,45 @@ async def handle_chat_request(
         # Store session_id in context for logging
         set_session_id(session_id)
         
-        logger.info(f"[SESSION] Resolved session ID: {session_id} | user_id={user_id}")
+        logger.debug(f"[SESSION] Resolved session ID: {session_id} | user_id={user_id}")
         
         @retry_db_operation(max_retries=3, delay=1.0)
         def _get_latest_code_with_retry():
             return get_latest_code(db, session_id)
         
         latest_code = _get_latest_code_with_retry()
-        if latest_code:
-            print(f"Latest Code Available: Yes (Length: {len(latest_code)} characters)")
-            logger.info(f"[SESSION] Found latest code in DB - Length: {len(latest_code)} characters")
-        else:
-            print(f"Latest Code Available: No")
-            logger.info(f"[SESSION] No latest code found in database")
+        logger.debug(
+            f"[SESSION] Latest code in DB: "
+            f"{f'{len(latest_code)} characters' if latest_code else 'none'}"
+        )
 
         try:
             state = agent._get_session_state(session_id)
-            if 'latest_requirements' in state and state['latest_requirements']:
-                print("-"*80)
-                print("Latest RAG Context:")
+            requirements = state.get('latest_requirements')
+            if requirements:
                 try:
-                    print(json.dumps(state['latest_requirements'].dict(), indent=2))
-                    logger.info(f"[AGENT_STATE] Retrieved RAG context for session {session_id}")
-                except:
-                    print(pprint.pformat(state['latest_requirements'], indent=2))
-                    logger.info(f"[AGENT_STATE] Retrieved RAG context (pformat) for session {session_id}")
+                    rendered = json.dumps(requirements.dict(), indent=2)
+                except Exception:
+                    rendered = pprint.pformat(requirements, indent=2)
+                logger.debug(f"[AGENT_STATE] Latest requirements: {rendered}")
             else:
-                logger.info(f"[AGENT_STATE] No latest requirements found in agent state for session {session_id}")
+                logger.debug(f"[AGENT_STATE] No latest requirements in agent state")
         except Exception as e:
-            print(f"Error accessing agent state: {str(e)}")
-            logger.warning(f"[AGENT_STATE] Error accessing agent state for session {session_id}: {str(e)}")
+            logger.warning(f"[AGENT_STATE] Error accessing agent state: {str(e)}")
 
-        print("="*80 + "\n")
-
-        logger.info(f"[SESSION] Ensuring session exists in database")
+        logger.debug(f"[SESSION] Ensuring session exists in database")
         session = get_session_by_id(db, session_id)
         if not session:
             session_name = chat_req.message[:50].strip() if chat_req.message else "User Session"
             session = create_session(db, session_id, session_name)
-            logger.info(f"[SESSION] Created new session: {session_id} with name: {session_name}")
+            logger.debug(f"[SESSION] Created new session: {session_id} with name: {session_name}")
         else:
-            logger.info(f"[SESSION] Using existing session: {session_id}")
+            logger.debug(f"[SESSION] Using existing session: {session_id}")
 
         chat_req.session_id = session_id
 
         is_edit_request = chat_req.is_edit_request
-        logger.info(f"[EDIT_MODE] Is edit request: {is_edit_request}")
+        logger.debug(f"[EDIT_MODE] Is edit request: {is_edit_request}")
 
         if is_edit_request:
             _sync_latest_code_from_db(db, agent, session_id, tag="CHAT")
@@ -249,7 +235,7 @@ async def handle_chat_request(
             agent, session_id, processed_message, tag="CHAT"
         )
 
-        logger.info(f"[AGENT] Starting agent processing for session {session_id}")
+        logger.debug(f"[AGENT] Starting agent processing for session {session_id}")
         agent_start_time = time.time()
 
         agent_result = await agent.process_request(
@@ -262,30 +248,20 @@ async def handle_chat_request(
         agent_duration = time.time() - agent_start_time
         logger.info(f"[AGENT] Agent processing completed in {agent_duration:.2f}s for session {session_id}")
 
-        print("\n" + "="*80)
-        print(f"[DEBUG] CHATBOT RESPONSE SUMMARY (Origin: {request_origin})")
-        print("-"*80)
-        if "code" in agent_result and agent_result["code"]:
-            print(f"Generated Code: Yes (Length: {len(agent_result['code'])} characters)")
-            logger.info(f"[AGENT_RESULT] Code generated - Length: {len(agent_result['code'])} characters")
-        else:
-            print(f"Generated Code: No")
-            logger.info(f"[AGENT_RESULT] No code generated")
-
-        if "message" in agent_result and agent_result["message"]:
-            print(f"Response Message: {agent_result['message'][:200]}...")
-            logger.info(f"[AGENT_RESULT] Response message present - Length: {len(agent_result['message'])} characters")
-        elif "error" in agent_result and agent_result["error"]:
-            print(f"Error: {agent_result['error']}")
+        # One result line, plus the artefact paths on their own lines so a
+        # terminal can turn them into Ctrl+Click links.
+        if agent_result.get("error"):
             logger.error(f"[AGENT_RESULT] Agent returned error: {agent_result['error']}")
-
-        if "obj_path" in agent_result and agent_result["obj_path"]:
-            print(f"OBJ Export Path: {agent_result['obj_path']}")
-            logger.info(f"[AGENT_RESULT] OBJ export path: {agent_result['obj_path']}")
-        if "step_path" in agent_result and agent_result["step_path"]:
-            print(f"STEP Export Path: {agent_result['step_path']}")
-            logger.info(f"[AGENT_RESULT] STEP export path: {agent_result['step_path']}")
-        print("="*80 + "\n")
+        else:
+            logger.info(
+                f"[AGENT_RESULT] code={len(agent_result.get('code') or '')} chars | "
+                f"message={len(agent_result.get('message') or '')} chars"
+            )
+        artefacts = [(kind, agent_result.get(f"{kind}_path")) for kind in ("obj", "step")]
+        if any(path for _, path in artefacts):
+            logger.info("[FILES] Exported\n" + "\n".join(
+                f"  {kind:<9} {path}" for kind, path in artefacts if path
+            ))
 
         if web_metadata:
             agent_result["web_search_metadata"] = web_metadata
@@ -295,7 +271,7 @@ async def handle_chat_request(
             agent_result["face_metadata"] = face_metadata
             logger.info(f"[FACE] Added metadata - ID:{face_metadata.get('face_id')} Type:{face_metadata.get('shape_type')}")
 
-        logger.info(f"[RESPONSE] Processing agent result and creating response")
+        logger.debug(f"[RESPONSE] Processing agent result and creating response")
         
         # Wrap database operations with retry logic
         @retry_db_operation(max_retries=3, delay=1.0)
@@ -429,7 +405,7 @@ def _process_agent_result(
     """
     Process agent result and create chat response.
     """
-    logger.info(f"[RESULT_PROCESS] Processing agent result for session {session_id}")
+    logger.debug(f"[RESULT_PROCESS] Processing agent result for session {session_id}")
     
     # Priority order: error > message > code > default
     if agent_result.get("error"):
@@ -479,7 +455,7 @@ def _process_agent_result(
         logger.warning(f"[RESULT_PROCESS] Failed to build PDF download URL (optional, ignored): {pdf_url_error}")
         pdf_url = None
 
-    logger.info(f"[RESULT_PROCESS] Creating final ChatResponse for session {session_id}")
+    logger.debug(f"[RESULT_PROCESS] Creating final ChatResponse for session {session_id}")
 
     # Extract web_search_metadata from agent_result if available
     web_search_metadata = agent_result.get("web_search_metadata", None)
@@ -620,26 +596,23 @@ async def generate_cad_realtime_stream(
 
             resolved_session_id = _resolve_session_id(db, ChatRequest(message=message, session_id=session_id, is_edit_request=is_edit_request))
 
-            # ════════════════════════════════════════════════════════════
-            # DEBUG LOG: Show whether session_id was provided by client or generated by server
-            # ════════════════════════════════════════════════════════════
-            if client_provided_session_id:
-                logger.info(
-                    f"\n{'='*60}\n"
-                    f"[SESSION] CLIENT PROVIDED session_id\n"
-                    f"  Input   : {client_provided_session_id}\n"
-                    f"  Resolved: {resolved_session_id}\n"
-                    f"{'='*60}"
+            # ── Inject session_id into logging context ────────────────────
+            # Set as early as the id exists: both formatters read this
+            # contextvar, so every line from here on carries the session — the
+            # per-message `| session=…` trailers become redundant, and the
+            # console prints a short tag in its own column instead.
+            from ..utils.context_manager import set_session_id
+            set_session_id(resolved_session_id)
+
+            # Which side minted the id matters when tracing a lost continuation;
+            # everything else about it is already the per-line session tag.
+            if client_provided_session_id and client_provided_session_id != resolved_session_id:
+                logger.warning(
+                    f"[SESSION] Client id '{client_provided_session_id}' resolved to "
+                    f"'{resolved_session_id}'"
                 )
-            else:
-                logger.info(
-                    f"\n{'='*60}\n"
-                    f"[SESSION] SERVER GENERATED new session_id\n"
-                    f"  Client input : None (not provided)\n"
-                    f"  Generated ID : {resolved_session_id}\n"
-                    f"{'='*60}"
-                )
-            # ════════════════════════════════════════════════════════════
+            elif not client_provided_session_id:
+                logger.info("[SESSION] New session (no client id provided)")
 
             logger.debug(f"[STREAM] Ensuring session exists in database")
             session_name = message[:50].strip() if message else "User Session"
@@ -691,15 +664,8 @@ async def generate_cad_realtime_stream(
                             raise RuntimeError(f"Failed to generate unique session_id after {max_retries} attempts")
         # Connection is released here automatically
 
-        # ── Inject session_id into logging context ────────────────────────
-        # CompactFileFormatter reads this contextvar on every log record,
-        # so ALL downstream modules (cost_tracker, reranker, retriever, etc.)
-        # will automatically emit [session_xxx] prefix — no code change needed there.
-        from ..utils.context_manager import set_session_id
-        set_session_id(resolved_session_id)
-
-        # 🆕 EMIT SESSION_ID IMMEDIATELY - Send to frontend before any processing steps
-        logger.info(f"[STREAM_SESSION] Emitting session_id to frontend: {resolved_session_id}")
+        # EMIT SESSION_ID IMMEDIATELY - Send to frontend before any processing steps
+        logger.debug(f"[STREAM_SESSION] Emitting session_id to frontend: {resolved_session_id}")
         
         yield {
             "session_id": resolved_session_id,
@@ -736,7 +702,7 @@ async def generate_cad_realtime_stream(
 
         logger.debug(f"[STREAM] Starting agent progress streaming for session {resolved_session_id}")
         logger.debug(f"[STREAM] Material choice for streaming: {material_choice}")
-        logger.info(f"[STREAM] FreeCAD priority for streaming: {priority} | session={resolved_session_id}")
+        logger.debug(f"[STREAM] FreeCAD priority for streaming: {priority} | session={resolved_session_id}")
         step_count = 0
         async for progress_update in agent.process_request_with_progress(
             user_text=processed_message,
@@ -760,8 +726,8 @@ async def generate_cad_realtime_stream(
                 if is_complete and not step_progress.get(step_name, False):
                     step_progress[step_name] = True
                     completed_steps += 1
-                    if step_name in ["analysis", "parameters", "generation_code", "export"]:
-                        logger.info(f"{step_name.replace('_', ' ').title()} completed")
+                    # The SSE layer in api/main.py logs "Step completed: <step> (n%)"
+                    # for the same event, with the progress figure attached.
                     logger.debug(f"[STREAM_STEP] Step {step_name} completed, {completed_steps}/{total_steps} steps done")
                 
                 icon = "fas fa-hourglass-start"
@@ -830,11 +796,14 @@ async def generate_cad_realtime_stream(
 
                 if web_metadata:
                     agent_result["web_search_metadata"] = web_metadata
-                    logger.info(f"[STREAM_FINAL] ✅ Added web_search_metadata to final result")
-                    logger.info(f"[STREAM_FINAL] 📊 Web metadata contains {len(web_metadata.get('web_contents', []))} web contents")
-                    for idx, content in enumerate(web_metadata.get('web_contents', [])):
-                        logger.info(f"[STREAM_FINAL] 📄 Content {idx+1}: URL={content.get('url', 'N/A')[:80]}...")
-                        logger.info(f"[STREAM_FINAL] 📝 Content {idx+1} length: {len(content.get('content', ''))} characters")
+                    logger.info(
+                        f"[WEB_SEARCH] Attached {len(web_metadata.get('web_contents', []))} results"
+                    )
+                    for idx, content in enumerate(web_metadata.get('web_contents', []), 1):
+                        logger.debug(
+                            f"[WEB_SEARCH] {idx}. {content.get('url', 'N/A')[:80]} "
+                            f"({len(content.get('content', ''))} chars)"
+                        )
                 else:
                     logger.debug(f"[STREAM_FINAL] No web metadata to add")
                 
@@ -851,8 +820,10 @@ async def generate_cad_realtime_stream(
                 try:
                     tracker = agent._get_cost_tracker(resolved_session_id)
                     request_cost_summary = tracker.get_request_summary()
-                    logger.info(
-                        f"[STREAM_FINAL] 💰 Request cost: ${request_cost_summary.get('request_total_cost_usd', 0):.4f} | "
+                    # The same three figures are the TOTAL row of the turn-cost
+                    # table that log_request_cost() prints a few lines later.
+                    logger.debug(
+                        f"[STREAM_FINAL] Request cost: ${request_cost_summary.get('request_total_cost_usd', 0):.4f} | "
                         f"chains={request_cost_summary.get('request_chains', 0)} | "
                         f"tokens={request_cost_summary.get('request_total_tokens', 0):,}"
                     )
@@ -860,7 +831,8 @@ async def generate_cad_realtime_stream(
                     logger.warning(f"[STREAM_FINAL] Could not get request cost: {_ce}")
                 
                 if not step_progress.get("complete", False):
-                    logger.info(f"All processing completed!")
+                    # "Step completed: complete (100%)" covers this for the console.
+                    logger.debug("All processing completed")
                     yield {
                         "step": "complete",
                         "status": "All processing completed!",

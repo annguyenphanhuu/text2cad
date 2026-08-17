@@ -34,9 +34,9 @@ def get_embedding_model() -> OpenAI:
                 raise ValueError("OPENAI_API_KEY environment variable is required")
             
             CLIENT = OpenAI(api_key=api_key)
-            print(f"OpenAI client initialized successfully with model '{MODEL_NAME}'.")
+            logger.debug(f"OpenAI embedding client ready ({MODEL_NAME})")
         except Exception as e:
-            print(f"Error initializing OpenAI client: {e}")
+            logger.error(f"Error initializing OpenAI embedding client: {e}")
             raise
     return CLIENT
 
@@ -128,8 +128,10 @@ def get_embeddings(texts: Union[str, List[str]], task_type: str = "RETRIEVAL_DOC
             batch_num = i // BATCH_SIZE + 1
             total_batches = (total_texts + BATCH_SIZE - 1) // BATCH_SIZE
 
-            # Always show progress for API calls
-            print(f"Embedding progress: {batch_num}/{total_batches}")
+            # A retrieval embeds one query = one batch, so this was two lines of
+            # "1/1" and "Done" per search. Only an index build has enough batches
+            # for progress to mean anything, and that runs at DEBUG too.
+            logger.debug(f"Embedding batch {batch_num}/{total_batches}")
 
             for j, text in enumerate(batch):
                 embedding = _embed_single_text_with_retry(client, text, task_type)
@@ -149,9 +151,6 @@ def get_embeddings(texts: Union[str, List[str]], task_type: str = "RETRIEVAL_DOC
             if i + BATCH_SIZE < total_texts:
                 time.sleep(REQUEST_DELAY * 2)
 
-        if all_embeddings:
-            print("Embedding progress: Done")
-        
         if not all_embeddings:
             logger.error("No embeddings were successfully generated")
             return None

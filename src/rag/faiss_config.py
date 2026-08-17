@@ -47,7 +47,7 @@ def configure_faiss_cpu_only():
     memory_info = log_system_memory()
     
     logger = logging.getLogger('faiss_config')
-    logger.info("Configuring FAISS for CPU-only usage...")
+    logger.debug("Configuring FAISS for CPU-only usage...")
     
     # Disable GPU support to avoid warnings
     os.environ['FAISS_DISABLE_GPU'] = '1'
@@ -66,13 +66,13 @@ def configure_faiss_cpu_only():
     # Set CPU thread count for optimal performance
     faiss.omp_set_num_threads(1)  # Use single thread to avoid conflicts
     
-    logger.info("FAISS CPU-only configuration completed successfully")
+    logger.debug("FAISS CPU-only configuration completed successfully")
     
     # Log memory after FAISS import
     memory_after = log_system_memory()
     if memory_info and memory_after:
         memory_diff = memory_after['used_ram_gb'] - memory_info['used_ram_gb']
-        logger.info(f"Memory usage change after FAISS import: {memory_diff:+.3f} GB")
+        logger.debug(f"Memory usage change after FAISS import: {memory_diff:+.3f} GB")
     
     return faiss
 

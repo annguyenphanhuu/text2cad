@@ -425,16 +425,21 @@ Output:"""
                 expanded_query = result.get("expanded_query", query)
                 detected_shape_type = _clean_shape_type(result.get("detected_shape_type"))
                 
-                # Log expansion
+                # The expansion is almost always the original query plus a
+                # "Shape type: X" line, so printing both in full showed the same
+                # text twice across four lines. Log only what was added.
                 if expanded_query != query:
-                    logger.info(
-                        f"[QUERY_EXPAND] ✅ LLM Expansion:\n"
-                        f"  Original:  '{query}'\n"
-                        f"  Expanded:  '{expanded_query}'\n"
-                        f"  Shape Type: {detected_shape_type}"
+                    added = (
+                        expanded_query[len(query):]
+                        if expanded_query.startswith(query)
+                        else expanded_query
+                    )
+                    logger.debug(
+                        f"[QUERY_EXPAND] shape={detected_shape_type} | "
+                        f"added: {' · '.join(added.splitlines())}"
                     )
                 else:
-                    logger.info(f"[QUERY_EXPAND] ℹ️  No expansion needed (no manufacturing terms detected)")
+                    logger.debug("[QUERY_EXPAND] No expansion needed (no manufacturing terms)")
                 
                 log_query_expansion(query, expanded_query, str(detected_shape_type))
                 

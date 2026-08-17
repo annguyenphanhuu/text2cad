@@ -30,19 +30,12 @@ DB_NAME = os.getenv("MYSQL_DATABASE", "chatbot_db")
 from urllib.parse import quote_plus
 DB_PASSWORD_ENCODED = quote_plus(DB_PASSWORD)
 
-# Print the actual values for debugging (without showing the full password)
-print(f"Database config values:")
-print(f"  DB_USER: {DB_USER}")
-print(f"  DB_PASSWORD: {'*' * len(DB_PASSWORD)}")
-print(f"  DB_HOST: {DB_HOST}")
-print(f"  DB_PORT: {DB_PORT}")
-print(f"  DB_NAME: {DB_NAME}")
-
 # Create the database URL with explicit parameters
 DATABASE_URL = f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD_ENCODED}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Log database connection info (without password)
-print(f"Connecting to MySQL database: {DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+# The connection target is already reported by the startup banner in run.py, so
+# it is only worth a line here when someone is debugging the connection itself.
+logger.debug(f"MySQL target: {DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
 
 # Create optimized engine with connection handling
 def create_optimized_engine():
@@ -126,22 +119,23 @@ def _skip_db_requested():
 
 # Replace the complex connection logic with optimized version
 if _skip_db_requested():
-    print(f"SKIP_DB is set - using local SQLite database at {SQLITE_PATH}")
+    logger.info(f"SKIP_DB set — using local SQLite at {SQLITE_PATH}")
     engine = create_sqlite_engine()
     USING_SQLITE_FALLBACK = True
 else:
     try:
-        print("Creating optimized database engine...")
         engine = create_optimized_engine()
 
         # Test connection once
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT 1"))
-            print(f"Database connection successful! Test result: {result.scalar()}")
+            conn.execute(text("SELECT 1"))
+        logger.info(f"MySQL connected: {DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
 
     except Exception as e:
-        print(f"Database connection failed: {e}")
-        print(f"Falling back to local SQLite database at {SQLITE_PATH}")
+        # The SQLAlchemy message spans several lines and ends with a docs URL;
+        # only the first line names the actual failure.
+        reason = str(e).split('\n')[0]
+        logger.warning(f"MySQL unreachable ({reason}) — falling back to SQLite at {SQLITE_PATH}")
         engine = create_sqlite_engine()
         USING_SQLITE_FALLBACK = True
 
@@ -160,8 +154,7 @@ def init_db():
     the tables are then created in the local SQLite fallback file instead, so
     every endpoint keeps working.
     """
-    if USING_SQLITE_FALLBACK:
-        logger.warning(f"Using SQLite fallback database: {SQLITE_PATH}")
+    # Which backend is in use was already reported when the engine was built.
     Base.metadata.create_all(bind=engine)
 
 def _session_scope():

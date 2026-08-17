@@ -1,8 +1,11 @@
 from .faiss_config import faiss
+import logging
 import numpy as np
 import os
 import sys # Add sys for path manipulation
 from typing import List, Tuple, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 # Configure FAISS to use CPU only and suppress GPU warnings
 os.environ['FAISS_DISABLE_GPU'] = '1'
@@ -165,16 +168,17 @@ def load_index(index_name: str = "faiss_index.index") -> Optional[faiss.Index]:
     """
     index_path = os.path.join(INDEX_DIR, index_name)
     if not os.path.exists(index_path):
-        print(f"FAISS index file not found at {index_path}")
+        logger.error(f"FAISS index file not found at {index_path}")
         return None
     try:
         index = faiss.read_index(index_path)
-        print(f"FAISS index loaded from {index_path} with {index.ntotal} vectors.")
         load_metadata_store() # Load metadata associated with this index
-        print(f"Metadata store loaded with {len(METADATA_STORE)} entries.")
+        # The caller (initialize_retriever) reports vector and metadata counts
+        # once the index is installed; this only adds where it came from.
+        logger.debug(f"FAISS index loaded from {index_path}")
         return index
     except Exception as e:
-        print(f"Error loading FAISS index or metadata: {e}")
+        logger.error(f"Error loading FAISS index or metadata: {e}")
         return None
 
 def add_to_index(

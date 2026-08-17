@@ -48,7 +48,7 @@ async def verify_token_dependency(credentials: HTTPAuthorizationCredentials = De
             }
         )
 
-    logger.info("Token validated successfully")
+    logger.debug("Token validated successfully")
     return credentials.credentials
 
 

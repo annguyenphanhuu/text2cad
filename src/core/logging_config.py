@@ -1,7 +1,20 @@
 """
-Comprehensive logging configuration for the DFM Shape ChatBot application.
-This module provides structured logging with different levels and formatters
-to improve debugging and monitoring capabilities.
+Logging configuration for the DFM Shape ChatBot.
+
+Three audiences, three shapes:
+
+* CONSOLE — one human watching one run. Lines stay short: the session id that
+  repeats on nearly every record collapses into a 6-char tag printed once per
+  line, and internal-plumbing tags are muted. Set ENABLE_VERBOSE_LOGGING=true
+  to unmute everything.
+* application.log — the full record stream, one line each, session id inlined
+  so a single grep reconstructs one user's run.
+* main_flow.log — the console view, with full timestamps and no colors.
+* process_flow.log / errors.log — post-mortem material, unchanged.
+
+Formatters here never mutate the LogRecord. Several handlers format the same
+record in sequence, so a formatter that rewrites `record.msg` (or wraps
+`record.levelname` in ANSI codes) corrupts what every later handler sees.
 """
 
 import logging
@@ -11,82 +24,298 @@ import re
 from pathlib import Path
 
 
-class ColoredFormatter(logging.Formatter):
-    """Custom formatter with colors for different log levels."""
+# ─────────────────────────────────────────────────────────────────────────────
+# Session-id handling
+# ─────────────────────────────────────────────────────────────────────────────
+# Session ids look like `session_cfd189_870869`; some call sites log a
+# truncated `session_cfd189_...` form.
+_SID = r'session_[0-9a-f]{6}_(?:\d{6}|\.{3})'
 
-    # ANSI color codes
+#: Same shape as _SID, but capturing the short tag. Kept separate because _SID
+#: is spliced into an alternation below, where a repeated group name is illegal.
+SESSION_ID_PATTERN = re.compile(r'session_(?P<sid>[0-9a-f]{6})_(?:\d{6}|\.{3})')
+
+# The same session id is repeated as a `| session=…` / `| user_id=…` trailer on
+# nearly every record. On the console it is redundant with the per-line tag, so
+# these fragments are stripped there (application.log keeps them verbatim).
+_SESSION_NOISE_PATTERN = re.compile('|'.join([
+    r'\s*\|?\s*(?:session|session_id|user_id)\s*=\s*' + _SID,
+    r'\s*\|\s*Session:\s*' + _SID,
+    r'\s*\[Session:\s*' + _SID + r'\]',
+    r'\s+(?:for|in|to)\s+session\s+' + _SID,
+    r'\s+session\s+' + _SID,
+]))
+
+#: Separators left dangling once a trailer is cut out of the middle of a message.
+#: The leading-tag rule is anchored to `^[TAG]` rather than to any `]`, so a
+#: bracketed value mid-message ("Classes: [x] | Retrieved: 6") keeps its pipe.
+_DANGLING_SEPARATORS = (
+    (re.compile(r'\|\s*\|'), '|'),                       # a | b | c, b cut → a || c
+    (re.compile(r'^(\[[A-Za-z_0-9]+\])\s*\|\s*'), r'\1 '),  # [TAG] | rest → [TAG] rest
+    (re.compile(r'\s*\|\s*$'), ''),                      # trailing separator
+)
+
+
+def short_session(session_id):
+    """`session_cfd189_870869` → `cfd189`. Anything else is passed through."""
+    if not session_id:
+        return None
+    match = SESSION_ID_PATTERN.search(str(session_id))
+    return match.group('sid') if match else str(session_id)[:6]
+
+
+#: Trailing logger-name segments that identify nothing on their own — `uvicorn.error`
+#: would otherwise be filed under `[error]`, and every package's `main` under `[main]`.
+_AMBIGUOUS_MODULES = frozenset({'main', 'error', 'access', 'asgi', 'app', 'base', 'utils'})
+
+
+def _module_label(logger_name: str) -> str:
+    """Shortest unambiguous name for a logger, for the file-log module column."""
+    parts = logger_name.split('.')
+    if len(parts) > 1 and parts[-1] in _AMBIGUOUS_MODULES:
+        return '.'.join(parts[-2:])
+    return parts[-1]
+
+
+def _context_session_id():
+    """Session id of the in-flight request, or None outside a request."""
+    try:
+        from ..utils.context_manager import get_session_id
+        return get_session_id()
+    except Exception:
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Console noise control
+# ─────────────────────────────────────────────────────────────────────────────
+# Tags carrying internal plumbing rather than flow. Muted on the console (below
+# WARNING only) because something else already reports the same outcome — the
+# reason is noted per group. Everything still lands in application.log.
+CONSOLE_MUTED_TAGS = (
+    # Session plumbing — the per-line session tag already says which run this is.
+    '[SESSION_CREATE]', '[SESSION_RESOLVE]', '[SESSION_GET]', '[STREAM_SESSION]',
+    # Step bookkeeping — the domain lines trace the flow, and each turn is
+    # closed by "CAD generation completed in Xs (N events)".
+    '[AGENT_STEP]', '[AGENT_PRIORITY]', '[AGENT_STATE]', '[AGENT_NEW]',
+    '[AGENT_CONTINUATION]', '[AGENT_INFO]', '[AGENT_CHAIN]', '[AGENT_QUESTIONS]',
+    '[AGENT_PARAMS]', '[AGENT_CODEGEN]', '[AGENT_EXPORT]', '[AGENT_EDIT]',
+    '[AGENT_DECISION]', '[AGENT_PROGRESS]', '[AGENT_GREETING]',
+    # Per-stage stopwatches, kept for profiling rather than for reading a run.
+    '[TIMING]',
+    # SSE / stream internals.
+    '[SSE_PARAMS]', '[SSE_EVENT]', '[SSE_YIELD]', '[SSE_STREAM]', '[SSE_PROGRESS]',
+    '[STREAM_STEP]', '[STREAM_YIELD]', '[STREAM_WEB]', '[STREAM_PROGRESS]',
+    # RAG internals — the [RAG] summary line reports the retrieval outcome.
+    '[FORMAT_CONTEXT]', '[RAG_FILTER]', '[RERANKER]', '[RAG_INFO]', '[RAG_SPLIT]',
+    # Per-file / per-chunk bookkeeping.
+    '[ASYNC_TIMER]', '[FILE_COPY]', '[CHAT_HISTORY_ADD]', '[DOWNLOAD]',
+    '[RESULT_PROCESS]', '[EXPORT_PATHS]', '[CLEAN_CODE]', '[HISTORY]',
+    '[POST_CODEGEN_HISTORY]', '[CONFIRM_CACHE]', '[FILE_DOWNLOAD]',
+)
+
+
+class ConsoleNoiseFilter(logging.Filter):
+    """Drops internal-plumbing records from the console. WARNING+ always passes."""
+
+    def filter(self, record):
+        if record.levelno >= logging.WARNING:
+            return True
+
+        return not str(record.msg).startswith(CONSOLE_MUTED_TAGS)
+
+
+class AccessLogFilter(logging.Filter):
+    """
+    Trims uvicorn access records.
+
+    Two problems with the raw line: auth tokens and 200-char viewer URLs make it
+    wrap several times, and static-asset hits bury the API calls. Attached to the
+    `uvicorn.access` logger (not to a handler) so every sink sees the same
+    scrubbed line.
+    """
+
+    #: Prefixes whose access records carry no diagnostic value.
+    IGNORED_PREFIXES = ('/static/', '/favicon.ico', '/assets/')
+
+    #: Endpoints logged only when they fail. These are the browser fetching what
+    #: the run just produced (the same paths the [FILES] block lists) and the
+    #: generation stream itself, which the agent already logs as a CAD request.
+    QUIET_WHEN_OK_PREFIXES = (
+        '/api/pdf-viewer/', '/api/3d-viewer/', '/api/step-viewer/',
+        '/download/', '/api/generate-cad-stream',
+    )
+
+    #: Query parameters dropped outright — long and/or secret.
+    DROPPED_PARAMS = ('token', 'access_token', 'jwt')
+
+    MAX_PATH = 80
+    MAX_QUERY = 60
+
+    @classmethod
+    def _scrub(cls, url: str) -> str:
+        path, _, query = url.partition('?')
+
+        if len(path) > cls.MAX_PATH:
+            path = path[:cls.MAX_PATH] + '…'
+
+        if query:
+            kept = [
+                param for param in query.split('&')
+                if param.split('=', 1)[0] not in cls.DROPPED_PARAMS
+            ]
+            query = '&'.join(kept)
+            if len(query) > cls.MAX_QUERY:
+                query = query[:cls.MAX_QUERY] + '…'
+
+        return f"{path}?{query}" if query else path
+
+    def filter(self, record):
+        # uvicorn logs '%s - "%s %s HTTP/%s" %d' % (client, method, url, ver, status)
+        args = record.args
+        if not isinstance(args, tuple) or len(args) != 5:
+            return True
+
+        client, method, url, http_version, status = args
+        url = str(url)
+
+        if url.startswith(self.IGNORED_PREFIXES):
+            return False
+        if url.startswith(self.QUIET_WHEN_OK_PREFIXES) and int(status) < 400:
+            return False
+
+        record.msg = '%s %s → %s'
+        record.args = (method, self._scrub(url), status)
+        return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Formatters
+# ─────────────────────────────────────────────────────────────────────────────
+class ConsoleFormatter(logging.Formatter):
+    """
+    Compact colored console line:
+
+        09:18:50 INFO  cfd189  CAD request 'sheet 100x100x2' (new)
+        09:18:35 INFO          Starting uvicorn on port 8124
+
+    The session tag comes from the message when it names a session, otherwise
+    from the request contextvar — so records from modules that never received a
+    session id (cost tracker, RAG, MQTT client) still line up with their run.
+    """
+
     COLORS = {
         'DEBUG': '\033[36m',      # Cyan
         'INFO': '\033[32m',       # Green
         'WARNING': '\033[33m',    # Yellow
         'ERROR': '\033[31m',      # Red
         'CRITICAL': '\033[35m',   # Magenta
-        'RESET': '\033[0m'        # Reset
     }
+    RESET = '\033[0m'
+    DIM = '\033[2m'
+
+    #: WARNING/CRITICAL are abbreviated so the level column stays 5 wide.
+    LEVEL_ABBREV = {'WARNING': 'WARN', 'CRITICAL': 'CRIT'}
+
+    def __init__(self, use_color=True, datefmt='%H:%M:%S'):
+        super().__init__(datefmt=datefmt)
+        self.use_color = use_color
+
+    def _paint(self, text, color):
+        return f"{color}{text}{self.RESET}" if self.use_color else text
 
     def format(self, record):
-        # Add color to the levelname
-        if hasattr(record, 'levelname'):
-            color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
-            record.levelname = f"{color}{record.levelname}{self.COLORS['RESET']}"
+        raw = record.getMessage()
 
-        return super().format(record)
+        match = SESSION_ID_PATTERN.search(raw)
+        tag = match.group('sid') if match else (short_session(_context_session_id()) or '')
+
+        message = _SESSION_NOISE_PATTERN.sub('', raw)
+        for pattern, replacement in _DANGLING_SEPARATORS:
+            message = pattern.sub(replacement, message)
+        message = message.rstrip()
+
+        level = self.LEVEL_ABBREV.get(record.levelname, record.levelname)
+        timestamp = self.formatTime(record, self.datefmt)
+
+        head = (
+            f"{self._paint(timestamp, self.DIM)} "
+            f"{self._paint(f'{level:<5}', self.COLORS.get(record.levelname, ''))} "
+            f"{self._paint(f'{tag:<6}', self.DIM)} "
+        )
+        # Width of `head` as the terminal sees it — the ANSI codes in it occupy
+        # no columns, so len(head) would over-indent by ~20 characters.
+        column = len(timestamp) + len(f'{level:<5}') + len(f'{tag:<6}') + 3
+
+        # Continuation lines of multi-line records (cost table, file list) are
+        # indented to the message column so the block hangs off its own header
+        # instead of floating at the left margin. Leading whitespace does not
+        # stop a terminal from turning a path into a Ctrl+Click link.
+        head_line, _, rest = message.partition('\n')
+        out = head + head_line
+        if rest:
+            out += '\n' + '\n'.join(' ' * column + line for line in rest.split('\n'))
+
+        if record.exc_info:
+            out += '\n' + self.formatException(record.exc_info)
+        return out
 
 
-class MainFlowFilter(logging.Filter):
-    """Filter to only show main execution flow logs and hide verbose debugging."""
+class CompactFileFormatter(logging.Formatter):
+    """
+    One line per record for application.log:
 
-    # Main flow keywords that should always be shown
-    MAIN_FLOW_KEYWORDS = [
-        'Starting DFM Shape ChatBot',
-        'Database configuration',
-        'Log level',
-        'Starting uvicorn server',
-        'CAD generation request:',
-        'Generated session ID:',
-        'Successfully created session',
-        'Analysis completed',
-        'Parameters complete',
-        'Code generation completed',
-        'Export completed',
-        'All processing completed',
-        'Error',
-        'WARNING',
-        'CRITICAL'
-    ]
+        [2026-08-17 09:18:50] [session_cfd189_870869] INFO     [cost_tracker] …
 
-    # Verbose prefixes that should be filtered out at INFO level
-    VERBOSE_PREFIXES = [
-        '[SSE_PARAMS]', '[SSE_EVENT]', '[SSE_YIELD]', '[SSE_STREAM]',
-        '[STREAM_STEP]', '[STREAM_YIELD]', '[STREAM_WEB]', '[STREAM_PROGRESS]',
-        '[AGENT_STATE]', '[AGENT_CONTINUATION]', '[AGENT_INFO]', '[AGENT_CHAIN]',
-        '[AGENT_QUESTIONS]', '[AGENT_PARAMS]', '[AGENT_CODEGEN]', '[AGENT_EXPORT]',
-        '[SESSION_RESOLVE]', '[SESSION_GET]', '[SESSION_CREATE]',
-        '[RESULT_PROCESS]', '[EXPORT_PATHS]', '[CHAT_HISTORY_ADD]', '[DOWNLOAD]'
-    ]
+    Strips ANSI codes and replaces emoji with text tags so the file stays
+    grep-friendly on any terminal, and pins the session id at the front so
+    `grep session_cfd189_870869 application.log` yields one user's whole run.
+    """
 
-    def filter(self, record):
-        if record.levelno >= logging.WARNING:
-            return True
+    EMOJI_MAP = {
+        '📤': '[SEND]', '📥': '[RECV]', '✅': '[OK]', '❌': '[FAIL]',
+        '⚠️': '[WARN]', '🔍': '[CHECK]', '🎧': '[LISTEN]', '🔌': '[CONNECT]',
+        '📊': '[PROGRESS]', '📢': '[STATUS]', '📋': '[INFO]', '📄': '[FILE]',
+        '🔧': '[FIX]', '⏳': '[WAIT]', '🚀': '[START]', '🏁': '[END]',
+        '📈': '[PROGRESS]', '📝': '[NOTE]', '💾': '[SAVE]', '🎉': '[SUCCESS]',
+        '📁': '[FILES]', '💰': '[COST]', '💡': '[EXAMPLES]', '🎯': '[TARGET]',
+        '🔀': '[PARALLEL]', '♻️': '[REUSE]', '🔄': '[RERANK]', '⚡': '[FAST]',
+        'ℹ️': '[INFO]', '🚪': '[GATE]', '🤖': '[LLM]', '⏱️': '[TIME]',
+    }
 
-        msg = str(record.msg)
+    ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
 
-        # Always show main flow messages
-        for keyword in self.MAIN_FLOW_KEYWORDS:
-            if keyword in msg:
-                return True
+    def __init__(self, include_location=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.include_location = include_location
 
-        # Filter out verbose debugging messages at INFO level
-        for prefix in self.VERBOSE_PREFIXES:
-            if msg.startswith(prefix):
-                return False
+    def _clean(self, text):
+        text = self.ANSI_PATTERN.sub('', text)
+        for emoji, replacement in self.EMOJI_MAP.items():
+            text = text.replace(emoji, replacement)
+        return re.sub(r'\s+', ' ', text).strip()
 
-        # Allow other messages through
-        return True
+    def format(self, record):
+        message = self._clean(record.getMessage())
+
+        match = SESSION_ID_PATTERN.search(message)
+        session_id = match.group(0) if match else _context_session_id()
+
+        module = _module_label(record.name)
+        location = f" {record.filename}:{record.lineno}" if self.include_location else ''
+        prefix = f"[{session_id}] " if session_id else ''
+
+        line = (
+            f"[{self.formatTime(record, self.datefmt)}] {prefix}"
+            f"{record.levelname:<8} [{module}]{location} - {message}"
+        )
+        if record.exc_info:
+            line += '\n' + self.formatException(record.exc_info)
+        return line
 
 
 class ProcessFlowFilter(logging.Filter):
-    """Filter to identify and categorize process flow logs."""
+    """Tags each record with a coarse flow category for process_flow.log."""
 
     FLOW_CATEGORIES = [
         'FLOW', 'SESSION', 'AGENT', 'STREAM', 'EXPORT', 'WEB_SEARCH',
@@ -94,298 +323,129 @@ class ProcessFlowFilter(logging.Filter):
     ]
 
     def filter(self, record):
-        # Add flow category if present in message
-        if hasattr(record, 'msg'):
-            msg = str(record.msg)
-            for category in self.FLOW_CATEGORIES:
-                if f"[{category}" in msg:
-                    record.flow_category = category
-                    break
-            else:
-                record.flow_category = "GENERAL"
-
+        msg = str(record.msg)
+        record.flow_category = next(
+            (c for c in self.FLOW_CATEGORIES if f"[{c}" in msg),
+            "GENERAL",
+        )
         return True
 
 
-class CompactFileFormatter(logging.Formatter):
-    """
-    Compact formatter for file logs - Phase 1 optimizations:
-    1. Removes ANSI color codes
-    2. Replaces emojis with text
-    3. Extracts and places session_id at the beginning
-    4. Compact format without filename:lineno in production
-    """
-    
-    # Emoji to text mapping
-    EMOJI_MAP = {
-        '📤': '[SEND]',
-        '📥': '[RECV]',
-        '✅': '[OK]',
-        '❌': '[FAIL]',
-        '⚠️': '[WARN]',
-        '🔍': '[CHECK]',
-        '🎧': '[LISTEN]',
-        '🔌': '[CONNECT]',
-        '📊': '[PROGRESS]',
-        '📢': '[STATUS]',
-        '📋': '[INFO]',
-        '📄': '[FILE]',
-        '🔧': '[FIX]',
-        '⏳': '[WAIT]',
-        '🚀': '[START]',
-        '🏁': '[END]',
-        '📈': '[PROGRESS]',
-        '📝': '[NOTE]',
-        '💾': '[SAVE]',
-        '🎉': '[SUCCESS]',
-    }
-    
-    # ANSI color code pattern
-    ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
-    
-    # Session ID pattern (session_xxxxxx_xxxxxx)
-    SESSION_PATTERN = re.compile(r'session_[a-f0-9]{6}_[0-9]{6}')
-    
-    def __init__(self, include_location=False, *args, **kwargs):
-        """
-        Args:
-            include_location: If True, include filename:lineno (for debug mode)
-        """
-        super().__init__(*args, **kwargs)
-        self.include_location = include_location
-    
-    def _remove_ansi_codes(self, text):
-        """Remove ANSI color codes from text."""
-        return self.ANSI_PATTERN.sub('', text)
-    
-    def _replace_emojis(self, text):
-        """Replace emojis with text equivalents."""
-        for emoji, replacement in self.EMOJI_MAP.items():
-            text = text.replace(emoji, replacement)
-        return text
-    
-    def _extract_session_id(self, text):
-        """Extract session_id from message if present, but keep it in text for searchability."""
-        match = self.SESSION_PATTERN.search(text)
-        if match:
-            session_id = match.group(0)
-            # DON'T remove session_id from text - keep it for searchability in logs
-            # Just return both the extracted session_id and original text
-            return session_id, text
-        return None, text
-    
-    def format(self, record):
-        # Get original message
-        original_msg = record.getMessage()
-        
-        # Remove ANSI codes
-        clean_msg = self._remove_ansi_codes(original_msg)
-        
-        # Replace emojis
-        clean_msg = self._replace_emojis(clean_msg)
-        
-        # Extract session_id from message if present
-        session_id_from_msg, clean_msg = self._extract_session_id(clean_msg)
-        
-        # Clean up extra spaces
-        clean_msg = re.sub(r'\s+', ' ', clean_msg).strip()
-        
-        # Extract module name from logger name (e.g., 'src.core.text_to_cad_agent' -> 'text_to_cad_agent')
-        logger_name = record.name
-        if '.' in logger_name:
-            module_name = logger_name.split('.')[-1]
-        else:
-            module_name = logger_name
-        
-        # Set module name
-        record.module = module_name
-        
-        # Set the cleaned message
-        record.msg = clean_msg
-        record.args = ()  # Clear args since we've formatted the message
-        
-        # Get session_id from context (for multi-user traceability)
-        # Note: user_id is not needed since session_id is sufficient for identification
-        try:
-            from ..utils.context_manager import get_session_id
-            session_id_from_context = get_session_id()
-        except:
-            session_id_from_context = None
-        
-        # Prefer session_id from message, fallback to context
-        final_session_id = session_id_from_msg or session_id_from_context
-        
-        # Build format string with session_id at the beginning for multi-user traceability
-        if final_session_id:
-            # Has session_id: include it at the beginning
-            if self.include_location:
-                fmt = '[%(asctime)s] [%(session_id)s] %(levelname)-8s [%(module)s] %(filename)s:%(lineno)d - %(message)s'
-            else:
-                fmt = '[%(asctime)s] [%(session_id)s] %(levelname)-8s [%(module)s] %(message)s'
-            record.session_id = final_session_id
-        else:
-            # No session_id: use format without session_id
-            if self.include_location:
-                fmt = '[%(asctime)s] %(levelname)-8s [%(module)s] %(filename)s:%(lineno)d - %(message)s'
-            else:
-                fmt = '[%(asctime)s] %(levelname)-8s [%(module)s] %(message)s'
-        
-        # Create a temporary formatter with the dynamic format
-        temp_formatter = logging.Formatter(
-            fmt=fmt,
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        
-        return temp_formatter.format(record)
-
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Setup
+# ─────────────────────────────────────────────────────────────────────────────
 def setup_logging(
     log_level: str = "INFO",
     log_dir: str = "logs",
     enable_file_logging: bool = True,
     enable_console_logging: bool = True,
     enable_flow_logging: bool = True,
-    enable_verbose_logging: bool = False,  # New parameter for verbose debugging
+    enable_verbose_logging: bool = False,
     max_log_size: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
-    include_location: bool = False  # Phase 1: Include filename:lineno in file logs (default: False for compact)
+    include_location: bool = False
 ):
     """
-    Setup comprehensive logging configuration.
+    Configure application-wide logging.
 
     Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_level: DEBUG, INFO, WARNING, ERROR or CRITICAL
         log_dir: Directory for log files
-        enable_file_logging: Whether to enable file logging
-        enable_console_logging: Whether to enable console logging
-        enable_flow_logging: Whether to enable separate flow logging
-        enable_verbose_logging: Whether to show verbose debugging logs
-        max_log_size: Maximum size of each log file in bytes
-        backup_count: Number of backup log files to keep
-    """
+        enable_file_logging: Write application.log / main_flow.log / errors.log
+        enable_console_logging: Write the compact console view
+        enable_flow_logging: Write process_flow.log
+        enable_verbose_logging: Unmute the internal-plumbing tags on the console
+        max_log_size: Rotation threshold per log file, in bytes
+        backup_count: Number of rotated files to keep
+        include_location: Add filename:lineno to application.log
 
-    # Create log directory
+    Returns:
+        The configured root logger.
+    """
     log_path = Path(log_dir)
     log_path.mkdir(exist_ok=True)
 
-    # Convert log level string to logging constant
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
 
-    # Clear any existing handlers
-    logging.getLogger().handlers.clear()
-
-    # Root logger configuration
     root_logger = logging.getLogger()
+    root_logger.handlers.clear()
     root_logger.setLevel(numeric_level)
-
-    # Compact formatter for application.log (Phase 1 optimizations)
-    compact_formatter = CompactFileFormatter(
-        include_location=include_location,
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    
-    # Detailed formatter for files (kept for backward compatibility with other log files)
-    detailed_formatter = logging.Formatter(
-        fmt='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s() - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-    # Simple formatter for console (clean main flow)
-    console_formatter = ColoredFormatter(
-        fmt='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
-    )
-
-    # Flow-specific formatter
-    flow_formatter = logging.Formatter(
-        fmt='%(asctime)s - [%(flow_category)s] - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
 
     handlers = []
 
-    # Console handler with main flow filter
     if enable_console_logging:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(numeric_level)
-        console_handler.setFormatter(console_formatter)
-
-        # Add main flow filter unless verbose logging is enabled
+        console_handler.setFormatter(ConsoleFormatter())
         if not enable_verbose_logging:
-            console_handler.addFilter(MainFlowFilter())
-
+            console_handler.addFilter(ConsoleNoiseFilter())
         handlers.append(console_handler)
 
-    # Main application log file handler (Phase 1: using compact formatter)
     if enable_file_logging:
-        main_log_file = log_path / "application.log"
-        file_handler = logging.handlers.RotatingFileHandler(
-            filename=main_log_file,
-            maxBytes=max_log_size,
-            backupCount=backup_count,
-            encoding='utf-8'
+        # Everything, in full.
+        application_handler = logging.handlers.RotatingFileHandler(
+            filename=log_path / "application.log",
+            maxBytes=max_log_size, backupCount=backup_count, encoding='utf-8',
         )
-        file_handler.setLevel(numeric_level)
-        file_handler.setFormatter(compact_formatter)  # Phase 1: Use compact formatter
-        handlers.append(file_handler)
+        application_handler.setLevel(numeric_level)
+        application_handler.setFormatter(CompactFileFormatter(
+            include_location=include_location, datefmt='%Y-%m-%d %H:%M:%S',
+        ))
+        handlers.append(application_handler)
 
-    # Clean main flow log file (filtered)
-    if enable_file_logging:
-        main_flow_file = log_path / "main_flow.log"
+        # The console view, replayable after the fact: same filtering, full
+        # dates, no colors.
         main_flow_handler = logging.handlers.RotatingFileHandler(
-            filename=main_flow_file,
-            maxBytes=max_log_size,
-            backupCount=backup_count,
-            encoding='utf-8'
+            filename=log_path / "main_flow.log",
+            maxBytes=max_log_size, backupCount=backup_count, encoding='utf-8',
         )
         main_flow_handler.setLevel(numeric_level)
-        main_flow_handler.setFormatter(logging.Formatter(
-            fmt='%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+        main_flow_handler.setFormatter(ConsoleFormatter(
+            use_color=False, datefmt='%Y-%m-%d %H:%M:%S',
         ))
-        main_flow_handler.addFilter(MainFlowFilter())
+        main_flow_handler.addFilter(ConsoleNoiseFilter())
         handlers.append(main_flow_handler)
 
-    # Process flow log file handler (detailed debugging)
+        error_handler = logging.handlers.RotatingFileHandler(
+            filename=log_path / "errors.log",
+            maxBytes=max_log_size, backupCount=backup_count, encoding='utf-8',
+        )
+        error_handler.setLevel(logging.ERROR)
+        error_handler.setFormatter(logging.Formatter(
+            fmt='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s() - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        ))
+        handlers.append(error_handler)
+
     if enable_flow_logging:
-        flow_log_file = log_path / "process_flow.log"
         flow_handler = logging.handlers.RotatingFileHandler(
-            filename=flow_log_file,
-            maxBytes=max_log_size,
-            backupCount=backup_count,
-            encoding='utf-8'
+            filename=log_path / "process_flow.log",
+            maxBytes=max_log_size, backupCount=backup_count, encoding='utf-8',
         )
         flow_handler.setLevel(numeric_level)
-        flow_handler.setFormatter(flow_formatter)
+        flow_handler.setFormatter(logging.Formatter(
+            fmt='%(asctime)s - [%(flow_category)s] - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        ))
         flow_handler.addFilter(ProcessFlowFilter())
         handlers.append(flow_handler)
 
-    # Error-only log file handler
-    if enable_file_logging:
-        error_log_file = log_path / "errors.log"
-        error_handler = logging.handlers.RotatingFileHandler(
-            filename=error_log_file,
-            maxBytes=max_log_size,
-            backupCount=backup_count,
-            encoding='utf-8'
-        )
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(detailed_formatter)
-        handlers.append(error_handler)
-
-    # Add all handlers to root logger
     for handler in handlers:
         root_logger.addHandler(handler)
 
-    # Set specific logger levels for noisy libraries
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
+    # Noisy third-party loggers.
+    for noisy in ("urllib3", "httpx", "httpcore", "asyncio", "faiss", "openai"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    # Log the configuration
-    root_logger.info(f"Logging configured - Level: {log_level}, Verbose: {enable_verbose_logging}")
-    root_logger.info(f"Log directory: {log_path.absolute()}")
+    # Attached to the logger, so file sinks see the scrubbed line too.
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, AccessLogFilter) for f in access_logger.filters):
+        access_logger.addFilter(AccessLogFilter())
+
+    root_logger.info(
+        f"Logging → {log_path.absolute()} | level={log_level}"
+        f"{' | verbose' if enable_verbose_logging else ''}"
+    )
 
     return root_logger
 

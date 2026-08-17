@@ -159,13 +159,13 @@ def save_code_file(
 
     # Log if any Unicode characters were replaced
     if fixed_code != code:
-        logger.info(f"Sanitized Unicode characters in generated code for FreeCAD compatibility")
+        logger.debug(f"Sanitized Unicode characters in generated code for FreeCAD compatibility")
 
     # Save the file
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(fixed_code)
-        logger.info(f"Saved code file to: {filepath}")
+        logger.debug(f"Saved code file to: {filepath}")
         return filepath
     except Exception as e:
         logger.error(f"Error saving code file: {e}")

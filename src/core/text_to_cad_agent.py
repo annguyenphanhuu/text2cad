@@ -136,7 +136,7 @@ class EnhancedFaceProcessor:
             r'BBox\[Min\(([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\)\s*Max\(([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\)\s*Size\(([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\)\] '
             r'Geometry\[(.*?)\] Context\[(.*?)\]'
         )
-        logger.info("Enhanced Face Processor initialized")
+        logger.debug("Enhanced Face Processor initialized")
 
     def parse_face_selection(self, text):
         """Parse enhanced face selection format from user input."""
@@ -252,9 +252,7 @@ class TextToCADAgent:
             'expert': getattr(expert_llm, 'model_name', 'unknown'),
             'confirm': getattr(self.confirm_llm, 'model_name', 'unknown'),
         }
-        logger.info(f"[INIT] Model names: default={self.model_names['default']}, "
-                   f"advanced={self.model_names['advanced']}, expert={self.model_names['expert']}")
-        
+
         # Initialize GPT-4.1-nano for RAG reranking
         from langchain_openai import ChatOpenAI
         try:
@@ -263,7 +261,6 @@ class TextToCADAgent:
                 temperature=0
             )
             self.model_names['reranking'] = 'gpt-4.1-nano-2025-04-14'
-            logger.info(f"[INIT] Reranking LLM: {self.model_names['reranking']}")
         except Exception as e:
             logger.error(f"[INIT] Failed to initialize reranking LLM: {e}")
             self.reranking_llm = None
@@ -286,7 +283,6 @@ class TextToCADAgent:
         self.expansion_llm = self.default_llm
         self.model_names['expansion'] = self.model_names['default']
         set_expansion_llm(self.expansion_llm)
-        logger.info(f"[INIT] Query expander LLM: {self.model_names['expansion']}")
 
         # Greeting classification is a 4-way label + confidence, ~40 output tokens.
         # It ran on the default tier at ~2.7k input tokens on every non-edit turn,
@@ -296,7 +292,13 @@ class TextToCADAgent:
         self.greeting_llm = self.reranking_llm or self.default_llm
         self.model_names['greeting'] = getattr(
             self.greeting_llm, 'model_name', None) or self.model_names['default']
-        logger.info(f"[INIT] Greeting classification LLM: {self.model_names['greeting']}")
+
+        # One line for the whole roster — these used to be four separate INFO
+        # lines, and every role but `advanced` was printed twice on startup.
+        logger.info("Models: " + " | ".join(
+            f"{role}={name}" for role, name in self.model_names.items()
+        ))
+
         self.greeting_classification_chain = create_greeting_classification_chain(self.greeting_llm)
         self.unified_processing_chain = create_unified_processing_chain(self.expert_llm)
         self.dfm_validation_chain = create_dfm_validation_chain(self.expert_llm)
@@ -359,7 +361,7 @@ class TextToCADAgent:
         )
         user_only_parts = [s.strip() for s in user_sections if s.strip()]
         rag_query = "\n\n".join(user_only_parts) if user_only_parts else user_text
-        logger.info(
+        logger.debug(
             f"[RAG] Using user-only query ({len(rag_query)} chars, "
             f"{len(user_only_parts)} user turn(s)) — chatbot responses excluded from RAG input"
         )
@@ -387,18 +389,16 @@ class TextToCADAgent:
                 if isinstance(expansion_result, dict):
                     expanded_rag_query = expansion_result.get("expanded_query", rag_query)
                     detected_shape_type = expansion_result.get("detected_shape_type")
-                    if detected_shape_type:
-                        logger.info(f"[QUERY_EXPAND] Shape type detected: {detected_shape_type}")
-                    else:
-                        logger.info(f"[QUERY_EXPAND] No specific shape type detected.")
                 else:
                     # Fallback for old string format
                     expanded_rag_query = expansion_result
 
-                if expanded_rag_query != rag_query:
-                    logger.info("[QUERY_EXPAND] Query expanded for better semantic matching")
-                else:
-                    logger.info("[QUERY_EXPAND] No expansion needed (no manufacturing terms detected)")
+                # expand_query() already logs the shape type and what it added;
+                # these three lines restated it from the caller's side.
+                logger.debug(
+                    f"[QUERY_EXPAND] shape={detected_shape_type or 'none'} | "
+                    f"expanded={expanded_rag_query != rag_query}"
+                )
             except Exception as e:
                 logger.warning(f"[QUERY_EXPAND] Expansion failed: {e}, using original query")
                 expanded_rag_query = rag_query
@@ -485,7 +485,7 @@ class TextToCADAgent:
         cost_tracker = self._get_cost_tracker(session_id)
         logger.info(f"[TIMING] unified+dfm gather START | session={session_id}")
         _t_gather = time.time()
-        logger.info(f"[🔀 MULTI-AGENT] Running unified analysis + DFM validation in parallel | session={session_id}")
+        logger.debug(f"[🔀 MULTI-AGENT] Running unified analysis + DFM validation in parallel | session={session_id}")
         
         try:
             unified_result, dfm_result = await asyncio.wait_for(
@@ -523,8 +523,8 @@ class TextToCADAgent:
         unified_output_obj = unified_result.get("unified_output_obj")
         if unified_output_obj and isinstance(dfm_result, dict) is False:
             # dfm_result is a DFMValidationOutput Pydantic model
-            logger.info(
-                f"[🔀 MULTI-AGENT] Merging DFM results | "
+            logger.debug(
+                f"[MULTI-AGENT] Merging DFM results | "
                 f"violations={len(dfm_result.violations)} | "
                 f"override={dfm_result.override_intent_detected} | "
                 f"thickness_warning={'yes' if dfm_result.thickness_warning else 'no'}"
@@ -809,7 +809,7 @@ class TextToCADAgent:
         _user_msg = step_plan_result.get("user_message", "")
 
         logger.info(f"[STEP_PLAN] Plan generated: {_total} steps | session={session_id}")
-        print(f"[STEP_PLAN] Plan: {_total} steps → {[s.get('title','?') for s in step_plan_result.get('steps',[])]}")
+        logger.debug(f"[STEP_PLAN] Plan: {_total} steps → {[s.get('title','?') for s in step_plan_result.get('steps',[])]}")
 
         # Fallback message if LLM returned empty user_message
         if not _user_msg:
@@ -868,8 +868,8 @@ class TextToCADAgent:
         # Use last 300 chars when passing to LLM (avoids huge prompts)
         truncated_text = clean_text[-300:]
 
-        logger.info(
-            f"[CONFIRM_DETECT] 🔍 Classifying | session={session_id} "
+        logger.debug(
+            f"[CONFIRM_DETECT] Classifying | session={session_id} "
             f"| input='{clean_text[:80]}'"
         )
 
@@ -891,8 +891,8 @@ class TextToCADAgent:
 
             # 1a. Exact match in YES keyword list
             if word in YES_KEYWORDS:
-                logger.info(
-                    f"[CONFIRM_DETECT] ✅ Pre-check EXACT match YES "
+                logger.debug(
+                    f"[CONFIRM_DETECT] Pre-check EXACT match YES "
                     f"| word='{word}' | session={session_id}"
                 )
                 return "YES"
@@ -911,14 +911,14 @@ class TextToCADAgent:
                     best_kw    = kw
 
             if best_ratio >= 0.75:
-                logger.info(
-                    f"[CONFIRM_DETECT] ✅ Pre-check FUZZY match YES "
+                logger.debug(
+                    f"[CONFIRM_DETECT] Pre-check FUZZY match YES "
                     f"| word='{word}' → '{best_kw}' (ratio={best_ratio:.2f}) "
                     f"| session={session_id}"
                 )
                 return "YES"
 
-            logger.info(
+            logger.debug(
                 f"[CONFIRM_DETECT] Pre-check inconclusive "
                 f"(best_ratio={best_ratio:.2f} < 0.75) → calling mini LLM | session={session_id}"
             )
@@ -965,7 +965,7 @@ class TextToCADAgent:
             )
             intent = "CHANGE"
 
-        logger.info(f"[CONFIRM_DETECT] ✅ Detected intent={intent} | session={session_id}")
+        logger.debug(f"[CONFIRM_DETECT] ✅ Detected intent={intent} | session={session_id}")
         return intent
 
 
@@ -1548,7 +1548,7 @@ class TextToCADAgent:
 
         # Extract shape_type from unified_output_obj for shape-conditional template (Option A)
         shape_type = getattr(unified_output_obj, 'shape_type', 'unknown') or 'unknown'
-        logger.info(f"[CONFIRM] shape_type={shape_type!r} → shape-conditional template will be used")
+        logger.debug(f"[CONFIRM] shape_type={shape_type!r} → shape-conditional template will be used")
 
         # ── Read pre-computed Perforated Sheet result (function calling output) ──
         # Computed by _run_perf_vide_function_call() — LLM does NOT recompute here.
@@ -1624,7 +1624,7 @@ class TextToCADAgent:
                         f" | est_time={_est_time_rev}"
                     )
 
-            logger.info(f"[CONFIRM] 📊 perf_info injected | {perf_info_str[:140]}...")
+            logger.debug(f"[CONFIRM] 📊 perf_info injected | {perf_info_str[:140]}...")
 
         cost_tracker = self._get_cost_tracker(session_id)
         result = await ainvoke_with_cost_tracking(
@@ -2076,10 +2076,9 @@ class TextToCADAgent:
             )
 
         # ── Rule 4: Nothing else to ask → gen code ─────────────────────────
-        logger.info(
-            f"[DECISION] → GENERATE_CODE "
-            f"(missing_info=False, no questions)"
-        )
+        # The other three rules name what made them fire; this is the default
+        # path, and "(missing_info=False, no questions)" only restated its name.
+        logger.info("[DECISION] → GENERATE_CODE")
         return self.CADDecision(
             self.CADDecision.GENERATE_CODE,
             {"requirements": unified_output_obj, "reason": "all_complete"}
@@ -2124,7 +2123,7 @@ class TextToCADAgent:
                 return await loop.run_in_executor(None, self._build_user_text_with_history, session_id, user_text)
             
             user_text_with_history = await build_user_text_async()
-            print(f"[CAD_REQUEST] Built unified user_text with history (length: {len(user_text_with_history)} chars)")
+            logger.debug(f"[CAD_REQUEST] Built unified user_text with history (length: {len(user_text_with_history)} chars)")
 
             # Step 2: Unified processing with RAG
             @async_timer(f"unified_processing_{session_id}")
@@ -2153,8 +2152,10 @@ class TextToCADAgent:
                     unified_output_obj, user_text_with_history, session_id
                 )
 
-            print(f"\n[SUCCESS] Unified analysis and parameter check successful for session {session_id}:")
-            print(f"Parsed Output: {json.dumps(unified_output_obj.dict(), indent=2)}")
+            # Pretty-printed, the parsed output is 16 lines of which 13 are
+            # defaults on a normal turn. The fields that steer the flow are in
+            # the [FLAGS] line below; the rest stays available at DEBUG.
+            logger.debug(f"[UNIFIED] Parsed output: {json.dumps(unified_output_obj.dict(), indent=2)}")
 
             # Step 3: Update session state
             @async_timer(f"session_state_update_{session_id}")
@@ -2181,14 +2182,14 @@ class TextToCADAgent:
             skip_questions  = unified_output_obj.skip_questions_requested
             override_intent = unified_output_obj.override_intent_detected
 
-            # ── Log raw AI flags for debugging ──────────────────────────────
-            print(f"\n{'='*60}")
-            print(f"[DEBUG_FLAGS] Session: {session_id}")
-            print(f"[DEBUG_FLAGS] missing_info               = {unified_output_obj.missing_info}")
-            print(f"[DEBUG_FLAGS] questions                  = {unified_output_obj.questions}")
-            print(f"[DEBUG_FLAGS] skip_questions_requested   = {skip_questions}")
-            print(f"[DEBUG_FLAGS] override_intent_detected   = {override_intent}")
-            print(f"{'='*60}\n")
+            # ── Raw AI flags that steer the decision below ──────────────────
+            logger.info(
+                f"[FLAGS] shape={unified_output_obj.shape_type or '?'} "
+                f"complexity={unified_output_obj.complexity_level} "
+                f"missing_info={unified_output_obj.missing_info} "
+                f"questions={len(unified_output_obj.questions or [])} "
+                f"skip_questions={skip_questions} override={override_intent}"
+            )
 
             # ════════════════════════════════════════════════════════════════
             # SINGLE DECISION ENGINE - single decision point
@@ -2204,11 +2205,11 @@ class TextToCADAgent:
                 override_intent=override_intent,
                 max_attempts_reached=False,
             )
-            print(f"[DECISION] → {decision.action} | session={session_id}")
+            logger.debug(f"[DECISION] → {decision.action} | session={session_id}")
 
             # ── ASK_QUESTIONS: missing info, ask user ───────────
             if decision.action == self.CADDecision.ASK_QUESTIONS:
-                print(f"\n❓ Missing information detected for session {session_id}. Questions: {unified_output_obj.questions}")
+                logger.debug(f"\n❓ Missing information detected for session {session_id}. Questions: {unified_output_obj.questions}")
 
                 # LLM already filters answered questions from full DB history
                 # embedded in user_text. No manual keyword matching needed.
@@ -2216,16 +2217,16 @@ class TextToCADAgent:
 
                 if pending_questions:
                     self._update_session_state(session_id, pending_questions=pending_questions)
-                    print(f"[DEBUG] Stored {len(pending_questions)} pending questions for session {session_id}")
+                    logger.debug(f"[DEBUG] Stored {len(pending_questions)} pending questions for session {session_id}")
                     return self._create_smart_response(unified_output_obj, user_text)
                 else:
                     # All questions resolved — fall through to GENERATE_CODE
-                    print(f"[SUCCESS] All questions appear to have been answered for session {session_id}.")
+                    logger.debug(f"[SUCCESS] All questions appear to have been answered for session {session_id}.")
 
             # ── RETURN_INFO: not missing but has info/warning to return ──────
             elif decision.action == self.CADDecision.RETURN_INFO:
-                print(f"\n[INFO] Returning information/warning to user for session {session_id}")
-                print(f"[INFO] Content: {decision.payload['info'][:200]}...")
+                logger.debug(f"\n[INFO] Returning information/warning to user for session {session_id}")
+                logger.debug(f"[INFO] Content: {decision.payload['info'][:200]}...")
                 return {
                     "code": None,
                     "message": decision.payload["info"],
@@ -2234,8 +2235,8 @@ class TextToCADAgent:
 
             # ── GENERATE_CODE: enough info → confirm or gen code ──────────
             # (both GENERATE_CODE and ASK_QUESTIONS with empty pending_questions reach here)
-            print(f"\n[SUCCESS] ✅ Proceeding to confirm/code generation for session {session_id}")
-            print(f"[SUCCESS] Decision reason: {decision.payload.get('reason', 'normal')}")
+            logger.debug(f"\n[SUCCESS] ✅ Proceeding to confirm/code generation for session {session_id}")
+            logger.debug(f"[SUCCESS] Decision reason: {decision.payload.get('reason', 'normal')}")
 
             # Clear pending_questions now that we are generating
             self._update_session_state(session_id, pending_questions=[])
@@ -2254,15 +2255,13 @@ class TextToCADAgent:
             confirmed_description      = confirm_state.get('confirmed_description', '')
             awaiting_step_plan_confirm = confirm_state.get('awaiting_step_plan_confirm', False)
 
-            print(f"\n{'='*60}")
-            print(f"[FLOW_STATE] session={session_id}")
-            print(f"[FLOW_STATE] awaiting_step_plan_confirm = {awaiting_step_plan_confirm}")
-            print(f"[FLOW_STATE] awaiting_confirm           = {awaiting_confirm}")
-            print(f"[FLOW_STATE] confirm_count              = {confirm_count}")
-            print(f"[FLOW_STATE] confirm_intent_detected    = {unified_output_obj.confirm_intent_detected}")
-            print(f"[FLOW_STATE] step_by_step_requested     = {unified_output_obj.step_by_step_requested}")
-            print(f"[FLOW_STATE] complexity_level           = {unified_output_obj.complexity_level}")
-            print(f"{'='*60}\n")
+            logger.debug(
+                f"[FLOW_STATE] awaiting_step_plan={awaiting_step_plan_confirm} "
+                f"awaiting_confirm={awaiting_confirm} confirm_count={confirm_count} "
+                f"confirm_intent={unified_output_obj.confirm_intent_detected} "
+                f"step_by_step={unified_output_obj.step_by_step_requested} "
+                f"complexity={unified_output_obj.complexity_level}"
+            )
 
             # ── GATE 1: User replied to step plan (YES or NO) → both fall through to Confirm ──
             if awaiting_step_plan_confirm:
@@ -2270,7 +2269,7 @@ class TextToCADAgent:
                     f"[STEP_PLAN] User replied to plan (YES/NO — both → Description Confirm) "
                     f"| session={session_id}"
                 )
-                print(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
+                logger.debug(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
                 self._update_session_state(session_id, awaiting_step_plan_confirm=False)
                 # Fall through to Description Confirm (GATE 3/4) below ↓
 
@@ -2280,7 +2279,7 @@ class TextToCADAgent:
                     f"[STEP_PLAN] 🔧 User explicitly requested step plan → Running Step Planner "
                     f"| session={session_id}"
                 )
-                print(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
+                logger.debug(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
 
                 _total, _user_msg = await self._run_step_planner(
                     session_id, unified_output_obj,
@@ -2300,14 +2299,14 @@ class TextToCADAgent:
                     f"[CONFIRM] ✅ CASE 1 — User confirmed description "
                     f"after round {confirm_count} → Generate Code | session={session_id}"
                 )
-                print(f"[CONFIRM] ✅ CASE 1 — description confirmed, generating code...")
+                logger.debug(f"[CONFIRM] ✅ CASE 1 — description confirmed, generating code...")
                 self._update_session_state(session_id,
                     awaiting_confirm=False,
                     confirm_count=0,
                 )
                 if confirmed_description:
                     unified_output_obj.description = confirmed_description
-                    logger.info(f"[CONFIRM] Using confirmed_description ({len(confirmed_description)} chars) for code gen")
+                    logger.debug(f"[CONFIRM] Using confirmed_description ({len(confirmed_description)} chars) for code gen")
                 return await self.generate_code_from_requirements(
                     unified_output_obj, retrieved_context_for_code_gen,
                     session_id=session_id, current_user_message=user_text, expanded_user_text=expanded_user_text
@@ -2333,7 +2332,7 @@ class TextToCADAgent:
                         f"[CONFIRM] SKIP — Max rounds ({self.MAX_CONFIRM_ATTEMPTS}) reached "
                         f"→ auto generate | session={session_id}"
                     )
-                    print(f"[CONFIRM] Max confirm rounds reached → auto generate")
+                    logger.debug(f"[CONFIRM] Max confirm rounds reached → auto generate")
                     if confirmed_description:
                         unified_output_obj.description = confirmed_description
                 else:
@@ -2342,7 +2341,7 @@ class TextToCADAgent:
                         f"skip_requested={unified_output_obj.skip_questions_requested} "
                         f"→ direct generate | session={session_id}"
                     )
-                    print(f"[CONFIRM] Skipping confirm → direct code generation")
+                    logger.debug(f"[CONFIRM] Skipping confirm → direct code generation")
                 self._update_session_state(
                     session_id,
                     awaiting_confirm=False,
@@ -2359,7 +2358,7 @@ class TextToCADAgent:
                 f"[CONFIRM] → CASE 3 — Running Description Confirm chain "
                 f"(round {confirm_count + 1}) | session={session_id}"
             )
-            print(f"[CONFIRM] → CASE 3 — Description Confirm chain (round {confirm_count + 1})")
+            logger.debug(f"[CONFIRM] → CASE 3 — Description Confirm chain (round {confirm_count + 1})")
             # Save confirm cache so that the fast-path gate (in generate_cad_realtime_stream)
             # can restore the unified result on the next turn when user confirms ("yes"/"ok").
             self._save_confirm_cache(
@@ -2375,8 +2374,8 @@ class TextToCADAgent:
 
             import traceback
             error_traceback = traceback.format_exc()
-            print(f"[ERROR] Error during unified request processing for session {session_id}: {e}")
-            print(f"Traceback: {error_traceback}")
+            logger.error(f"[ERROR] Error during unified request processing for session {session_id}: {e}")
+            logger.error(f"Traceback: {error_traceback}")
             return {"error": f"Error processing request: {str(e)}", "code": None}
 
     async def process_request(self, user_text, is_edit_request=False, session_id=None, request_origin='api', material_choice=None):
@@ -2435,14 +2434,14 @@ class TextToCADAgent:
         from src.core.async_optimizations import async_timer
         
         if session_id is None:
-            print("ERROR: session_id is None in generate_code_from_requirements. Cannot proceed.")
+            logger.error("ERROR: session_id is None in generate_code_from_requirements. Cannot proceed.")
             return {"error": ERROR_CODES["105.2"], "code": None}
 
         state = self._get_session_state(session_id)
         confirmed_rag_description = (design_requirements_obj.description or "").strip()
 
         # Single log: description input to CHAIN 3
-        logger.info(f"[CODE_GEN_INPUT] 🎯 description → CHAIN 3: {design_requirements_obj.description}")
+        logger.debug(f"[CODE_GEN_INPUT] 🎯 description → CHAIN 3: {design_requirements_obj.description}")
 
         # ═══════════════════════════════════════════════════════════════════════
         # SIMPLE FIX: Use database history + current user message
@@ -2452,10 +2451,10 @@ class TextToCADAgent:
         # Use expanded_user_text if provided (from unified analysis), otherwise build from history
         if expanded_user_text:
             user_text = expanded_user_text
-            logger.info(f"[CODE_GEN] ✅ Using expanded_user_text from unified analysis ({len(user_text)} chars)")
+            logger.debug(f"[CODE_GEN] ✅ Using expanded_user_text from unified analysis ({len(user_text)} chars)")
         else:
             user_text = self._build_user_text_with_history(session_id, current_user_message or "")
-            logger.info(f"[CODE_GEN] Using original user_text from history ({len(user_text)} chars)")
+            logger.debug(f"[CODE_GEN] Using original user_text from history ({len(user_text)} chars)")
         
         # Remove the trailing "[USER]: \n" from empty current input
         if user_text.endswith("[USER]: \n"):
@@ -2508,11 +2507,11 @@ class TextToCADAgent:
                     return context
 
             if retrieved_context and len(retrieved_context) > 100:
-                logger.info(f"[CODE_GEN] Using pre-retrieved RAG examples ({len(retrieved_context)} chars). Skipping redundant retrieval.")
+                logger.debug(f"[CODE_GEN] Using pre-retrieved RAG examples ({len(retrieved_context)} chars). Skipping redundant retrieval.")
                 rag_context_content = append_confirmed_info_context(retrieved_context)
             else:
                 # Fallback: Retrieve if missing
-                logger.info(f"[CODE_GEN] No pre-retrieved context found. Initiating RAG retrieval...")
+                logger.debug(f"[CODE_GEN] No pre-retrieved context found. Initiating RAG retrieval...")
                 
                 # RAG context retrieval for code generation (EXAMPLES + INFO via split context)
                 @async_timer(f"rag_retrieval_code_gen_{session_id}")
@@ -2653,7 +2652,7 @@ class TextToCADAgent:
             
             # Execute code generation with async optimization
             generated_code = await generate_code_async()
-            print(f"[SUCCESS] FreeCAD code generation successful for session {session_id}.")
+            logger.debug(f"[SUCCESS] FreeCAD code generation successful for session {session_id}.")
 
             # Async session state update
             async def update_session_async():
@@ -2699,11 +2698,11 @@ class TextToCADAgent:
                     # Log the specific error type
                     error_keywords = ["Shape too complex"]
                     if any(keyword in error_str for keyword in error_keywords):
-                        print(f"[ERROR] FreeCAD execution failed (complex shape) for session {session_id}: {save_error}")
+                        logger.error(f"[ERROR] FreeCAD execution failed (complex shape) for session {session_id}: {save_error}")
                     elif any(keyword in error_str.lower() for keyword in ['server', 'connection', 'network', 'communication']):
-                        print(f"[ERROR] FreeCAD server communication failed for session {session_id}: {save_error}")
+                        logger.error(f"[ERROR] FreeCAD server communication failed for session {session_id}: {save_error}")
                     else:
-                        print(f"[ERROR] FreeCAD export failed for session {session_id}: {save_error}")
+                        logger.error(f"[ERROR] FreeCAD export failed for session {session_id}: {save_error}")
                     
                     # Return code to user even though export failed
                     # This allows users to see and edit the generated code
@@ -2719,7 +2718,7 @@ class TextToCADAgent:
         except Exception as e:
             import traceback
             error_traceback = traceback.format_exc()
-            print(f"[ERROR] Error during code generation for session {session_id}: {e}\n{error_traceback}")
+            logger.error(f"[ERROR] Error during code generation for session {session_id}: {e}\n{error_traceback}")
             return {"error": ERROR_CODES["105.1"], "code": None}
         finally:
             # Cost logging handled by process_request_with_progress
@@ -2729,7 +2728,7 @@ class TextToCADAgent:
         from src.core.async_optimizations import async_timer
 
         if session_id is None:
-            print("ERROR: session_id is None in process_edit_request. Cannot proceed.")
+            logger.error("ERROR: session_id is None in process_edit_request. Cannot proceed.")
             return {"error": "Session ID missing in process_edit_request", "code": None}
 
         # ── Load session state ─────────────────────────────────────────────────
@@ -2737,7 +2736,7 @@ class TextToCADAgent:
         state = await loop.run_in_executor(None, self._get_session_state, session_id)
 
         if not state['latest_code']:
-            print(f"[EDIT] No existing code to edit for session {session_id}.")
+            logger.debug(f"[EDIT] No existing code to edit for session {session_id}.")
             return {"error": "No existing code to edit. Please generate code first.", "code": None}
 
         # ── Step 0: Intercept confirm replies ────────────────────────────────
@@ -2750,7 +2749,7 @@ class TextToCADAgent:
                 f"[EDIT] awaiting_confirm=True → intercepting confirm reply, "
                 f"routing to _unified_request_processor | session={session_id}"
             )
-            print(f"[EDIT] ✅ Confirm reply detected → routing to unified processor (not code editing)")
+            logger.debug(f"[EDIT] ✅ Confirm reply detected → routing to unified processor (not code editing)")
             return await self._unified_request_processor(
                 user_text=user_text,
                 session_id=session_id,
@@ -2783,15 +2782,15 @@ class TextToCADAgent:
             enhanced_user_text = await loop.run_in_executor(None, self.face_processor.enhance_user_request, user_text)
             face_data = await loop.run_in_executor(None, self.face_processor.parse_face_selection, user_text)
             if face_data:
-                print(f"[FACE_PROCESSING] Detected: {face_data['face_id']} ({face_data['shape_type']})")
+                logger.debug(f"[FACE_PROCESSING] Detected: {face_data['face_id']} ({face_data['shape_type']})")
             else:
                 enhanced_user_text = user_text
-                print(f"[FACE_PROCESSING] No face selection detected, using original request")
+                logger.debug(f"[FACE_PROCESSING] No face selection detected, using original request")
         except Exception as e:
             enhanced_user_text = user_text
             logger.warning(f"[EDIT] Face processing failed: {e}")
 
-        print(f"\n[EDIT] Processing edit request for session {session_id}: '{user_text[:80]}'...")
+        logger.debug(f"\n[EDIT] Processing edit request for session {session_id}: '{user_text[:80]}'...")
 
         # ── Step 2: Fold the edit into the running summary + classify the message,
         #            then (only for real edits) run shape_change + unified + DFM ──
@@ -2979,9 +2978,9 @@ class TextToCADAgent:
                 f"[EDIT] 🔄 SHAPE CHANGE detected: {shape_detection.get('current_shape_type')} → {new_shape} "
                 f"| reason={reason} | session={session_id}"
             )
-            print(f"[EDIT] 🔄 Shape change detected → re-routing to full generation flow")
-            print(f"[EDIT]    Current: {shape_detection.get('current_shape_type')} → New: {new_shape}")
-            print(f"[EDIT]    Merged description ({len(merged_desc)} chars): {merged_desc[:200]}...")
+            logger.debug(f"[EDIT] 🔄 Shape change detected → re-routing to full generation flow")
+            logger.debug(f"[EDIT]    Current: {shape_detection.get('current_shape_type')} → New: {new_shape}")
+            logger.debug(f"[EDIT]    Merged description ({len(merged_desc)} chars): {merged_desc[:200]}...")
 
             # Fold in any DFM/unifier warnings so the user only has to answer
             # ONE confirm round covering both the shape change and the warnings.
@@ -3002,7 +3001,7 @@ class TextToCADAgent:
                 f"[EDIT] ⏸ SHAPE CHANGE → running description_confirm | "
                 f"shape={new_shape} | session={session_id}"
             )
-            print(f"[EDIT] ⏸ Shape change → running description_confirm chain")
+            logger.debug(f"[EDIT] ⏸ Shape change → running description_confirm chain")
 
             shape_change_req_obj = AnalysisAndParameterCheckOutput(
                 title=new_shape,
@@ -3040,8 +3039,8 @@ class TextToCADAgent:
             )
 
         # ── Step 4: shape_change=False — persist the running summary regardless ──
-        logger.info(
-            f"[EDIT] ✅ No shape change detected | reason={shape_detection.get('reason', '')[:80]} | "
+        logger.debug(
+            f"[EDIT] No shape change detected | reason={shape_detection.get('reason', '')[:80]} | "
             f"session={session_id}"
         )
         self._update_session_state(session_id, edit_running_summary=updated_summary)
@@ -3163,13 +3162,13 @@ class TextToCADAgent:
                 rag_query = f"Shape type: {current_shape}\n{rag_query}"
 
             post_codegen_text = self._build_post_codegen_history(session_id, user_text)
-            logger.info(
+            logger.debug(
                 f"[EDIT_RAG] history built: full={len(full_history)} chars | "
                 f"rag_query={len(rag_query)} chars | "
                 f"post_codegen={len(post_codegen_text)} chars | session={session_id}"
             )
             retrieved_context = await self._retrieve_edit_context(rag_query, session_id)
-            print(f"[SUCCESS] Context retrieval successful for edit session {session_id}.")
+            logger.debug(f"[SUCCESS] Context retrieval successful for edit session {session_id}.")
 
             # ── Add face selection code if detected ────────────────────────────
             if face_data:
@@ -3177,18 +3176,18 @@ class TextToCADAgent:
                     None, self.face_processor.generate_face_selection_code, face_data
                 )
                 if face_selection_code:
-                    print(f"[FACE_PROCESSING] Generated face selection code ({len(face_selection_code)} chars)")
+                    logger.debug(f"[FACE_PROCESSING] Generated face selection code ({len(face_selection_code)} chars)")
                     retrieved_context = f"{retrieved_context}\n\nFACE SELECTION CODE:\n{face_selection_code}"
 
         except Exception as e:
-            print(f"[ERROR] Error during context retrieval: {e}")
+            logger.error(f"[ERROR] Error during context retrieval: {e}")
             retrieved_context = ""
 
         try:
-            print(f"\nEditing FreeCAD code for session {session_id}...")
+            logger.debug(f"\nEditing FreeCAD code for session {session_id}...")
 
             sanitized_title = self._sanitize_title(state)
-            print(f"Using sanitized_title: '{sanitized_title}' for code editing in session {session_id}")
+            logger.debug(f"Using sanitized_title: '{sanitized_title}' for code editing in session {session_id}")
 
             # ── Build effective user_request for the LLM ──────────────────────
             # Use post_codegen_text so the LLM only sees messages sent AFTER the
@@ -3202,12 +3201,12 @@ class TextToCADAgent:
                 else (rag_query if rag_query and rag_query.strip() else enhanced_user_text)
             )
 
-            print(f"🔍 [EDIT MODE INPUT] Session: {session_id}")
-            print(f"   - User Request (latest):   {enhanced_user_text[:200]}")
-            print(f"   - User Request (effective): {effective_user_request[:200]}")
-            print(f"   - Original Code Len:  {len(state['latest_code'])} chars")
-            print(f"   - Context Len:        {len(retrieved_context)} chars")
-            print(f"   - Sanitized Title:    {sanitized_title}")
+            logger.info(
+                f"[EDIT] '{' '.join(effective_user_request.split())[:80]}' | "
+                f"code={len(state['latest_code'])} chars | "
+                f"context={len(retrieved_context)} chars | title={sanitized_title}"
+            )
+            logger.debug(f"[EDIT] latest user request: {enhanced_user_text[:200]}")
 
             cost_tracker = self._get_cost_tracker(session_id)
             edited_code = await ainvoke_with_cost_tracking(
@@ -3222,7 +3221,7 @@ class TextToCADAgent:
                 cost_tracker,
                 self.model_names['expert']
             )
-            print(f"[SUCCESS] FreeCAD code editing successful for session {session_id}.")
+            logger.debug(f"[SUCCESS] FreeCAD code editing successful for session {session_id}.")
 
             # CRITICAL FIX: Save latest_code to session BEFORE attempting file save
             # Async session state update
@@ -3247,7 +3246,7 @@ class TextToCADAgent:
             await update_session_state_async()
 
         except Exception as e:
-            print(f"[ERROR] Error during code editing for session {session_id}: {e}")
+            logger.error(f"[ERROR] Error during code editing for session {session_id}: {e}")
             return {"error": f"Error editing code: {e}", "code": None}
 
         # ── Save files and return ───────────────────────────────────────────────
@@ -3260,7 +3259,7 @@ class TextToCADAgent:
                 base_filename=sanitized_title, user_text=user_text_for_save, session_id=session_id,
                 priority=priority
             )
-            print(f"[SUCCESS] Code updated successfully for session {session_id}.")
+            logger.debug(f"[SUCCESS] Code updated successfully for session {session_id}.")
             return {
                 "code": edited_code,
                 "obj_path": obj_path,
@@ -3270,9 +3269,9 @@ class TextToCADAgent:
         except Exception as save_error:
             error_str = str(save_error)
             if any(k in error_str.lower() for k in ['server', 'connection', 'network', 'communication']):
-                print(f"[ERROR] FreeCAD server communication failed for edit session {session_id}: {save_error}")
+                logger.error(f"[ERROR] FreeCAD server communication failed for edit session {session_id}: {save_error}")
             else:
-                print(f"[ERROR] FreeCAD export failed for edit session {session_id}: {save_error}")
+                logger.error(f"[ERROR] FreeCAD export failed for edit session {session_id}: {save_error}")
             return {"error": error_str, "code": edited_code}
 
     async def _retrieve_edit_context(self, rag_query: str, session_id: str) -> str:
@@ -3300,7 +3299,7 @@ class TextToCADAgent:
             if result['success']:
                 # Examples only — rules_context intentionally excluded
                 examples_context = result.get('examples_context', '').strip()
-                logger.info(
+                logger.debug(
                     f"[EDIT_RAG] Retrieved examples-only context: "
                     f"{len(examples_context)} chars | session={session_id}"
                 )
@@ -3335,7 +3334,7 @@ class TextToCADAgent:
             )
             if result['success']:
                 rules_context = result.get('rules_context', '').strip()
-                logger.info(
+                logger.debug(
                     f"[EDIT_RAG] Retrieved rules-only context for DFM: "
                     f"{len(rules_context)} chars | session={session_id}"
                 )
@@ -3446,7 +3445,7 @@ class TextToCADAgent:
                 # Check server health before proceeding
                 if not await client.check_server_health():
                     logger.error(ERROR_CODES["102.1"])
-                    print(f"[ERROR] {ERROR_CODES['102.1']}")
+                    logger.error(f"[ERROR] {ERROR_CODES['102.1']}")
                     raise Exception(ERROR_CODES["102.1"])
 
                 # Use session_id as user_id, or generate fallback
@@ -3503,12 +3502,12 @@ class TextToCADAgent:
                     logger.error(f"[FreeCAD] ❌ CHECK 6 FAILED: MQTT not published. Response: {submit_result}")
                     raise Exception(ERROR_CODES["102.6"])
 
-                logger.info(f"[FreeCAD] Phase 1 complete | user_id={user_id} | status={response_status} | mqtt={mqtt_published}")
+                logger.debug(f"[FreeCAD] Phase 1 complete | user_id={user_id} | status={response_status} | mqtt={mqtt_published}")
 
                 # ============================================================
                 # PHASE 2: VERIFY JOB EXISTS ON SERVER
                 # ============================================================
-                logger.info(f"[FreeCAD] Phase 2: Verifying | user_id={user_id}")
+                logger.debug(f"[FreeCAD] Phase 2: Verifying | user_id={user_id}")
                 await asyncio.sleep(0.5)
 
                 try:
@@ -3525,7 +3524,7 @@ class TextToCADAgent:
                         logger.error(f"[FreeCAD] ❌ CHECK 6 FAILED: user_id mismatch! Expected: {user_id}, Server returned: {server_user_id}")
                         raise Exception(ERROR_CODES["102.7"])
 
-                    logger.info(f"[FreeCAD] Phase 2 complete | user_id={user_id} | status={server_status}")
+                    logger.debug(f"[FreeCAD] Phase 2 complete | user_id={user_id} | status={server_status}")
 
                 except FreeCADProcessingError as verify_error:
                     if "404" in str(verify_error) or "not found" in str(verify_error).lower():
@@ -3540,13 +3539,13 @@ class TextToCADAgent:
                 # ============================================================
                 # PHASE 3: LISTEN TO MQTT FOR COMPLETION (USER_ID ONLY)
                 # ============================================================
-                logger.info(f"[FreeCAD] Phase 3: Listening MQTT | user_id={user_id}")
+                logger.debug(f"[FreeCAD] Phase 3: Listening MQTT | user_id={user_id}")
 
                 async def progress_callback(status_dict):
                     """Callback function to handle MQTT progress updates"""
                     progress = status_dict.get('progress', 0)
                     current_process = status_dict.get('current_process', 'Processing...')
-                    logger.info(f"[FreeCAD] Progress: {progress}% - {current_process}")
+                    logger.debug(f"[FreeCAD] Progress: {progress}% - {current_process}")
 
                 monitoring_result = await client.wait_for_mqtt_completion_async(
                     user_id=user_id,
@@ -3576,12 +3575,12 @@ class TextToCADAgent:
                     raise Exception(ERROR_CODES["104.1"])
 
                 total_time = monitoring_result.get('total_time', 0)
-                logger.info(f"[FreeCAD] Phase 3 complete | user_id={user_id} | time={total_time:.2f}s")
+                logger.debug(f"[FreeCAD] Phase 3 complete | user_id={user_id} | time={total_time:.2f}s")
 
                 # ============================================================
                 # PHASE 4: DOWNLOAD RESULT FILES FROM SERVER (WITH RETRY)
                 # ============================================================
-                logger.info(f"[FreeCAD] Phase 4: Downloading | user_id={user_id}")
+                logger.debug(f"[FreeCAD] Phase 4: Downloading | user_id={user_id}")
 
                 initial_delay = 3
                 logger.debug(f"[FreeCAD] Waiting {initial_delay}s for server | user_id={user_id}")
@@ -3596,9 +3595,9 @@ class TextToCADAgent:
 
                 for attempt in range(1, max_download_retries + 1):
                     try:
-                        logger.info(f"[FreeCAD] Download attempt {attempt}/{max_download_retries} | user_id={user_id}")
+                        logger.debug(f"[FreeCAD] Download attempt {attempt}/{max_download_retries} | user_id={user_id}")
                         result = await client.get_job_result_async(user_id, auto_download=True, expect_obj=expect_obj)
-                        logger.info(f"[FreeCAD] Download success | user_id={user_id} | attempt={attempt}")
+                        logger.debug(f"[FreeCAD] Download success | user_id={user_id} | attempt={attempt}")
                         break
 
                     except Exception as download_error:
@@ -3645,18 +3644,19 @@ class TextToCADAgent:
                     raise Exception(ERROR_CODES["102.8"])
 
                 total_exec_time = monitoring_result.get('total_time', 0)
-                logger.info(f"[FreeCAD] All phases complete | user_id={user_id} | total={total_exec_time:.2f}s")
+                logger.info(
+                    f"[FreeCAD] Job complete in {total_exec_time:.1f}s | "
+                    f"{len(result.get('files', {}))} files | user_id={user_id}"
+                )
             
             if not result["success"]:
                 logger.error(f"Remote FreeCAD execution failed: {result.get('message', 'Unknown error')}")
-                print(f"[ERROR] Remote FreeCAD execution failed: {result.get('message', 'Unknown error')}")
                 if any(keyword in str(result.get('message', '')).lower() for keyword in ['charmap', 'codec', 'encode', 'unicode']):
                     raise Exception(ERROR_CODES["104.2"])
                 raise Exception(ERROR_CODES["104.1"])
-            
-            logger.info("Remote FreeCAD execution successful")
-            print(f"[SUCCESS] Successfully executed FreeCAD script on remote server")
-            
+
+            logger.debug("Remote FreeCAD execution successful")
+
             downloaded_files = result.get("files", {})
             return result, downloaded_files
             
@@ -3717,7 +3717,7 @@ class TextToCADAgent:
         import datetime
         import asyncio
 
-        logger.info(f"Starting save_outputs with remote FreeCAD server (async optimized, priority={priority})")
+        logger.debug(f"Starting save_outputs with remote FreeCAD server (async optimized, priority={priority})")
 
         shape_type = "unknown"
         dimensions = {}
@@ -3748,12 +3748,12 @@ class TextToCADAgent:
                 code_filepath = await loop.run_in_executor(
                     None, save_code_file, code, shape_type, dimensions, design_requirements.dict()
                 )
-                logger.info(f"Saved generated code to: {code_filepath}")
-                print(f"💾 Saved generated code to: {code_filepath}")
+                # The path is listed in the [FILES] summary at the end of
+                # save_outputs, alongside every other artefact of this run.
                 return code_filepath
             except Exception as e:
                 logger.error(f"Error saving code file: {e}")
-                print(f"[ERROR] Error saving code file: {e}")
+                logger.error(f"[ERROR] Error saving code file: {e}")
                 return None
 
         # Save code file
@@ -3801,7 +3801,8 @@ class TextToCADAgent:
             )
             
             if threaded_metadata_path:
-                logger.info(f"[THREADED] ✅ Threaded metadata generated: {threaded_metadata_path}")
+                # Listed as `metadata` in the [FILES] summary.
+                logger.debug(f"[THREADED] Threaded metadata generated: {threaded_metadata_path}")
             else:
                 logger.debug(f"[THREADED] No threaded holes detected in code")
                 
@@ -3946,7 +3947,7 @@ class TextToCADAgent:
                             f"dst={dst_path} | "
                             f"last_error={e}"
                         )
-                        print(f"[ERROR] Could not copy {file_type.upper()} file after {max_retries} attempts: {e}")
+                        logger.error(f"[ERROR] Could not copy {file_type.upper()} file after {max_retries} attempts: {e}")
                         return None
 
 
@@ -3995,33 +3996,28 @@ class TextToCADAgent:
             step_path_to_return = None
             pdf_path_to_return = None
 
-        # Summary of generated files (always display on every conversation)
-        session_info = f" [Session: {session_id}]" if session_id else ""
-        
-        # Always print summary for every conversation to keep users informed
-        print(f"\n📁 Generated Files Summary{session_info}:")
-        if code_filepath:
-            print(f"  - Python Code: {code_filepath}")
-        if threaded_metadata_path:
-            print(f"  - Threaded Metadata: {threaded_metadata_path}")
-        if step_path_to_return:
-            print(f"  - STEP Model: {step_path_to_return}")
-        if obj_path_to_return:
-            print(f"  - OBJ Model: {obj_path_to_return}")
-        if pdf_path_to_return:
-            print(f"  - PDF: {pdf_path_to_return}")
-        print("")
+        # The one place every artefact path is reported. Each path sits alone at
+        # the end of its line, with no trailing punctuation, so terminals detect
+        # it as a link and Ctrl+Click opens it. Individual "saved X to …" lines
+        # elsewhere in this flow are DEBUG for that reason — they used to print
+        # the same code path three times before this block repeated it a fourth.
+        artefacts = [
+            ("code", code_filepath),
+            ("metadata", threaded_metadata_path),
+            ("step", step_path_to_return),
+            ("obj", obj_path_to_return),
+            ("pdf", pdf_path_to_return),
+        ]
+        logger.info("[FILES] Generated\n" + "\n".join(
+            f"  {kind:<9} {path}" for kind, path in artefacts if path
+        ))
 
         # Check if required output files were created
         if not step_path_to_return:
             logger.error("No STEP file was generated by remote server")
-            print(f"[ERROR] No STEP file was generated by remote server")
             raise Exception(ERROR_CODES["104.3"])
 
-        # Log completion only once per session
-        if _session_log_tracker.should_log(session_id or "unknown", f"save_outputs_complete_{session_id}", max_count=1):
-            logger.info("save_outputs completed successfully")
-        
+
         # PDF is optional — pdf_path_to_return may be None (not generated/failed to copy)
         # without affecting STEP/OBJ, which are the required outputs.
         return obj_path_to_return, step_path_to_return, pdf_path_to_return
@@ -4036,9 +4032,8 @@ class TextToCADAgent:
         start_time = time.time()
         logger.info(f"[AGENT_PRIORITY] process_request_with_progress priority={priority} | session={session_id}")
 
-        # ════════════════════════════════════════════════════════════════
-        # DEBUG LOG: Validate session_id at the entry of process_request_with_progress
-        # ════════════════════════════════════════════════════════════════
+        # A missing session_id here is a bug upstream — generate_cad_realtime_stream
+        # is supposed to resolve it — so only the failure is worth a log line.
         if session_id is None:
             import uuid
             import random
@@ -4046,20 +4041,10 @@ class TextToCADAgent:
             rand_uuid   = uuid.uuid4().hex[:6]
             session_id  = f"session_{rand_uuid}_{rand_digits}"
             logger.warning(
-                f"\n{'!'*60}\n"
-                f"[SESSION_WARN] process_request_with_progress received a NONE session_id!\n"
-                f"  → Server forcefully generated a new session_id: {session_id}\n"
-                f"  → This may be a BUG - session_id should be resolved upstream in generate_cad_realtime_stream\n"
-                f"{'!'*60}"
+                f"[SESSION_WARN] process_request_with_progress got session_id=None — "
+                f"generated {session_id}. It should have been resolved upstream in "
+                f"generate_cad_realtime_stream."
             )
-        else:
-            logger.info(
-                f"\n{'='*60}\n"
-                f"[SESSION] process_request_with_progress received a valid session_id:\n"
-                f"  session_id = {session_id}\n"
-                f"{'='*60}"
-            )
-        # ════════════════════════════════════════════════════════════════
 
         # ── Mark start of this request turn for per-turn cost tracking ──
         # Must be called BEFORE any chain invocations so that
@@ -4092,7 +4077,7 @@ class TextToCADAgent:
                 state['material_choice'] = "STEEL"  # Default material
                 state['mapped_material'] = "steel"  # Mapped default
             
-            print(f"[DEBUG] Material choice set in session state: '{state.get('material_choice', 'NOT SET')}' → Mapped: '{state.get('mapped_material', 'NOT SET')}'")
+            logger.debug(f"[DEBUG] Material choice set in session state: '{state.get('material_choice', 'NOT SET')}' → Mapped: '{state.get('mapped_material', 'NOT SET')}'")
             logger.debug(f"[AGENT_PROGRESS] Material choice stored in session state: {state.get('material_choice')} → Mapped: {state.get('mapped_material')}")
 
             # ════════════════════════════════════════════════════════════════
@@ -4104,8 +4089,10 @@ class TextToCADAgent:
             #        DFM_chain, description_confirm_chain.
             # ════════════════════════════════════════════════════════════════
             if state.get('awaiting_confirm', False):
-                logger.info(
-                    f"[CONFIRM_GATE] 🚪 Gate OPEN (awaiting_confirm=True) | session={session_id} "
+                # The intent this resolves to is logged by the branch that takes
+                # it, so the gate itself only needs to say what it is judging.
+                logger.debug(
+                    f"[CONFIRM_GATE] open | session={session_id} "
                     f"| user='{user_text[:80]}'"
                 )
 
@@ -4140,7 +4127,7 @@ class TextToCADAgent:
                 # ── Step 2b: YES — fast-path code generation ──────────────
                 elif intent == "YES":
                     logger.info(
-                        f"[CONFIRM_GATE] ✅ YES fast-path | session={session_id}"
+                        f"[CONFIRM] confirmed → generating code | session={session_id}"
                     )
                     # Retrieve cached data (all per session_id — multi-user safe)
                     confirmed_desc = state.get('confirmed_description', '')
@@ -4223,8 +4210,8 @@ class TextToCADAgent:
                             await asyncio.sleep(0.3)
 
                             # ── Jump straight to code gen — no unified/RAG/DFM ──
-                            logger.info(
-                                f"[CONFIRM_GATE] 🚀 Calling generate_code_from_requirements "
+                            logger.debug(
+                                f"[CONFIRM_GATE] Calling generate_code_from_requirements "
                                 f"(fast-path) | session={session_id}"
                             )
                             fp_codegen_start = time.time()
@@ -4235,8 +4222,9 @@ class TextToCADAgent:
                                 save_files=False,
                                 expanded_user_text=expanded_fp,
                             )
-                            logger.info(
-                                f"[CONFIRM_GATE] ✅ Fast-path codegen done in "
+                            # "Step completed: generation_code" follows immediately.
+                            logger.debug(
+                                f"[CONFIRM_GATE] Fast-path codegen done in "
                                 f"{time.time()-fp_codegen_start:.2f}s | session={session_id}"
                             )
 
@@ -4322,9 +4310,10 @@ class TextToCADAgent:
                                 "progress": 100,
                             }
 
+                            # The SSE layer logs "CAD generation completed in Xs".
                             total_fp = time.time() - start_time
-                            logger.info(
-                                f"[CONFIRM_GATE] 🏁 Fast-path complete in {total_fp:.2f}s | session={session_id}"
+                            logger.debug(
+                                f"[CONFIRM_GATE] Fast-path complete in {total_fp:.2f}s | session={session_id}"
                             )
                             yield {"final_result": fp_result}
                             return
@@ -4344,7 +4333,7 @@ class TextToCADAgent:
             # cad_request fallback on low confidence keep this from misreading a
             # genuine clarifying-answer reply (e.g. "50mm", "steel") as off-topic.
             if not is_edit_request:
-                logger.info(f"[AGENT_GREETING] Checking for greeting/casual conversation for session {session_id}")
+                logger.debug(f"[AGENT_GREETING] Checking for greeting/casual conversation for session {session_id}")
                 try:
                     cost_tracker = self._get_cost_tracker(session_id)
                     greeting_result = await ainvoke_with_cost_tracking(
@@ -4354,7 +4343,15 @@ class TextToCADAgent:
                         cost_tracker,
                         self.model_names['greeting']
                     )
-                    logger.info(f"[AGENT_GREETING] Classification: {greeting_result.get('classification')}, Confidence: {greeting_result.get('confidence')}")
+                    if greeting_result.get('classification') != 'cad_request':
+                        logger.info(
+                            f"[GREETING] {greeting_result.get('classification')} "
+                            f"({greeting_result.get('confidence')})"
+                        )
+                    else:
+                        logger.debug(
+                            f"[GREETING] cad_request ({greeting_result.get('confidence')})"
+                        )
 
                     # Trust AI classification - no keyword override needed
 
@@ -4380,7 +4377,7 @@ class TextToCADAgent:
                         greeting_result.get('confidence', 0) > 0.8 and
                         greeting_result.get('response')):
 
-                        logger.info(f"[AGENT_GREETING] Detected greeting/casual conversation for session {session_id}")
+                        logger.debug(f"[AGENT_GREETING] Detected greeting/casual conversation for session {session_id}")
                         yield {
                             "step": "analysis",
                             "status": "Greeting detected - providing response.",
@@ -4527,22 +4524,22 @@ class TextToCADAgent:
 
             # 🔍 DIAGNOSTIC: log gate values to detect sync issues before edit routing
             _latest_code_len = len(state.get('latest_code') or '')
-            logger.info(
-                f"[EDIT_GATE] session={session_id} | "
-                f"is_edit_request={is_edit_request} | "
-                f"latest_code={'PRESENT (' + str(_latest_code_len) + ' chars)' if _latest_code_len else 'EMPTY ⚠️'} | "
-                f"gate_result={'→ EDIT MODE ✅' if (is_edit_request and _latest_code_len) else '→ NORMAL FLOW ❌ (edit skipped)'}"
-            )
+            if is_edit_request and _latest_code_len:
+                logger.info(f"[EDIT_GATE] edit mode ({_latest_code_len} chars of prior code)")
+            elif is_edit_request:
+                logger.warning("[EDIT_GATE] edit requested but no prior code — generating instead")
+            else:
+                logger.debug("[EDIT_GATE] normal flow")
 
             # ── Bypass edit routing when confirm reply pending ─────────────
             # Shape change confirm uses the same awaiting_confirm=True flag as
             # normal description confirm — both go to the fast-path gate.
             if is_edit_request and state['latest_code'] and state.get('awaiting_confirm', False):
-                logger.info(
+                logger.debug(
                     f"[EDIT_GATE] awaiting_confirm=True → bypassing edit routing, "
                     f"falling through to FAST-PATH GATE | session={session_id}"
                 )
-                print(f"[EDIT_GATE] ✅ awaiting_confirm → skipping edit, using fast-path confirm flow")
+                logger.debug(f"[EDIT_GATE] ✅ awaiting_confirm → skipping edit, using fast-path confirm flow")
                 is_edit_request = False  # Force into the normal (non-edit) flow
 
             if is_edit_request and state['latest_code']:
@@ -4628,7 +4625,7 @@ class TextToCADAgent:
                 }
 
                 total_duration = time.time() - start_time
-                logger.info(f"[AGENT_PROGRESS] Edit process completed in {total_duration:.2f}s for session {session_id}")
+                logger.debug(f"[AGENT_PROGRESS] Edit process completed in {total_duration:.2f}s for session {session_id}")
                 yield {"final_result": result}
                 return
             else:
@@ -4669,7 +4666,7 @@ class TextToCADAgent:
                         f"[FAST_PATH] ✅ Using cached unified result "
                         f"(awaiting_step_plan=True) | session={session_id}"
                     )
-                    print(f"[FAST_PATH] ✅ Skipping unified chain — using cache | step_plan=True")
+                    logger.debug(f"[FAST_PATH] ✅ Skipping unified chain — using cache | step_plan=True")
 
                     yield {
                         "step": "analysis",
@@ -4726,8 +4723,8 @@ class TextToCADAgent:
                             unified_output_obj, user_text_with_history, session_id
                         )
 
-                    print(f"\n[SUCCESS] Unified analysis and parameter check successful for session {session_id}:")
-                    print(f"Parsed Output: {json.dumps(unified_output_obj.dict(), indent=2)}")
+                    logger.debug(f"\n[SUCCESS] Unified analysis and parameter check successful for session {session_id}:")
+                    logger.debug(f"Parsed Output: {json.dumps(unified_output_obj.dict(), indent=2)}")
 
                     yield {
                         "step": "analysis",
@@ -4777,7 +4774,7 @@ class TextToCADAgent:
                     override_intent=override_intent,
                     max_attempts_reached=max_attempts_reached,
                 )
-                logger.info(f"[AGENT_DECISION] → {decision.action} | session={session_id}")
+                logger.debug(f"[AGENT_DECISION] → {decision.action} | session={session_id}")
 
                 # ── ASK_QUESTIONS ───────────────────────────────────────────────────
                 if decision.action == self.CADDecision.ASK_QUESTIONS:
@@ -4820,23 +4817,23 @@ class TextToCADAgent:
                 # ══════════════════════════════════════════════════════════════
                 awaiting_step_plan_confirm = confirm_state.get('awaiting_step_plan_confirm', False)
 
-                print(f"\n{'='*60}")
-                print(f"[FLOW_STATE] awaiting_step_plan_confirm = {awaiting_step_plan_confirm}")
-                print(f"[FLOW_STATE] step_by_step_requested     = {unified_output_obj.step_by_step_requested}")
-                print(f"[FLOW_STATE] complexity_level           = {unified_output_obj.complexity_level}")
-                print(f"{'='*60}\n")
+                logger.debug(
+                    f"[FLOW_STATE] awaiting_step_plan={awaiting_step_plan_confirm} "
+                    f"step_by_step={unified_output_obj.step_by_step_requested} "
+                    f"complexity={unified_output_obj.complexity_level}"
+                )
 
                 # ── GATE 1: User replied to step plan (YES or NO) → both → Confirm ──
                 if awaiting_step_plan_confirm:
                     logger.info(f"[STEP_PLAN] User replied to plan (YES/NO → Confirm) | session={session_id}")
-                    print(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
+                    logger.debug(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
                     self._update_session_state(session_id, awaiting_step_plan_confirm=False)
                     # Fall through to Description Confirm below ↓
 
                 # ── GATE 2: Unified detected explicit step-by-step request → Run Step Planner ──
                 elif unified_output_obj.step_by_step_requested:
                     logger.info(f"[STEP_PLAN] 🔧 User requested step plan → Running Step Planner | session={session_id}")
-                    print(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
+                    logger.debug(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
 
                     _total, _user_msg = await self._run_step_planner(
                         session_id, unified_output_obj,
@@ -4865,7 +4862,7 @@ class TextToCADAgent:
                         retrieved_context_for_code_gen,
                         expanded_user_text,
                     )
-                    logger.info(f"[CONFIRM] Triggering confirm chain | complexity={unified_output_obj.complexity_level} | session={session_id}")
+                    logger.debug(f"[CONFIRM] Triggering confirm chain | complexity={unified_output_obj.complexity_level} | session={session_id}")
                     confirm_result = await self._run_description_confirm(
                         unified_output_obj, user_text_with_history, session_id
                     )
@@ -4998,7 +4995,7 @@ class TextToCADAgent:
                 }
 
                 total_duration = time.time() - start_time
-                logger.info(f"[AGENT_PROGRESS] Process completed in {total_duration:.2f}s for session {session_id}")
+                logger.debug(f"[AGENT_PROGRESS] Process completed in {total_duration:.2f}s for session {session_id}")
                 yield {"final_result": result}
                 return
 

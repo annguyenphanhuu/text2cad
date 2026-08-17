@@ -67,7 +67,7 @@ class PDFProcessor:
         if self.api_key:
             try:
                 self.client = AsyncOpenAI(api_key=self.api_key)  # Changed to AsyncOpenAI
-                logger.info(get_success_message("openai_initialized"))
+                logger.debug(get_success_message("openai_initialized"))
             except Exception as e:
                 logger.error(get_error_message("openai_error", error=str(e)))
                 self.client = None
@@ -77,7 +77,7 @@ class PDFProcessor:
 
         self.cad_agent = cad_agent
         if self.cad_agent and isinstance(self.cad_agent, TextToCADAgent):
-            logger.info("TextToCADAgent instance provided to PDFProcessor.")
+            logger.debug("TextToCADAgent instance provided to PDFProcessor.")
         elif cad_agent:
             logger.warning("A cad_agent was provided, but type mismatch. CAD integration might not work.")
         else:

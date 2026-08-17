@@ -192,7 +192,7 @@ async def get_session_info(session_id: str, db: Session = Depends(get_db), token
 async def get_latest_code(session_id: str, db: Session = Depends(get_db), token: str = Depends(verify_token)):
     """Get the latest generated code for a specific session."""
     try:
-        logger.info(f"Fetching latest code for session: {session_id}")
+        logger.debug(f"Fetching latest code for session: {session_id}")
         
         # First check if session exists
         session = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
@@ -214,7 +214,7 @@ async def get_latest_code(session_id: str, db: Session = Depends(get_db), token:
                 "session_id": session_id
             }
         
-        logger.info(f"Found code for session {session_id}, length: {len(latest_entry.lasted_code)} characters")
+        logger.debug(f"Found code for session {session_id}, length: {len(latest_entry.lasted_code)} characters")
         
         
         return {

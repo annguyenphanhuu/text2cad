@@ -78,30 +78,30 @@ def main():
         # Get port from environment variable or use default
         port = int(os.getenv('UVICORN_PORT', 80))
 
-        # Log startup information
-        logger.info(f"Starting DFM Shape ChatBot server on port {port}")
-        logger.info(f"Python version: {sys.version}")
-        logger.info(f"Working directory: {Path.cwd()}")
-
-        # Log database connection info
         db_host = os.getenv('MYSQL_HOST', 'localhost')
         db_port = os.getenv('MYSQL_PORT', '3306')
         db_user = os.getenv('MYSQL_USER', 'root')
         db_name = os.getenv('MYSQL_DATABASE', 'local')
-        logger.info(f"Database configuration: {db_user}@{db_host}:{db_port}/{db_name}")
+
+        # One startup banner. The details below used to be five separate INFO
+        # lines that repeated what setup_logging() had just printed.
+        logger.info(
+            f"DFM Shape ChatBot → http://0.0.0.0:{port} | "
+            f"db={db_user}@{db_host}:{db_port}/{db_name} | "
+            f"python={sys.version.split()[0]} | cwd={Path.cwd()}"
+        )
 
         log_level = os.getenv('LOG_LEVEL', 'INFO')
-        enable_flow_logging = os.getenv('ENABLE_FLOW_LOGGING', 'true').lower() == 'true'
-        enable_verbose_logging = os.getenv('ENABLE_VERBOSE_LOGGING', 'false').lower() == 'true'
-        logger.info(f"Log level: {log_level}, Flow logging: {enable_flow_logging}, Verbose: {enable_verbose_logging}")
-
-        logger.info(f"Starting uvicorn server...")
         uvicorn.run(
             "src.api.main:app",
             host="0.0.0.0",
             port=port,
             reload=False,  # Set to True for development
-            log_level=log_level.lower()
+            log_level=log_level.lower(),
+            # Let uvicorn's own loggers propagate to the root logger instead of
+            # installing their own handlers — otherwise its records bypass our
+            # formatter and print as unaligned `INFO:     …` lines.
+            log_config=None,
         )
     except Exception as e:
         logger.error(f"Error starting server: {e}")

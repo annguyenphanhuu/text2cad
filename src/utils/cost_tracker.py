@@ -109,19 +109,18 @@ def _resolve_pricing(model_name: str) -> Dict[str, float]:
         if model_name not in _warned_models:
             _warned_models.add(model_name)
             logger.warning(
-                f"[COST_PRICING] No pricing entry for model '{model_name}' — "
-                f"falling back to 'unknown' (${MODEL_PRICING['unknown']['input']}/M in, "
-                f"${MODEL_PRICING['unknown']['output']}/M out). Reported costs for this "
-                f"model are GUESSES. Add it to MODEL_PRICING in src/utils/cost_tracker.py."
+                f"[COST_PRICING] '{model_name}': no pricing entry — costs are GUESSES. "
+                f"Add it to MODEL_PRICING in src/utils/cost_tracker.py."
             )
         return MODEL_PRICING["unknown"]
 
+    # An unverified rate no longer warrants its own line: the cost table marks
+    # every affected row with `~` and says so in its totals line, which puts the
+    # caveat next to the numbers instead of wherever the model happened to run.
     if model_name in _UNVERIFIED_PRICING and model_name not in _warned_models:
         _warned_models.add(model_name)
-        logger.warning(
-            f"[COST_PRICING] Pricing for '{model_name}' is an UNVERIFIED estimate. "
-            f"Relative comparisons are valid; absolute $ figures are not. "
-            f"Verify against your billing dashboard."
+        logger.debug(
+            f"[COST_PRICING] '{model_name}': unverified rates — $ figures are estimates."
         )
 
     return pricing
@@ -221,6 +220,61 @@ class ChainCostInfo:
                 f"cost=${self.total_cost:.6f})")
 
 
+#: Layout for one chain row. The table has no header row, no rules and no TOTAL
+#: row: the totals are the first line, so the block reads "what it cost, then
+#: where it went" and the summary is greppable on its own.
+_COST_ROW = "  {chain:<32.32} {model:<24.24} {inp:>8} {cache:>5} {out:>7} {cost:>9}"
+
+
+def _log_chain_recorded(cost: "ChainCostInfo") -> None:
+    """
+    Record a single chain's cost at DEBUG.
+
+    Every chain used to log a full INFO line here *and* appear as a row in the
+    turn-cost table at the end of the request — the same seven numbers twice per
+    chain. The table is the readable form, so this line is only for tracing a
+    turn that never reached its summary.
+    """
+    logger.debug(
+        f"[COST] {cost.chain_name} | {cost.model_name} | "
+        f"in {cost.prompt_tokens:,}t ({cost.cache_hit_rate:.0%} cached, ${cost.input_cost:.4f}) | "
+        f"out {cost.completion_tokens:,}t (${cost.output_cost:.4f}) | ${cost.total_cost:.4f}"
+    )
+
+
+def _format_cost_table(chains, context: str) -> str:
+    """
+    Render `chains` as a totals line followed by one indented row per chain.
+
+    Rows whose model has no verified price are marked `~`, which replaces the
+    standalone [COST_PRICING] warnings that used to fire mid-request from
+    wherever the model happened to be used first.
+    """
+    prompt_total = sum(c.prompt_tokens for c in chains)
+    cached_total = sum(c.cached_prompt_tokens for c in chains)
+    estimated = any(c.model_name in _UNVERIFIED_PRICING or c.model_name not in MODEL_PRICING
+                    for c in chains)
+
+    lines = [
+        f"[COST] ${sum(c.total_cost for c in chains):.4f} · {len(chains)} chains · "
+        f"{sum(c.total_tokens for c in chains):,}t "
+        f"({cached_total / prompt_total:.0%} cached) · {context}"
+        f"{' · ~ = estimate' if estimated else ''}"
+    ] if prompt_total else [f"[COST] no billable input · {context}"]
+
+    lines += [
+        _COST_ROW.format(
+            chain=c.chain_name, model=c.model_name,
+            inp=f"{c.prompt_tokens:,}t", cache=f"{c.cache_hit_rate:.0%}",
+            out=f"{c.completion_tokens:,}t",
+            cost=("~" if c.model_name in _UNVERIFIED_PRICING or c.model_name not in MODEL_PRICING
+                  else "") + f"${c.total_cost:.4f}",
+        )
+        for c in chains
+    ]
+    return "\n".join(lines)
+
+
 class CostTracker:
     """
     Tracks OpenAI API costs across multiple chain invocations in a single request.
@@ -295,17 +349,7 @@ class CostTracker:
         )
 
         self.chain_costs.append(cost_info)
-
-        # Concise cost log — shows cache hit rate so a prompt-reordering change
-        # is immediately visible (0% = no cacheable static prefix).
-        logger.info(
-            f"[COST] {chain_name} | {model_name} | "
-            f"In: {cost_info.prompt_tokens:,}t "
-            f"(cached {cached_tokens:,}t = {cost_info.cache_hit_rate:.0%}) "
-            f"(${input_cost:.4f}) | "
-            f"Out: {cost_info.completion_tokens:,}t (${output_cost:.4f}) | "
-            f"Total: ${final_cost:.4f}"
-        )
+        _log_chain_recorded(cost_info)
 
         # Only warn if significant cost mismatch (reasoning tokens)
         if callback.total_cost > 0:  # Only check if callback provided a cost
@@ -371,16 +415,7 @@ class CostTracker:
         )
 
         self.chain_costs.append(cost_info)
-
-        # Concise cost log
-        logger.info(
-            f"[COST] {chain_name} | {model_name} | "
-            f"In: {prompt_tokens:,}t "
-            f"(cached {cached_prompt_tokens:,}t = {cost_info.cache_hit_rate:.0%}) "
-            f"(${input_cost:.4f}) | "
-            f"Out: {completion_tokens:,}t (${output_cost:.4f}) | "
-            f"Total: ${final_cost:.4f}"
-        )
+        _log_chain_recorded(cost_info)
 
         return cost_info
 
@@ -412,40 +447,10 @@ class CostTracker:
             Formatted string with cost breakdown
         """
         if not self.chain_costs:
-            return f"[COST_REPORT] Session {self.session_id}: No OpenAI calls tracked"
-        
-        lines = [
-            "=" * 80,
-            f"[COST] Session: {self.session_id} | Duration: {(datetime.now() - self.start_time).total_seconds():.1f}s",
-            "-" * 80
-        ]
-        
-        for i, cost in enumerate(self.chain_costs, 1):
-            # Reuse the costs computed at record time — recomputing here from the
-            # flat input rate is what made these lines disagree with the total.
-            lines.append(
-                f"[COST] {i}. {cost.chain_name:<30} | {cost.model_name:<25} | "
-                f"In: {cost.prompt_tokens:>6,}t (cache {cost.cache_hit_rate:>3.0%}) "
-                f"(${cost.input_cost:>7.4f}) | "
-                f"Out: {cost.completion_tokens:>4,}t (${cost.output_cost:>7.4f}) | "
-                f"Total: ${cost.total_cost:>7.4f}"
-            )
+            return f"[COST] Session {self.session_id}: no OpenAI calls tracked"
 
-        total_prompt = self.get_total_prompt_tokens()
-        total_cached = self.get_total_cached_tokens()
-        cache_pct = (total_cached / total_prompt) if total_prompt else 0.0
-
-        lines.extend([
-            "-" * 80,
-            f"[COST] TOTAL | Chains: {len(self.chain_costs)} | "
-            f"In: {total_prompt:,}t (cached {total_cached:,}t = {cache_pct:.0%}) | "
-            f"Out: {self.get_total_completion_tokens():,}t | "
-            f"Total: {self.get_total_tokens():,}t | "
-            f"COST: ${self.get_total_cost():.4f}",
-            "=" * 80
-        ])
-
-        return "\n".join(lines)
+        duration = (datetime.now() - self.start_time).total_seconds()
+        return _format_cost_table(self.chain_costs, f"session, {duration:.1f}s")
     
     def reset(self):
         """Reset the tracker for a new request"""
@@ -538,45 +543,8 @@ class CostTracker:
         )
 
         if request_chains:
-            total_in     = summary["request_prompt_tokens"]
-            total_out    = summary["request_completion_tokens"]
-            total_tok    = summary["request_total_tokens"]
-            total_cost   = summary["request_total_cost_usd"]
-            total_cached = summary["request_cached_prompt_tokens"]
-            cache_pct    = summary["request_cache_hit_rate"]
-
-            lines = [
-                "=" * 80,
-                f"[COST] 💰 Turn cost | {label}",
-                f"[COST]    session={self.session_id} | duration={duration:.1f}s",
-                "-" * 80,
-            ]
-
-            for i, c in enumerate(request_chains, 1):
-                # Stored at record time — see ChainCostInfo docstring.
-                lines.append(
-                    f"[COST] {i:>2}. {c.chain_name:<30} | {c.model_name:<25} | "
-                    f"In: {c.prompt_tokens:>6,}t (cache {c.cache_hit_rate:>3.0%}) "
-                    f"(${c.input_cost:>7.4f}) | "
-                    f"Out: {c.completion_tokens:>4,}t (${c.output_cost:>7.4f}) | "
-                    f"Total: ${c.total_cost:>7.4f}"
-                )
-
-            lines.extend([
-                "-" * 80,
-                f"[COST] TOTAL | Chains: {len(request_chains)} | "
-                f"In: {total_in:,}t (cached {total_cached:,}t = {cache_pct:.0%}) | "
-                f"Out: {total_out:,}t | "
-                f"Tokens: {total_tok:,}t | "
-                f"COST: ${total_cost:.4f}",
-                "=" * 80,
-            ])
-            logger.info("\n".join(lines))
-
+            logger.info(_format_cost_table(request_chains, f"{duration:.1f}s"))
         else:
-            logger.info(
-                f"[COST] {label} | session={self.session_id} | "
-                f"duration={duration:.1f}s | no OpenAI calls in this turn"
-            )
+            logger.debug(f"[COST] {label} | {duration:.1f}s | no OpenAI calls in this turn")
 
         return summary

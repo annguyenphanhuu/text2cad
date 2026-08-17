@@ -29,7 +29,7 @@ class WebSearchProcessor:
         try:
             self.client = AsyncOpenAI()
             self.cost_tracker = cost_tracker
-            logger.info("WebSearchProcessor initialized successfully with AsyncOpenAI")
+            logger.debug("WebSearchProcessor initialized successfully with AsyncOpenAI")
         except Exception as e:
             logger.error(f"Failed to initialize AsyncOpenAI client: {e}")
             self.client = None

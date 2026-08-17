@@ -61,7 +61,7 @@ else:
     BASE_URL = DOMAIN
 
 
-logger.info(f"Configured BASE_URL: {BASE_URL}")
+logger.debug(f"Configured BASE_URL: {BASE_URL}")
 
 # Add project root to Python path for imports
 project_root = Path(__file__).parent.parent.parent
@@ -733,7 +733,12 @@ async def generate_cad_stream(
     if priority < 0 or priority > 100:
         raise HTTPException(status_code=400, detail="priority must be an integer from 0 to 100")
 
-    logger.info(f"CAD generation request: '{message[:50]}...' (edit: {is_edit_request}, session: {session_id}, priority: {priority})")
+    # The session goes last so the console formatter can lift it into the tag
+    # column and drop the trailer; `session: None` was printed on every new run.
+    logger.info(
+        f"CAD request '{message[:60]}' | edit={is_edit_request} | priority={priority}"
+        + (f" | session={session_id}" if session_id else " | new session")
+    )
     logger.debug(f"[SSE_PARAMS] Message length: {len(message)} characters")
     logger.debug(f"[SSE_PARAMS] Is edit request: {is_edit_request}")
     logger.debug(f"[SSE_PARAMS] Session ID provided: {session_id is not None}")
@@ -963,7 +968,7 @@ async def generate_cad_stream(
                     progress = update.get("overall_percentage", 0)
                     is_complete = update.get("is_complete", False)
                     if is_complete and step_name in ["analysis", "parameters", "generation_code", "export", "complete"]:
-                        logger.info(f"Step completed: {step_name} ({progress}%)")
+                        logger.debug(f"Step completed: {step_name} ({progress}%)")
                     else:
                         logger.debug(f"[SSE_PROGRESS] Stream {stream_id} - Step: {step_name}, Progress: {progress}%, Complete: {is_complete}")
                 elif "final_result" in update:
@@ -1142,7 +1147,7 @@ async def serve_3d_file(file_path: str, request: Request):
                     for recent_dir in recent_dirs:
                         possible_path = recent_dir / filename
                         if possible_path.exists():
-                            logger.info(f"Found file in recent outputs: {possible_path}")
+                            logger.debug(f"Found file in recent outputs: {possible_path}")
                             full_path = possible_path
                             break
 

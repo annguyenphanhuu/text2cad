@@ -94,7 +94,7 @@ async def llm_rerank_documents(
         return documents
 
     model_name = resolve_model_name(llm)
-    logger.info(f"[RERANKER] Reranking {len(documents)} {doc_type} with {model_name}...")
+    logger.debug(f"[RERANKER] Reranking {len(documents)} {doc_type} with {model_name}...")
     
     # Prepare documents for LLM (optimized preview based on doc type)
     docs_text = []
@@ -283,7 +283,7 @@ IMPORTANT: Focus on info files that provide TECHNICAL DATA the user needs."""
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            logger.info(f"[RERANKER] LLM call attempt {attempt}/{MAX_RETRIES}")
+            logger.debug(f"[RERANKER] LLM call attempt {attempt}/{MAX_RETRIES}")
 
             # Wrap LLM call with cost tracking
             cost_info = None
@@ -328,9 +328,11 @@ IMPORTANT: Focus on info files that provide TECHNICAL DATA the user needs."""
             # ── Process valid result ────────────────────────────────────────
             rankings = result.get('rankings', [])
 
-            # Log rankings for debugging
+            # Pretty-printed, this is ~6 lines per ranked document. The scores
+            # are also stored on each document's metadata, so keep the readable
+            # form for DEBUG and give INFO the one-line version.
             if doc_type == "examples":
-                logger.info(f"[RERANKER] 📊 LLM Rankings: {json.dumps(rankings, indent=2)}")
+                logger.debug(f"[RERANKER] LLM rankings: {json.dumps(rankings, indent=2)}")
 
             if not rankings:
                 logger.warning(f"[RERANKER] ⚠️ No rankings in response, using original order")
@@ -384,13 +386,15 @@ IMPORTANT: Focus on info files that provide TECHNICAL DATA the user needs."""
             # Compact summary with cost.
             # Prefer the tracker's computed cost: cb.total_cost is 0 whenever
             # LangChain doesn't recognise the model, which is the common case here.
+            # The counts also reach the console via [RAG_RULES]/[RAG_EXAMPLES],
+            # and the cost via the turn-cost table — this is the traceable form
+            # for application.log, tying the two together with the retry count.
             retry_tag = f" (retry {attempt})" if attempt > 1 else ""
             reported_cost = cost_info.total_cost if cost_info else cb.total_cost
-            selected_note = " (LLM-selected)" if doc_type == "rules" else ""
-            logger.info(
-                f"🔄 [RERANK-{doc_type.upper()}]{retry_tag} "
-                f"{len(documents)} → {len(reranked_docs)} docs{selected_note} | "
-                f"model={model_name} | Cost: ${reported_cost:.4f} ({cb.total_tokens}t) | ✅ Success"
+            logger.debug(
+                f"[RERANK-{doc_type.upper()}]{retry_tag} "
+                f"{len(documents)} → {len(reranked_docs)} docs | "
+                f"model={model_name} | ${reported_cost:.4f} ({cb.total_tokens}t)"
             )
 
             # Log top 3 for debugging
