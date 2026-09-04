@@ -40,15 +40,10 @@ The text to classify is in the `## INPUT` section at the END of this prompt.
   technical drawing to send along with a quote request. Examples: "can you turn
   this into a pdf", "I need the file", "for the quote they are asking me for the
   pdf", "send me the step".
-- Do NOT classify as process_question if the message ALSO asks to create/modify
-  the 3D geometry itself (e.g. "price this for me and add a 5mm hole") — a
-  message with real geometry-creation/modification intent stays cad_request even
-  if it also mentions price/pdf (see MANDATORY OVERRIDE rule below).
-- Leave "response" empty for process_question — the caller supplies the fixed
-  reply text from `sub_type`, never invent your own wording for this category.
-- For a MIXED message that stays `cad_request` (real geometry intent, even if
-  it also mentions price/pdf), leave `sub_type` null/omitted — only the pure
-  `process_question` case carries a `sub_type`.
+- **Only a PURE process question lands here.** Real geometry-creation/modification
+  intent alongside a price/pdf mention stays `cad_request` with no `sub_type` — see
+  MANDATORY OVERRIDE below. Leave `response` empty either way: the caller supplies
+  the fixed reply text from `sub_type`, never invent your own wording here.
 
 ## ADVANCED CLASSIFICATION LOGIC
 
@@ -72,10 +67,7 @@ If the user's message contains BOTH an information question AND a creation/step 
 - "Use 5mm thickness" → cad_request (design specification)
 - "What can you do?" → information_request (capability inquiry)
 - "Make something" → cad_request (creation intent)
-- "I want to know step by step about [CAD action]" → **cad_request** (step-by-step is a modifier for how to create, not a pure info query)
-- "show me steps to create/make/design [object]" → **cad_request** (creation intent with dimensions or specs)
-- "explain how to build [object with dimensions]" → **cad_request** when concrete dimensions/specs are mentioned
-- **MIXED QUERIES (INFO + CAD)**: "Are 5mm thicknesses available? If yes, show me the steps to build a 200x200 platin" → **cad_request** (Info question + CAD request/steps ALWAYS route to `cad_request`).
+- Any "step by step" / "show me the steps" / "explain how to build" wrapped around a concrete object → **cad_request**: step-by-step is a modifier for HOW to create, not a pure info query.
 - "how does laser cutting work?" → information_request (generic process education, no creation intent)
 
 ## RESPONSE GENERATION
@@ -130,12 +122,6 @@ Output: {{"classification": "cad_request", "confidence": 0.95, "response": ""}}
 Input: "i want to know step by step about create sheet 200x200x2, add hole 5mm radius on central"
 Output: {{"classification": "cad_request", "confidence": 0.95, "response": ""}}
 
-Input: "show me the steps to make a 300x200mm bracket with 4 holes"
-Output: {{"classification": "cad_request", "confidence": 0.93, "response": ""}}
-
-Input: "how do I create a perforated sheet step by step?"
-Output: {{"classification": "cad_request", "confidence": 0.88, "response": ""}}
-
 Input: "Are 5mm thicknesses available for Aluminium? If yes, show me the steps to build a 200x200x2 closed panel with that thickness"
 Output: {{"classification": "cad_request", "confidence": 0.95, "response": ""}}
 
@@ -152,9 +138,6 @@ Input: "for the quote they are asking me for the pdf"
 Output: {{"classification": "process_question", "confidence": 0.9, "sub_type": "file_export", "response": ""}}
 
 Input: "price this part for me and also add a 5mm hole at the centre"
-Output: {{"classification": "cad_request", "confidence": 0.9, "response": ""}}
-
-Input: "Add a 5mm hole in the center and also tell me the price"
 Output: {{"classification": "cad_request", "confidence": 0.9, "response": ""}}
 
 # ═══════════════════════════════════════════════════════════════════════════
