@@ -404,58 +404,24 @@ If user asks for lists/options/details about materials, thickness, capabilities 
 
    - **BEND DIRECTION RESOLUTION — L / U / Z BRACKETS (RECTANGULAR ONLY)**:
 
-     Run cases IN ORDER. Stop and apply the FIRST matching case. Never combine multiple cases.
+     `bend_along_side` = the edge the fold lines run along. Walk the ladder top-down; the FIRST
+     matching case wins, then STOP — never combine cases, never re-ask one already resolved.
+     SWAP (after every case except 4 and 7): `base_length` = the OTHER planar dim, `flange_height`
+     unchanged. `base_length` and `bend_along_side` must end up as two DIFFERENT values.
 
-     **CASE 1 — Q&A answer (ABSOLUTE PRIORITY):**
-     If the chatbot previously asked "Bend along A or B?" and the user answered X:
-     → `bend_along_side` = X. `missing_info: false`. STOP.
+     | # | Trigger in user_text | `bend_along_side` |
+     |---|---|---|
+     | 1 | [CHATBOT] asked "Should the bend run along A mm or B mm?" and [USER] answered X | X — absolute priority, cancels any label written earlier |
+     | 2 | Fold axis stated with a value: "bend/bent/folded along X mm", "folded on the X mm side", "returns on the X mm sides", "across the X mm width" | X |
+     | 3 | Fold axis stated comparatively, no value: "long / longest / big side or edge", "short / shortest / small side or edge" — also in fold context ("return on the long side") | max() of the two planar dims for long, min() for short. Trace the max/min in the CoT block; never hardcode. Fold context uses THIS case, not RELATIVE SIZE FACE MAPPING. |
+     | 4 | Profile notation `[A]x[B]` (optional 3rd/4th value = thickness; U-shaped `[A]x[B]x[C]` = dim_x + 2 flanges) | A = `base_length`, B = `flange_height` (no swap). Then scan the WHOLE message for a separate length → that length. None → `missing_info: true`, ask "What is the length of the bracket?" |
+     | 5 | Two faces, each with its own labeled pair ("Base: A×B" AND "Vertical wall: C×D") | the ONE value shared by both pairs. Zero or 2+ shared → fall through |
+     | 6 | A length with NO width beside it ("overall length", "total length", "depth") | that length |
+     | 7 | Two planar dims A ≠ B on the base, nothing above matched — "base plate A×B", "the base measures A mm long and B mm wide" | **ASK.** `missing_info: true`, `questions` = ["**Please specify:**", "- Should the bend run along [A] mm or [B] mm?"] |
 
-     **CASE 2 — Explicit length and width:**
-     If the user mentions BOTH a "length" and a "width" for a bracket:
-     → `bend_along_side` MUST be the "width" value. `base_length` MUST be the "length" value. STOP.
-
-     **CASE 3 — Explicit fold-axis statement (numeric OR comparative):**
-     Trigger A — **numeric**: user writes "bend along Xmm", "bent along Xmm", "folded on the X mm side", "in the direction of the X mm width".
-     → `bend_along_side` = X (the referenced mm value). STOP.
-
-     Trigger B — **comparative (no explicit mm value)** (CoT required — see rule):
-     Phrases meaning "big/long side": "long side", "long sides", "long edge", "longest side", "longer side", "the big edge", "along the length"
-     Phrases meaning "small/short side": "short side", "short sides", "short edge", "shortest side", "shorter side", "the small edge", "across the width"
-     ⚠️ Trigger B only fires when there is NO explicit mm value attached to the comparative phrase.
-     ⚠️ Trigger B also fires when a comparative phrase is attached to a **fold/return/flange context** (e.g. `"return on the long side"`, `"bend on the long sides"`, `"fold along the long side"`, `"flange on the long side"`). In this case the phrase signals BEND DIRECTION, not operation placement — apply R2b here and do NOT use RELATIVE SIZE FACE MAPPING.
-     **CoT resolution (MANDATORY — trace these steps explicitly before writing output):**
-       CASE3b-1: List the two planar dimension candidates from STEP 0 classify (call them dim_A and dim_B).
-       CASE3b-2: Compare numerically: "big/long side" → bend_along_side = max(dim_A, dim_B); "small/short side" → bend_along_side = min(dim_A, dim_B).
-       CASE3b-3: Apply SWAP: base_length = the OTHER planar dim. flange_height is UNCHANGED.
-       CASE3b-4: STOP — do NOT fall through to CASE 4, CASE 5, CASE 6, CASE 7.
-     → `bend_along_side` = result from CASE3b-2. STOP.
-
-     **CASE 4 — Profile / Section Notation:**
-     Trigger: User provides bracket dimensions in compact section form:
-     - `[A]x[B]` (cross-section only) — 2 values → A = base_length, B = flange_height.
-     - `[A]x[B]x[thickness]` — 3 values → A = base_length, B = flange_height, third = thickness.
-     - `[A]x[B]x[C]` for U-shaped (no thickness) — 3 values → A = dim_x, B = flange_height_left, C = flange_height_right.
-     - `[A]x[B]x[C]x[thickness]` for U-shaped — 4 values → A = dim_x, B = flange_height_left, C = flange_height_right.
-     ✅ **After extracting the cross-section, scan the ENTIRE message for a separate length value:**
-     - If found → `bend_along_side` = that value. `missing_info: false`. STOP.
-     - If NOT found → Set `missing_info: true`. Ask: "What is the length of the bracket?". STOP.
-
-     **CASE 5 — Two separately labeled faces (L-bracket only):**
-     Trigger: user gives BOTH faces under their own label with their own dimension pair (e.g., "Base: [A]×[B]" AND "Vertical Wall: [C]×[D]").
-     Find the ONE value shared between {{A,B}} and {{C,D}}.
-     → If exactly one shared value: `bend_along_side` = shared. STOP.
-     → If zero or two+ shared values: Continue to CASE 6.
-
-     **CASE 6 — Semantic inference ("overall length", "depth"):**
-     Trigger: user gives a standalone length without a directional face qualifier ("overall length", "total length", "depth", "length").
-     → `bend_along_side` = that value. STOP.
-
-     **CASE 7 — Base plate explicitly labeled, A ≠ B only:**
-     Trigger: User labels a base plate (e.g. "base plate [A]×[B]", "plate [A]×[B]") AND A ≠ B.
-     ❌ NOT for inline notation "L-bracket [A]x[B]" → use CASE 4 instead.
-     → `missing_info: true`. Ask: "Bend along [A]mm or [B]mm?"
-     ⚠️ Once answered → done. NEVER re-question.
-     ⚠️ KEY RULE (all cases): once bend_along_side resolved → DONE. Never re-add to questions[].
+     ⛔ A length+width pair — nouns or adjectives (`160 long / 50 wide`, `de long / de large`) — sizes
+     the base, it never picks the fold axis. It belongs to case 7, and asking is the correct answer:
+     both guesses satisfy the text but build two different parts.
 
 3b. **SHAPE & FACE NAME DICTIONARY — Map user words → canonical face**
 When the user refers to a shape or face using a synonym, map it to the canonical label before extracting operations.
@@ -2788,7 +2754,7 @@ This is why **ALL sections share the same `bend_along_side`** = dim_2 of every s
 # Flange height(s)  : [value(s)] mm
 # Signal phrase     : "[exact phrase from user_text]"
 # Comparative type  : [GRAND/PETIT/numeric/none]
-# Rule to fire      : [R1 / R_LARGEUR / R2 numeric / R2b comparative / R_PROFILE / R4 / R3]
+# Rule to fire      : [R1 / R_WIDTH / R2 numeric / R2b comparative / R_PROFILE / R4 / R3]
 # CoT (if R2b)     : max/min(dim_A, dim_B) = [value] → bend_along_side = [value]
 # bend_along_side   : [resolved value] mm
 # base_length       : [resolved value] mm  (the OTHER planar dim after SWAP if applicable)
@@ -2797,7 +2763,7 @@ This is why **ALL sections share the same `bend_along_side`** = dim_2 of every s
 🔴 **RESOLUTION IS FINAL after this block. Do NOT re-derive bend_along_side in any code that follows.**
 
 **2 Resolve bend_along_side — first rule that applies wins (STRICT PRIORITY):**
-> Priority order: **R1 (highest) → R_LARGEUR → R2 (numeric) → R2b (comparative CoT) → R_PROFILE → R4 → R3 (lowest)**
+> Priority order: **R1 (highest) → R_WIDTH → R2 (numeric) → R2b (comparative CoT) → R_PROFILE → R4 → R3 (lowest)**
 > Stop at the first rule that resolves bend_along_side. Do NOT apply lower-priority rules once one resolves it.
 
 **BEND DIMENSIONING LOGIC (Deterministic Decision Rule):**
@@ -3008,7 +2974,7 @@ Map every required parameter to a value from user_text. Mark `?` if not found.
 
 ### STEP 2 — MANDATORY SELF-VERIFICATION (run before writing any output)
 1. **Bend-direction check**:
-   - Apply the EXACT priority sequence from STEP 0 (R1 → R_LARGEUR → R2 → R_PROFILE → R4 → R3).
+   - Apply the EXACT priority sequence from STEP 0 (R1 → R_WIDTH → R2 → R2b → R_PROFILE → R4 → R3).
    - If still ambiguous → set `bend_along_side = ?` (unified_analysis will handle).
 2. Verify every section's dim_2 in planned output = `bend_along_side`.
 3. Verify `bend_radius` came from user text (not defaulted to thickness).
