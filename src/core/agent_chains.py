@@ -57,7 +57,6 @@ from .templates import (
     dfm_rule_validation_template,
     code_generation_template,
     code_editing_template,
-    step_planner_template,
     build_confirm_template,
     shape_change_detector_template,
     edit_summary_template,
@@ -422,96 +421,6 @@ def create_description_confirm_chain(default_llm):
     # Wrap as a RunnableLambda so it integrates with ainvoke_with_cost_tracking
     chain = RunnableLambda(confirm_chain_ainvoke)
     return chain
-
-
-def create_step_planner_chain(default_llm):
-    """Create the step planner chain.
-
-    Analyzes complex CAD requests and generates a step-by-step build plan.
-    Runs BEFORE description_confirm when complexity_level >= threshold.
-
-    Input:  { description, complexity_level, session_id }
-    Output: { steps, total_steps, plan_summary, user_message }
-
-    Multi-user safe: all inputs are per-invocation, no shared state.
-    """
-    step_planner_prompt = ChatPromptTemplate.from_template(step_planner_template)
-
-    STEP_PLANNER_LOG = os.path.join(LOGS_DIR, "step_planner_template.log")
-
-    def parse_step_plan_output(raw: str) -> dict:
-        """Parse JSON output from step planner chain."""
-        try:
-            result = json.loads(raw.strip())
-            if "steps" in result and "user_message" in result:
-                return result
-        except Exception:
-            pass
-        try:
-            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if json_match:
-                result = json.loads(json_match.group())
-                if "steps" in result:
-                    return result
-        except Exception:
-            pass
-        # Fallback: return empty plan — caller will handle
-        logger.warning("[STEP_PLANNER] Failed to parse JSON output, using fallback")
-        return {
-            "steps": [],
-            "total_steps": 0,
-            "plan_summary": "",
-            "user_message": ""
-        }
-
-    async def step_planner_ainvoke(inputs: dict) -> dict:
-        """Per-invocation wrapper for step planner chain (multi-user safe)."""
-        session_id = inputs.get("session_id", "unknown")
-
-        chain_input = {
-            "description": inputs.get("description", ""),
-            "complexity_level": inputs.get("complexity_level", 1),
-        }
-
-        log_inputs = {
-            "description": chain_input["description"],
-            "complexity_level": chain_input["complexity_level"],
-        }
-
-        try:
-            inner_chain = (
-                step_planner_prompt
-                | default_llm
-                | StrOutputParser()
-            )
-            raw_output = await inner_chain.ainvoke(chain_input)
-
-            # Log template I/O
-            try:
-                log_template_io(
-                    STEP_PLANNER_LOG,
-                    session_id,
-                    "step_planner_template",
-                    log_inputs,
-                    raw_output
-                )
-            except Exception as log_err:
-                logger.error(f"[STEP_PLANNER] Failed to log: {log_err}")
-
-            result = parse_step_plan_output(raw_output)
-            logger.info(
-                f"[STEP_PLANNER] ✅ Complete | session={session_id} | "
-                f"steps={result.get('total_steps', len(result.get('steps', [])))}"
-            )
-            return result
-
-        except Exception as e:
-            logger.error(f"[STEP_PLANNER] Chain error: {e}")
-            log_template_io(STEP_PLANNER_LOG, session_id, "step_planner_template",
-                            log_inputs, None, error=str(e))
-            return {"steps": [], "total_steps": 0, "plan_summary": "", "user_message": ""}
-
-    return RunnableLambda(step_planner_ainvoke)
 
 
 def create_code_generation_chain(advanced_llm):

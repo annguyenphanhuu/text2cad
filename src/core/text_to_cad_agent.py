@@ -23,7 +23,6 @@ from .agent_chains import (
     create_code_generation_chain,
     create_code_editing_chain,
     create_description_confirm_chain,
-    create_step_planner_chain,
     create_shape_change_detector_chain,
     create_edit_summary_chain,
     create_perforated_param_chain,
@@ -278,7 +277,6 @@ class TextToCADAgent:
         self.rag_code_generation_chain = create_code_generation_chain(self.advanced_llm)
         self.code_editing_chain = create_code_editing_chain(self.expert_llm)
         self.description_confirm_chain = create_description_confirm_chain(self.confirm_llm)
-        self.step_planner_chain = create_step_planner_chain(self.default_llm)
         self.shape_change_detector_chain = create_shape_change_detector_chain(self.default_llm)
         self.edit_summary_chain = create_edit_summary_chain(self.default_llm)
         self.perforated_param_chain = create_perforated_param_chain(self.default_llm)
@@ -585,8 +583,6 @@ class TextToCADAgent:
                 'cached_unified_obj_snapshot': None,  # unified_output_obj.dict()
                 'cached_expanded_user_text': '',
                 'cached_perf_calc_result': None,
-                # ── Step Plan state ──────────────────────────────────────────
-                'awaiting_step_plan_confirm': False,   # Waiting for user reply after step plan shown (YES/NO)
                 # ── Perforated Sheet function-calling result ──────────────────
                 # Populated by _run_perf_vide_function_call() right after unified chain.
                 # Consumed by _run_description_confirm() (display) and code gen (params).
@@ -737,80 +733,6 @@ class TextToCADAgent:
             f"| desc={len(unified_output_obj.description)} chars "
             f"| ctx={len(retrieved_context)} chars"
         )
-
-    async def _run_step_planner(
-        self,
-        session_id: str,
-        unified_output_obj,
-        retrieved_context_for_code_gen: str,
-        expanded_user_text: str,
-        empty_steps_text: str,
-    ):
-        """
-        Run the Step Planner chain and set up the turn that hands the plan back.
-
-        Invokes the planner, builds the user-facing message (formatting the steps
-        locally when the LLM returns no user_message), primes the confirm cache so
-        the next turn skips the unified chain, and flags the session as awaiting
-        step-plan confirmation.
-
-        Shared by _unified_request_processor() and process_request_with_progress();
-        each caller wraps the result in its own response shape.
-
-        Args:
-            empty_steps_text: placeholder for a plan that came back with no steps.
-                The two callers word this differently, so it stays a parameter.
-
-        Returns:
-            (total_steps, user_message)
-        """
-        # Run Step Planner — input: description derived from user request
-        cost_tracker     = self._get_cost_tracker(session_id)
-        step_plan_result = await ainvoke_with_cost_tracking(
-            "step_planner",
-            self.step_planner_chain.ainvoke,
-            {
-                "description":      unified_output_obj.description,
-                "complexity_level": unified_output_obj.complexity_level,
-                "session_id":       session_id,
-            },
-            cost_tracker,
-            self.model_names['default']
-        )
-
-        _total    = step_plan_result.get("total_steps", len(step_plan_result.get("steps", [])))
-        _user_msg = step_plan_result.get("user_message", "")
-
-        logger.info(f"[STEP_PLAN] Plan generated: {_total} steps | session={session_id}")
-        logger.debug(f"[STEP_PLAN] Plan: {_total} steps → {[s.get('title','?') for s in step_plan_result.get('steps',[])]}")
-
-        # Fallback message if LLM returned empty user_message
-        if not _user_msg:
-            _formatted_steps = [
-                f"  Step {i+1} — {s.get('title', 'Step')}\n  {s.get('description', '')}"
-                for i, s in enumerate(step_plan_result.get('steps', []))
-            ]
-            _steps_text = "\n\n".join(_formatted_steps) if _formatted_steps else empty_steps_text
-            _user_msg = (
-                f"🔧 **Build plan in {_total} step(s):**\n\n"
-                f"{_steps_text}\n\n"
-                f"---\n"
-                f"💡 **To generate each step:**\n"
-                f"Open a **new conversation** and paste **one step at a time** into the chat.\n"
-                f"Each step will be generated separately for better accuracy."
-            )
-            logger.warning(f"[STEP_PLAN] LLM returned empty user_message, using fallback | session={session_id}")
-
-        # Prime confirm cache so next turn (user reply) skips re-running unified chain
-        self._save_confirm_cache(
-            session_id, unified_output_obj,
-            retrieved_context_for_code_gen, expanded_user_text
-        )
-        # Set flag — next turn = GATE 1 (either YES or NO → fall through to Confirm)
-        self._update_session_state(session_id, awaiting_step_plan_confirm=True)
-
-        logger.info(f"[STEP_PLAN] ↩ Returning plan to user | session={session_id}")
-        return _total, _user_msg
 
     async def _detect_confirm_intent(self, user_text: str, session_id: str) -> str:
         """
@@ -2215,10 +2137,8 @@ class TextToCADAgent:
             self._update_session_state(session_id, pending_questions=[])
 
             # ══════════════════════════════════════════════════════════════════
-            # CONFIRM / STEP-PLAN FLOW
+            # CONFIRM FLOW
             # Priority order (evaluated top-to-bottom, first match wins):
-            #   [GATE 1] awaiting_step_plan_confirm → user replied YES/NO → fall through to Confirm
-            #   [GATE 2] step_by_step_requested     → explicit intent → run Step Planner → return
             #   [GATE 3] awaiting_confirm + confirm  → CASE 1 → Generate Code
             #   [GATE 4] skip_confirm or Confirm chain → CASE 2/3
             # ══════════════════════════════════════════════════════════════════
@@ -2226,45 +2146,12 @@ class TextToCADAgent:
             confirm_count              = confirm_state.get('confirm_count', 0)
             awaiting_confirm           = confirm_state.get('awaiting_confirm', False)
             confirmed_description      = confirm_state.get('confirmed_description', '')
-            awaiting_step_plan_confirm = confirm_state.get('awaiting_step_plan_confirm', False)
 
             logger.debug(
-                f"[FLOW_STATE] awaiting_step_plan={awaiting_step_plan_confirm} "
-                f"awaiting_confirm={awaiting_confirm} confirm_count={confirm_count} "
+                f"[FLOW_STATE] awaiting_confirm={awaiting_confirm} confirm_count={confirm_count} "
                 f"confirm_intent={unified_output_obj.confirm_intent_detected} "
-                f"step_by_step={unified_output_obj.step_by_step_requested} "
                 f"complexity={unified_output_obj.complexity_level}"
             )
-
-            # ── GATE 1: User replied to step plan (YES or NO) → both fall through to Confirm ──
-            if awaiting_step_plan_confirm:
-                logger.info(
-                    f"[STEP_PLAN] User replied to plan (YES/NO — both → Description Confirm) "
-                    f"| session={session_id}"
-                )
-                logger.debug(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
-                self._update_session_state(session_id, awaiting_step_plan_confirm=False)
-                # Fall through to Description Confirm (GATE 3/4) below ↓
-
-            # ── GATE 2: Unified detected explicit step-by-step request → Run Step Planner ──
-            elif unified_output_obj.step_by_step_requested:
-                logger.info(
-                    f"[STEP_PLAN] 🔧 User explicitly requested step plan → Running Step Planner "
-                    f"| session={session_id}"
-                )
-                logger.debug(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
-
-                _total, _user_msg = await self._run_step_planner(
-                    session_id, unified_output_obj,
-                    retrieved_context_for_code_gen, expanded_user_text,
-                    empty_steps_text="  (no steps generated)",
-                )
-
-                return {
-                    "code":        None,
-                    "message":     _user_msg,
-                    "explanation": f"Step plan generated ({_total} steps)"
-                }
 
             # ── GATE 3: CASE 1 — User confirmed 📋 description → Generate Code ──────────
             if awaiting_confirm and unified_output_obj.confirm_intent_detected:
@@ -4570,112 +4457,62 @@ class TextToCADAgent:
                 user_text_with_history = self._build_user_text_with_history(session_id, user_text)
                 logger.info(f"[AGENT_CHAIN] History built: {len(user_text_with_history)} chars for session {session_id}")
 
-                # ══════════════════════════════════════════════════════════════════
-                # FAST-PATH GATE — skip unified chain when waiting for a step-plan reply.
-                # Cache was saved by _save_confirm_cache() on the previous turn.
-                #
-                # This gate does NOT handle awaiting_confirm: the CONFIRM FAST-PATH GATE
-                # at the top of this function runs first and clears awaiting_confirm on
-                # every one of its exits (YES returns outright; CHANGE, cache-miss and
-                # reconstruct-failure all set it False before falling through), so it is
-                # always False by the time we get here.
-                # ══════════════════════════════════════════════════════════════════
-                _fast_state = self._get_session_state(session_id)
-                _awaiting_step_plan = _fast_state.get('awaiting_step_plan_confirm', False)
-                _cached_snapshot    = _fast_state.get('cached_unified_obj_snapshot')
-                _cached_ctx         = _fast_state.get('cached_retrieved_context', '')
-                _cached_expanded    = _fast_state.get('cached_expanded_user_text', '')
-                _cached_perf_calc   = _fast_state.get('cached_perf_calc_result')
+                # ── Normal path: run unified chain + RAG ──────────────────
+                logger.info(f"[AGENT_CHAIN] Invoking unified processing chain with full history for session {session_id}")
 
-                if _awaiting_step_plan and _cached_snapshot is not None:
-                    # ── Restore unified output from cache ─────────────────────
-                    # AnalysisAndParameterCheckOutput imported at top of file
-                    unified_output_obj           = AnalysisAndParameterCheckOutput(**_cached_snapshot)
-                    retrieved_context_for_code_gen = _cached_ctx
-                    expanded_user_text           = _cached_expanded or user_text
-                    if _cached_perf_calc and not _fast_state.get('perf_calc_result'):
-                        self._update_session_state(session_id, perf_calc_result=_cached_perf_calc)
+                # ── KEEP-ALIVE: emit intermediate progress before the heavy step ──
+                # _invoke_unified_with_rag() contains 4-5 sequential LLM calls
+                # (expand_query → RAG → asyncio.gather(unified+dfm))
+                # which can take 20-55s. Without this yield the SSE stream is
+                # completely silent → browser/proxy interprets as connection lost.
+                yield {
+                    "step": "analysis",
+                    "status": "Analyzing requirements and retrieving knowledge base...",
+                    "is_complete": False,
+                    "is_active": True,
+                    "progress": 15,
+                }
 
-                    logger.info(
-                        f"[FAST_PATH] ✅ Using cached unified result "
-                        f"(awaiting_step_plan=True) | session={session_id}"
+                chain_start_time = time.time()
+                unified_chain_result = await self._invoke_unified_with_rag(
+                    user_text=user_text_with_history,
+                    session_id=session_id,
+                    latest_requirements_for_guidance=state['latest_requirements'],
+                    material=state.get('material_choice', '')
+                )
+                chain_duration = time.time() - chain_start_time
+                logger.info(f"[AGENT_CHAIN] Chain processing completed in {chain_duration:.2f}s | session={session_id}")
+
+                unified_output_obj             = unified_chain_result["unified_output_obj"]
+                retrieved_context_for_code_gen = unified_chain_result["retrieved_context_for_code_gen"]
+                expanded_user_text             = unified_chain_result.get("expanded_user_text", user_text)
+
+                # Perforated Sheet: same gate as _unified_request_processor — was missing here,
+                # so SSE/realtime never populated perf_calc_result → empty perf_info in description_confirm.
+                if unified_chain_result.get("_needs_perf_param_chain"):
+                    unified_output_obj = await self._run_perforated_param_chain(
+                        unified_output_obj, user_text_with_history, session_id
                     )
-                    logger.debug(f"[FAST_PATH] ✅ Skipping unified chain — using cache | step_plan=True")
 
-                    yield {
-                        "step": "analysis",
-                        "status": "Analysis completed (fast-path).",
-                        "is_complete": True,
-                        "is_active": False,
-                        "progress": 20,
-                        "design_type": unified_output_obj.design_type,
-                        "assembly_warning": unified_output_obj.assembly_warning
-                    }
-                    yield {
-                        "step": "parameters",
-                        "status": "Parameters validated (fast-path).",
-                        "is_complete": True,
-                        "is_active": False,
-                        "progress": 40
-                    }
+                logger.debug(f"\n[SUCCESS] Unified analysis and parameter check successful for session {session_id}:")
+                logger.debug(f"Parsed Output: {json.dumps(unified_output_obj.dict(), indent=2)}")
 
-                else:
-                    # ── Normal path: run unified chain + RAG ──────────────────
-                    logger.info(f"[AGENT_CHAIN] Invoking unified processing chain with full history for session {session_id}")
-
-                    # ── KEEP-ALIVE: emit intermediate progress before the heavy step ──
-                    # _invoke_unified_with_rag() contains 4-5 sequential LLM calls
-                    # (expand_query → RAG → asyncio.gather(unified+dfm))
-                    # which can take 20-55s. Without this yield the SSE stream is
-                    # completely silent → browser/proxy interprets as connection lost.
-                    yield {
-                        "step": "analysis",
-                        "status": "Analyzing requirements and retrieving knowledge base...",
-                        "is_complete": False,
-                        "is_active": True,
-                        "progress": 15,
-                    }
-
-                    chain_start_time = time.time()
-                    unified_chain_result = await self._invoke_unified_with_rag(
-                        user_text=user_text_with_history,
-                        session_id=session_id,
-                        latest_requirements_for_guidance=state['latest_requirements'],
-                        material=state.get('material_choice', '')
-                    )
-                    chain_duration = time.time() - chain_start_time
-                    logger.info(f"[AGENT_CHAIN] Chain processing completed in {chain_duration:.2f}s | session={session_id}")
-
-                    unified_output_obj             = unified_chain_result["unified_output_obj"]
-                    retrieved_context_for_code_gen = unified_chain_result["retrieved_context_for_code_gen"]
-                    expanded_user_text             = unified_chain_result.get("expanded_user_text", user_text)
-
-                    # Perforated Sheet: same gate as _unified_request_processor — was missing here,
-                    # so SSE/realtime never populated perf_calc_result → empty perf_info in description_confirm.
-                    if unified_chain_result.get("_needs_perf_param_chain"):
-                        unified_output_obj = await self._run_perforated_param_chain(
-                            unified_output_obj, user_text_with_history, session_id
-                        )
-
-                    logger.debug(f"\n[SUCCESS] Unified analysis and parameter check successful for session {session_id}:")
-                    logger.debug(f"Parsed Output: {json.dumps(unified_output_obj.dict(), indent=2)}")
-
-                    yield {
-                        "step": "analysis",
-                        "status": "Analysis completed.",
-                        "is_complete": True,
-                        "is_active": False,
-                        "progress": 20,
-                        "design_type": unified_output_obj.design_type,
-                        "assembly_warning": unified_output_obj.assembly_warning
-                    }
-                    yield {
-                        "step": "parameters",
-                        "status": "Parameters validated.",
-                        "is_complete": True,
-                        "is_active": False,
-                        "progress": 40
-                    }
+                yield {
+                    "step": "analysis",
+                    "status": "Analysis completed.",
+                    "is_complete": True,
+                    "is_active": False,
+                    "progress": 20,
+                    "design_type": unified_output_obj.design_type,
+                    "assembly_warning": unified_output_obj.assembly_warning
+                }
+                yield {
+                    "step": "parameters",
+                    "status": "Parameters validated.",
+                    "is_complete": True,
+                    "is_active": False,
+                    "progress": 40
+                }
 
                 self._update_session_state(session_id, latest_requirements=unified_output_obj)
 
@@ -4745,42 +4582,6 @@ class TextToCADAgent:
                 confirm_state   = self._get_session_state(session_id)
                 confirm_count   = confirm_state.get('confirm_count', 0)
                 confirmed_description = confirm_state.get('confirmed_description', '')
-
-                # ══════════════════════════════════════════════════════════════
-                # STEP PLAN / CONFIRM GATE — intent-based
-                # ══════════════════════════════════════════════════════════════
-                awaiting_step_plan_confirm = confirm_state.get('awaiting_step_plan_confirm', False)
-
-                logger.debug(
-                    f"[FLOW_STATE] awaiting_step_plan={awaiting_step_plan_confirm} "
-                    f"step_by_step={unified_output_obj.step_by_step_requested} "
-                    f"complexity={unified_output_obj.complexity_level}"
-                )
-
-                # ── GATE 1: User replied to step plan (YES or NO) → both → Confirm ──
-                if awaiting_step_plan_confirm:
-                    logger.info(f"[STEP_PLAN] User replied to plan (YES/NO → Confirm) | session={session_id}")
-                    logger.debug(f"[STEP_PLAN] User replied to step plan → proceeding to Description Confirm")
-                    self._update_session_state(session_id, awaiting_step_plan_confirm=False)
-                    # Fall through to Description Confirm below ↓
-
-                # ── GATE 2: Unified detected explicit step-by-step request → Run Step Planner ──
-                elif unified_output_obj.step_by_step_requested:
-                    logger.info(f"[STEP_PLAN] 🔧 User requested step plan → Running Step Planner | session={session_id}")
-                    logger.debug(f"[STEP_PLAN] 🔧 step_by_step_requested=True → firing Step Planner chain...")
-
-                    _total, _user_msg = await self._run_step_planner(
-                        session_id, unified_output_obj,
-                        retrieved_context_for_code_gen, expanded_user_text,
-                        empty_steps_text="  (no steps)",
-                    )
-
-                    yield {"final_result": {
-                        "code":        None,
-                        "message":     _user_msg,
-                        "explanation": f"Step plan ({_total} steps)"
-                    }}
-                    return
 
                 # skip_confirm: only when user explicitly requests skip OR max attempts reached.
                 # complexity_level==1 no longer skips confirm.

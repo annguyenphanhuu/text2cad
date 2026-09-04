@@ -58,12 +58,6 @@ class AnalysisAndParameterCheckOutput(BaseModel):
         )
     )
 
-    # Step-by-step plan request (intent-based, NOT complexity-based)
-    step_by_step_requested: bool = Field(
-        default=False,
-        description="True ONLY when user explicitly asks to see a step-by-step build plan before generating (e.g., 'show me the steps', 'walk me through the steps'). Never set true based on complexity alone."
-    )
-
 class DFMValidationOutput(BaseModel):
     """Output from the DFM Rule Validation Agent."""
     has_violations: bool = Field(default=False, description="Whether any DFM rule violations were detected")

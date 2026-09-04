@@ -35,34 +35,9 @@ def _create_fallback_response(error_type: str = "json_parse") -> AnalysisAndPara
 
 
 def detect_detailed_explanation_request(user_text: str) -> bool:
-    """Detect if user explicitly requested detailed explanation.
-    
-    CRITICAL: Step-by-step requests ("show me the steps", "step by step", etc.)
-    are NOT detailed explanation requests — they are CAD build plan requests.
-    This function returns False for step-by-step intents to avoid conflicting
-    with the unified chain's step_by_step_requested detection.
-    """
+    """Detect if user explicitly requested detailed explanation."""
     user_lower = user_text.lower()
 
-    # ── Step 1: NEGATION GATE — step-by-step intent overrides everything ──
-    # If user clearly wants to SKIP steps, also not a detailed explanation request.
-    step_negation_keywords = [
-        "skip the steps", "skip the build plan", "let's skip the steps",
-    ]
-    for kw in step_negation_keywords:
-        if kw in user_lower:
-            return False
-
-    # ── Step 2: STEP-BY-STEP POSITIVE GATE — if step plan requested, not info ──
-    step_positive_keywords = [
-        "show me the steps", "give me the steps", "step by step", "step-by-step",
-        "what are the steps", "walk me through the steps",
-    ]
-    for kw in step_positive_keywords:
-        if kw in user_lower:
-            return False  # Step plan intent, NOT a detailed info request
-
-    # ── Step 3: Standard detailed explanation keywords ──
     detailed_keywords = [
         "why", "explain", "detail", "what does", "what is",
         "clarify", "elaborate", "more info", "tell me more", "be specific",

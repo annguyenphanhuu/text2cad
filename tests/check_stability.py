@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT))
 FIXTURE = ROOT / "tests" / "fixtures" / "pptx_ok_cases.json"
 
 COMPARED = ("shape_type", "missing_info", "complexity_level",
-            "skip_questions_requested", "step_by_step_requested", "design_type")
+            "skip_questions_requested", "design_type")
 
 # What the (OK) label in the source deck actually certifies: the GEOMETRY the
 # pipeline produced was correct. It says nothing about whether the chain asked
@@ -64,12 +64,11 @@ GEOMETRY = ("shape_type", "design_type")
 #    here is not the value a user would see.
 #  - They are known to be unstable in the product already, independent of any
 #    prompt change.
-FLOW = ("missing_info", "skip_questions_requested", "step_by_step_requested")
+FLOW = ("missing_info", "skip_questions_requested")
 
 # complexity_level is only ever branched on as `== 0` (pure-information request)
 # — text_to_cad_agent.py:2363 and :4938 — so 1 vs 2 vs 5 takes the identical
-# path. (agent_chains.py's step-planner docstring mentions a
-# "complexity_level >= threshold" check that does not exist in code.)
+# path.
 COSMETIC = ("complexity_level",)
 
 

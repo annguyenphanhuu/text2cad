@@ -20,7 +20,6 @@ async def run_tests():
          patch('src.core.text_to_cad_agent.create_code_generation_chain'), \
          patch('src.core.text_to_cad_agent.create_code_editing_chain'), \
          patch('src.core.text_to_cad_agent.create_description_confirm_chain'), \
-         patch('src.core.text_to_cad_agent.create_step_planner_chain'), \
          patch('src.core.text_to_cad_agent.create_perforated_param_chain'):
          
         agent = TextToCADAgent(MagicMock(), MagicMock(), MagicMock())
