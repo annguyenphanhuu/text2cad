@@ -6,7 +6,6 @@ including model names, prompts, file paths, and processing parameters.
 """
 
 import os
-from typing import Dict, Any
 
 # OpenAI Model Configuration
 OPENAI_MODEL = "gpt-5-mini"  # Changed from gpt-4o-mini for cost optimization

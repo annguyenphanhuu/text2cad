@@ -12,7 +12,7 @@ import logging
 import asyncio
 import aiohttp
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -246,7 +246,7 @@ class AsyncFreeCADClient:
             if base_url:
                 logger.debug(f"[FreeCAD] Using server URL: {base_url}")
             else:
-                logger.warning(f"[FreeCAD] 'server_freecad' env variable not set, using default URL")
+                logger.warning("[FreeCAD] 'server_freecad' env variable not set, using default URL")
 
         self.base_url = base_url.rstrip('/')
         self.max_retries = max_retries
@@ -444,7 +444,7 @@ class AsyncFreeCADClient:
                         try:
                             job_ack = json_module.loads(response_text)
                             logger.debug(f"[FreeCAD] Response parsed | status={job_ack.get('status')} | user_id={job_ack.get('user_id')}")
-                        except json_module.JSONDecodeError as e:
+                        except json_module.JSONDecodeError:
                             error_msg = f"Failed to parse server response as JSON: {response_text[:500]}"
                             logger.error(f"[FreeCAD] ❌ {error_msg}")
                             raise FreeCADProcessingError(error_msg, code="102.3")
@@ -489,7 +489,7 @@ class AsyncFreeCADClient:
                         # Check if Python script was received
                         python_script_info = files_received.get('python_script')
                         if not python_script_info:
-                            logger.warning(f"[FreeCAD] ⚠️ Server response missing 'python_script' info")
+                            logger.warning("[FreeCAD] ⚠️ Server response missing 'python_script' info")
                         else:
                             script_filename = python_script_info.get('filename', 'unknown')
                             script_size = python_script_info.get('size_bytes', 0)
@@ -513,7 +513,6 @@ class AsyncFreeCADClient:
                             else:
                                 # Server received metadata - log details
                                 metadata_filename = metadata_info.get('filename', 'unknown')
-                                metadata_size = metadata_info.get('size_bytes', 0)
                                 threaded_count = metadata_info.get('threaded_holes_count', 0)
                                 logger.debug(f"[FreeCAD] Server received metadata | file={metadata_filename} | threaded_holes={threaded_count}")
                         else:
@@ -524,7 +523,7 @@ class AsyncFreeCADClient:
                                     f"metadata_info={metadata_info}"
                                 )
                             else:
-                                logger.debug(f"[FreeCAD] No metadata sent or received (as expected)")
+                                logger.debug("[FreeCAD] No metadata sent or received (as expected)")
 
                         # ============================================================
                         # STEP 7: LOG SUCCESS AND RETURN
@@ -543,7 +542,7 @@ class AsyncFreeCADClient:
             except aiohttp.ClientConnectorError as e:
                 logger.error(f"[FreeCAD] ❌ Connection failed | url={self.base_url} | error={e}")
                 raise FreeCADConnectionError(f"Unable to connect to FreeCAD server at {self.base_url}: {e}")
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 # aiohttp raises this for connect/read/total timeouts. str(e) is
                 # EMPTY, so any keyword-based classification downstream sees a
                 # blank message and mislabels it — the type is the only signal.
@@ -930,7 +929,7 @@ class AsyncFreeCADClient:
                     'code': job_completed.get('code') or "104.1"
                 }
 
-        except Exception as e:
+        except Exception:
             # ============================================================
             # EXCEPTION CLEANUP
             # ============================================================
@@ -964,8 +963,8 @@ class AsyncFreeCADClient:
             Dictionary containing final execution result and progress history
         """
         logger.warning(
-            f"[DEPRECATED] monitor_execution_progress_async() is deprecated. "
-            f"Use wait_for_mqtt_completion_async() for better performance."
+            "[DEPRECATED] monitor_execution_progress_async() is deprecated. "
+            "Use wait_for_mqtt_completion_async() for better performance."
         )
         start_time = time.time()
         progress_history = []
@@ -1196,7 +1195,6 @@ class AsyncFreeCADClient:
         user_context = f"user_id={user_id} | " if user_id else ""
 
         # Only log start on first attempt, failures logged at end
-        start_time = time.time()
 
         for attempt in range(max_retries):
             try:
@@ -1459,7 +1457,7 @@ class AsyncFreeCADClient:
 
             return {
                 'success': True,
-                'message': f'Successfully downloaded and validated required CAD files',
+                'message': 'Successfully downloaded and validated required CAD files',
                 'files': downloaded_files,
                 'response': json_response
             }

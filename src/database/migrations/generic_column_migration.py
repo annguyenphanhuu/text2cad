@@ -4,7 +4,6 @@ Provides functions to add or remove columns from chat_history table dynamically.
 Usage: Can be called from API endpoints with column name and operation type.
 """
 import sys
-import os
 from pathlib import Path
 
 # Add the project root to the Python path

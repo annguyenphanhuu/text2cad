@@ -1,10 +1,7 @@
 """
-The IR pipeline: conversation -> IR (one LLM call) -> deterministic validation
--> confirmation -> fixed FreeCAD builder.  Replaces unified/DFM/confirm/codegen/
-code-edit chains for every non-perforated part.
-
-Wired into TextToCADAgent.process_request_with_progress behind
-`CAD_PIPELINE=ir` (default).  Set CAD_PIPELINE=legacy to fall back.
+The IR pipeline: conversation -> part IR (one LLM call) -> deterministic validation
+-> confirmation -> stub script for the fixed FreeCAD builder (FreeCadUtil/build_from_ir.py).
+Driven by TextToCADAgent.process_request_with_progress.
 """
 from __future__ import annotations
 
@@ -19,19 +16,17 @@ from typing import AsyncIterator, Optional
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
+from FreeCadUtil import ir_frames as F
 from src.core import ir_render
 from src.core.agent_chains import LOGS_DIR, log_template_io
 from src.core.error_codes import as_user_error, error_code_of
 from src.core.ir import format_questions, part_to_dict
-from src.core.ir_geom import F
 from src.core.ir_validate import validate
-from src.core.models import AnalysisAndParameterCheckOutput
 from src.core.templates_ir import extract_ir_template, patch_ir_template
 from src.utils.cost_tracking_wrapper import ainvoke_with_cost_tracking
 
 logger = logging.getLogger(__name__)
 
-IR_PIPELINE = os.getenv("CAD_PIPELINE", "ir").strip().lower()
 ASSEMBLY_MESSAGE = "We cannot currently create an assembly file. You can create file by file."
 CAPABILITIES = ("I can model single sheet-metal parts (flat, round or triangular plates, bent brackets, covers, frames with holes, "
                 "slots, tapped or countersunk holes, perforated sheets), square or round tubes with end cuts and holes, "
@@ -57,19 +52,6 @@ IR = json.loads(%(ir_json)r)
 from FreeCadUtil.build_from_ir import build_and_export
 build_and_export(IR, sanitized_title, output_dir_abs, material=%(material)r)
 '''
-
-
-def use_ir_pipeline(state: dict, user_text: str) -> bool:
-    """Route this session through the IR pipeline?  Perforated sheets and sessions
-    that already hold legacy generated code stay on the legacy path."""
-    if IR_PIPELINE != "ir":
-        return False
-    if state.get("perf_calc_result") is not None or state.get("perf_extracted_params") is not None:
-        return False                      # a session already on the legacy perforated chain stays there
-    code = state.get("latest_code")
-    if code and not state.get("latest_ir") and "build_from_ir" not in code:
-        return False                      # a session holding LEGACY generated code stays legacy; an IR stub script
-    return True                           # (synced back from the DB before an edit) is ours even without latest_ir
 
 
 _STUB_IR_RE = re.compile(r"^IR = json\.loads\((.+)\)\s*$", re.M)
@@ -140,8 +122,8 @@ def _progress(step, status, progress, done=False, **extra):
 class IRFlow:
     def __init__(self, agent):
         self.agent = agent
-        self.llm = getattr(agent, "expert_llm", None) or getattr(agent, "advanced_llm", None) or getattr(agent, "default_llm", None)
-        self.model_name = (getattr(agent, "model_names", {}) or {}).get("expert") or "unknown"
+        self.llm = agent.llm
+        self.model_name = agent.model_names.get("llm") or "unknown"
         if self.llm is not None:
             self.extract_chain = ChatPromptTemplate.from_template(extract_ir_template) | self.llm | StrOutputParser()
             self.patch_chain = ChatPromptTemplate.from_template(patch_ir_template) | self.llm | StrOutputParser()
@@ -356,24 +338,20 @@ class IRFlow:
         desc = ir_render.description(nir, plan)
         title = sanitize_title(nir.get("name") or plan.label)
         code = make_stub_script(nir, title, nir.get("material"))
-        requirements = AnalysisAndParameterCheckOutput(complexity_level=2, missing_info=False, shape_type=plan.label,
-                                                       title=title, description=desc)
         yield _progress("generation_code", "Part description ready, no code generation needed.", 70, done=True)
-        export_start = time.time()
-        eta = self.agent._build_export_eta_payload(session_id, export_start)
-        yield _progress("export", "Building the part in FreeCAD...", 80, **eta)
+        yield _progress("export", "Building the part in FreeCAD...", 80)
         result = {"code": code, "message": None, "explanation": desc, "ir": nir, "shape_type": plan.label}
         if edit_summary:
             result["edit_summary"] = edit_summary
         try:
-            task = asyncio.create_task(self.agent.save_outputs(code, requirements, user_text=user_text, session_id=session_id,
-                                                               priority=priority, skip_metadata=True))
+            task = asyncio.create_task(self.agent.save_outputs(code, plan.label, title, user_text=user_text,
+                                                               session_id=session_id, priority=priority))
             while True:
                 try:
                     obj_path, step_path, pdf_path = await asyncio.wait_for(asyncio.shield(task), timeout=15)
                     break
                 except asyncio.TimeoutError:
-                    yield _progress("export", "Building the part in FreeCAD...", 80, **self.agent._build_export_eta_payload(session_id, export_start))
+                    yield _progress("export", "Building the part in FreeCAD...", 80)   # keep the SSE stream alive
             result.update({"obj_path": obj_path, "step_path": step_path, "pdf_path": pdf_path})
         except Exception as exc:
             logger.error("[IR] export failed | code=%s | %s | session=%s", error_code_of(exc), exc, session_id)
@@ -381,10 +359,9 @@ class IRFlow:
             result["code"] = None
         else:
             self.agent._update_session_state(session_id, latest_ir=nir, latest_code=code, latest_title=title,
-                                             latest_requirements=requirements, awaiting_confirm=False, confirm_count=0,
-                                             confirmed_description="", ir_pending=None, pending_questions=[],
-                                             edit_running_summary=desc)
-        yield _progress("export", "Export completed.", 95, done=True, **self.agent._build_export_eta_payload(session_id, export_start))
+                                             awaiting_confirm=False, confirm_count=0, confirmed_description="",
+                                             ir_pending=None, pending_questions=[])
+        yield _progress("export", "Export completed.", 95, done=True)
         yield _progress("complete", "All processing completed!", 100, done=True)
         logger.info("[IR] turn done in %.1fs | session=%s", time.time() - start_time, session_id)
         yield {"final_result": result}

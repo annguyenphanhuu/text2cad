@@ -2,7 +2,6 @@
 Database connection and session management for Tolery API.
 """
 from sqlalchemy import create_engine, text, event
-import time
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv

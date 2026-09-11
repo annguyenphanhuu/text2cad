@@ -97,21 +97,16 @@ CONSOLE_MUTED_TAGS = (
     '[SESSION_CREATE]', '[SESSION_RESOLVE]', '[SESSION_GET]', '[STREAM_SESSION]',
     # Step bookkeeping — the domain lines trace the flow, and each turn is
     # closed by "CAD generation completed in Xs (N events)".
-    '[AGENT_STEP]', '[AGENT_PRIORITY]', '[AGENT_STATE]', '[AGENT_NEW]',
-    '[AGENT_CONTINUATION]', '[AGENT_INFO]', '[AGENT_CHAIN]', '[AGENT_QUESTIONS]',
-    '[AGENT_PARAMS]', '[AGENT_CODEGEN]', '[AGENT_EXPORT]', '[AGENT_EDIT]',
-    '[AGENT_DECISION]', '[AGENT_PROGRESS]', '[AGENT_GREETING]',
+    '[AGENT_STEP]', '[AGENT_PRIORITY]', '[AGENT_STATE]', '[AGENT_PROGRESS]', '[AGENT_GREETING]',
     # Per-stage stopwatches, kept for profiling rather than for reading a run.
     '[TIMING]',
     # SSE / stream internals.
     '[SSE_PARAMS]', '[SSE_EVENT]', '[SSE_YIELD]', '[SSE_STREAM]', '[SSE_PROGRESS]',
     '[STREAM_STEP]', '[STREAM_YIELD]', '[STREAM_WEB]', '[STREAM_PROGRESS]',
-    # RAG internals — the [RAG] summary line reports the retrieval outcome.
-    '[FORMAT_CONTEXT]', '[RAG_FILTER]', '[RERANKER]', '[RAG_INFO]', '[RAG_SPLIT]',
     # Per-file / per-chunk bookkeeping.
-    '[ASYNC_TIMER]', '[FILE_COPY]', '[CHAT_HISTORY_ADD]', '[DOWNLOAD]',
-    '[RESULT_PROCESS]', '[EXPORT_PATHS]', '[CLEAN_CODE]', '[HISTORY]',
-    '[POST_CODEGEN_HISTORY]', '[CONFIRM_CACHE]', '[FILE_DOWNLOAD]',
+    '[FILE_COPY]', '[CHAT_HISTORY_ADD]', '[DOWNLOAD]',
+    '[RESULT_PROCESS]', '[EXPORT_PATHS]', '[HISTORY]',
+    '[POST_CODEGEN_HISTORY]', '[FILE_DOWNLOAD]',
 )
 
 
@@ -434,7 +429,7 @@ def setup_logging(
         root_logger.addHandler(handler)
 
     # Noisy third-party loggers.
-    for noisy in ("urllib3", "httpx", "httpcore", "asyncio", "faiss", "openai"):
+    for noisy in ("urllib3", "httpx", "httpcore", "asyncio", "openai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     # Attached to the logger, so file sinks see the scrubbed line too.

@@ -33,7 +33,5 @@ RUN pip cache purge
 # Copy app code
 COPY . .
 
-# Build main index
-RUN python ./src/rag/build_main_index.py
 
 CMD ["python", "run.py"]

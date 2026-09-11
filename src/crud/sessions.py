@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from sqlalchemy.sql import func
 from typing import Optional
-import uuid
 import logging
 import re
 
@@ -380,10 +379,6 @@ def add_chat_history_entry(
         chat_request_obj: Optional chat request object
         obj_export_path (Optional[str]): Path to OBJ export file
     """
-    import time
-    import traceback
-    
-    start_time = time.time()
     # logger.info(f"[CHAT_HISTORY_ADD] Adding chat history entry for session: {session_id}")
     # logger.info(f"[CHAT_HISTORY_ADD] User message length: {len(user_message)} characters")
     
@@ -418,18 +413,12 @@ def add_chat_history_entry(
         material_choice = material_choice or "STEEL"
         selected_feature_uuid = selected_feature_uuid or None
 
-        # Get STEP export path from agent_result if available
-        step_export_path = agent_result.get("step_path")
-
         # Get technical drawing (PDF) export path from agent_result.
         # PDF is optional — missing/failed PDF just leaves this None, no error.
         technical_drawing_export_path = agent_result.get("pdf_path")
 
         # Extract lasted_code from agent_result if available
         lasted_code = agent_result.get("code") if agent_result.get("code") else None
-
-        # Extract response from agent_result if available
-        response = agent_result.get("response") if agent_result.get("response") else None
 
         logger.info(f"[CHAT_HISTORY_ADD] Creating ChatHistory object for session {session_id}")
         created_timestamp = created_at if created_at is not None else func.current_timestamp()
@@ -459,14 +448,12 @@ def add_chat_history_entry(
         db.commit()
         db.refresh(new_chat_history)
         
-        duration = time.time() - start_time
         # logger.info(f"[CHAT_HISTORY_ADD] Successfully added chat history entry for session {session_id} in {duration:.3f}s")
         # logger.info(f"[CHAT_HISTORY_ADD] New chat history ID: {new_chat_history.id}")
         
         return new_chat_history
         
-    except Exception as e:
-        duration = time.time() - start_time
+    except Exception:
         # logger.error(f"[CHAT_HISTORY_ADD] Error adding chat history for session {session_id} after {duration:.3f}s: {str(e)}")
         # logger.error(f"[CHAT_HISTORY_ADD] Traceback: {traceback.format_exc()}")
         db.rollback()

@@ -22,7 +22,7 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from src.core.ir_geom import F                          # noqa: E402
+from FreeCadUtil import ir_frames as F                   # noqa: E402
 from src.core.ir import missing_required                # noqa: E402
 
 # thickness limits per material and process: (min, max) - LC_05..07, B_01, SM_01..06
@@ -282,7 +282,7 @@ def _check_face_positions(plan, res):
         face = plan.faces[inst["face"]]
         if face.kind == "tube_round":
             continue
-        u, v, hu, hv = inst["u"], inst["v"], inst["hu"], inst["hv"]
+        u, v = inst["u"], inst["v"]
         if not (0 <= u <= face.U and 0 <= v <= face.V):
             res.errors.append("%s on the %s face is positioned outside the face (%g x %g mm)." % (_feature_label(f), face.name, face.U, face.V))
 

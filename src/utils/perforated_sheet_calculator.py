@@ -30,15 +30,12 @@ Author  : Tolery AI DFM Team
 Version : 1.0.0
 """
 
+
 import math
 import re
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from dataclasses import dataclass
+from typing import Optional, Dict, Any
 
-
-# ─────────────────────────────────────────────────────────────────────────────────
-# CUSTOM EXCEPTIONS
-# ─────────────────────────────────────────────────────────────────────────────────
 
 class UnderdeterminedError(ValueError):
     """
@@ -54,9 +51,6 @@ class UnderdeterminedError(ValueError):
     propagating an unhandled exception.
     """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DATA CLASSES
-# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class PerfNotation:
@@ -100,30 +94,6 @@ class ReverseResult:
     inferred_value: float         # Inferred value (mm)
     formula_used: str
     note: str
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# NOTATION PARSER
-# ─────────────────────────────────────────────────────────────────────────────
-
-def parse_open_area_pct_from_text(text: str) -> Optional[float]:
-    """
-    Extract an open-area percentage from user text.
-
-    Accepts both dot and comma decimal separators, e.g. "22.68%" and "22,68%".
-    """
-    pct_number_pattern = r'\d+(?:[\.,]\d+)?'
-    match = re.search(
-        rf'(?:open\s+area|percentage)[^\d]*({pct_number_pattern})\s*%'
-        rf'|({pct_number_pattern})\s*%\s*open(?:\s+area)?',
-        text,
-        re.IGNORECASE,
-    )
-    if not match:
-        return None
-
-    raw_pct = match.group(1) or match.group(2)
-    return float(raw_pct.replace(',', '.')) if raw_pct else None
 
 
 def _fmt_number(value: Any) -> str:
@@ -351,10 +321,6 @@ def parse_notation(notation_str: str) -> PerfNotation:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HOLE AREA HELPER
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _hole_area(n: PerfNotation) -> float:
     """Return the area of ONE hole in mm²."""
     if n.shape_type == "round":
@@ -464,10 +430,6 @@ def _pitch_cell_area(n: PerfNotation) -> float:
     return n.pitch_x * n.pitch_y
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FORMULA LABEL
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _formula_label(n: PerfNotation, pct: float) -> str:
     """Build a human-readable description of the formula used."""
     shape_desc = {
@@ -498,10 +460,6 @@ def _formula_label(n: PerfNotation, pct: float) -> str:
         f"% theoretical = hole_area/cell_area × 100 = {pct:.2f}%"
     )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FORWARD CALCULATION
-# ─────────────────────────────────────────────────────────────────────────────
 
 def calculate_open_area(
     notation_str: str,
@@ -618,10 +576,6 @@ def calculate_open_area(
         notation=n,
     )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# REVERSE CALCULATION
-# ─────────────────────────────────────────────────────────────────────────────
 
 def infer_pitch_from_pct(
     notation_str: str,
@@ -757,10 +711,6 @@ def infer_hole_size_from_pct(
             "or 'LR?x20 Z9x24 30%' fixes L=20mm and infers W."
         )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PUBLIC CONVENIENCE FUNCTION (for chatbot integration)
-# ─────────────────────────────────────────────────────────────────────────────
 
 def compute_perforated_sheet(
     notation_str: str,

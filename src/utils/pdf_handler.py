@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
 import logging
-import tempfile
 from pathlib import Path
-from typing import Tuple, Optional, Any
-import asyncio
+from typing import Tuple, Optional
 
 from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
 from dotenv import load_dotenv
@@ -14,10 +12,7 @@ import random
 
 # Import configuration
 from src.config.pdf_config import (
-    OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE,
-    CAD_MODEL, CAD_MAX_TOKENS, CAD_TEMPERATURE,
-    ERROR_MESSAGES, SUCCESS_MESSAGES,
-    get_temp_dir, validate_file_size, validate_file_extension,
+    OPENAI_MODEL, OPENAI_MAX_TOKENS, get_temp_dir, validate_file_size, validate_file_extension,
     get_error_message, get_success_message,
     LOG_FORMAT, LOG_LEVEL
 )
@@ -292,7 +287,7 @@ class PDFProcessor:
             obj_path = agent_result.get("obj_path")
 
             if step_path and obj_path:
-                logger.info(f"All required files created successfully:")
+                logger.info("All required files created successfully:")
                 logger.info(f"  - STEP: {step_path}")
                 logger.info(f"  - OBJ: {obj_path}")
 

@@ -16,7 +16,7 @@ whose `{placeholder}` sits near the top has no cacheable prefix at all. The
 needs reordering (static instructions first, inputs last).
 """
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

@@ -37,8 +37,8 @@ async def main():
 
     captured = {}
 
-    async def fake_save_outputs(code, requirements, base_filename="generated_cad", user_text="", session_id=None, priority=0, skip_metadata=False):
-        captured.update(code=code, shape_type=requirements.shape_type, title=requirements.title, skip_metadata=skip_metadata)
+    async def fake_save_outputs(code, shape_type, title, user_text="", session_id=None, priority=0):
+        captured.update(code=code, shape_type=shape_type, title=title)
         return ("fake.obj", "fake.step", "fake.pdf")
 
     agent.save_outputs = fake_save_outputs
@@ -54,7 +54,7 @@ async def main():
 
     final, steps = await run_turn(agent, "ok", sid)
     assert final and final.get("code") and "build_and_export" in final["code"], final
-    assert captured.get("skip_metadata") is True and captured.get("shape_type") == "L-bracket", captured
+    assert captured.get("shape_type") == "L-bracket", captured
     assert final.get("step_path") == "fake.step"
     print("turn 2 -> built via stub script | shape_type=%s title=%s | steps=%s" % (captured["shape_type"], captured["title"], steps))
     state = agent._get_session_state(sid)

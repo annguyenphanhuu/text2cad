@@ -8,7 +8,6 @@ Supports various image formats and integrates with the CAD generation system.
 
 import os
 import base64
-import tempfile
 import logging
 from pathlib import Path
 from typing import Tuple, Optional, Any

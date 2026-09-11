@@ -5,8 +5,6 @@ system information, Python environment checks, and comprehensive diagnostics.
 """
 
 import os
-import csv
-import io
 import logging
 import subprocess
 import sys
@@ -16,10 +14,8 @@ import psutil
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Depends, Query, Request
+from fastapi import FastAPI, HTTPException, Depends, Query
 from src.api.cors import configure_cors
-from fastapi.security import HTTPBearer
-from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,7 +31,7 @@ try:
     from ...models.sessions import Session as SessionModel, ChatHistory
     from ... import crud
     from ...core.chatbot import text_to_cad_agent
-    from ...middleware.auth import verify_token_dependency as verify_token, get_token_info
+    from ...middleware.auth import verify_token_dependency as verify_token
 except ImportError:
     import sys
     sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -43,7 +39,7 @@ except ImportError:
     from src.models.sessions import Session as SessionModel, ChatHistory
     import src.crud as crud
     from src.core.chatbot import text_to_cad_agent
-    from src.middleware.auth import verify_token_dependency as verify_token, get_token_info
+    from src.middleware.auth import verify_token_dependency as verify_token
 
 # FastAPI app (no lifespan when mounted as sub-app)
 app = FastAPI(
@@ -108,26 +104,6 @@ class ChatResponse(BaseModel):
     step_export: Optional[str] = Field(None, description="STEP file URL if generated")
     error: Optional[str] = Field(None, description="Error message if any")
 
-class DataIndexCheckResponse(BaseModel):
-    """Data index folder check response model."""
-    exists: bool = Field(..., description="Whether the data/index folder exists")
-    path: str = Field(..., description="Full path to the data/index folder")
-    is_directory: bool = Field(..., description="Whether the path is a directory")
-    file_count: Optional[int] = Field(None, description="Number of files in the directory if it exists")
-    files: Optional[List[str]] = Field(None, description="List of files in the directory if it exists")
-    size_bytes: Optional[int] = Field(None, description="Total size of the directory in bytes")
-    last_modified: Optional[str] = Field(None, description="Last modification time of the directory")
-    error: Optional[str] = Field(None, description="Error message if any")
-
-class BuildIndexResponse(BaseModel):
-    """Build main index execution response model."""
-    success: bool = Field(..., description="Whether the build index command executed successfully")
-    command: str = Field(..., description="The command that was executed")
-    return_code: int = Field(..., description="Return code from the command execution")
-    stdout: str = Field(..., description="Standard output from the command")
-    stderr: str = Field(..., description="Standard error from the command")
-    execution_time: float = Field(..., description="Execution time in seconds")
-    started_at: str = Field(..., description="Start time of execution (ISO format)")
     completed_at: str = Field(..., description="Completion time of execution (ISO format)")
     error: Optional[str] = Field(None, description="Error message if any exception occurred")
 
@@ -1197,253 +1173,6 @@ async def edit_chat(request_data: ChatRequest, db: Session = Depends(get_db), to
             error=str(e)
         )
 
-# 9. CHECK DATA INDEX FOLDER
-@app.get("/check-data-index", response_model=DataIndexCheckResponse)
-async def check_data_index(token: str = Depends(verify_token)):
-    """Check if the data/index folder exists and return detailed information."""
-    try:
-        # Get the project root directory (3 levels up from this file)
-        current_file = os.path.abspath(__file__)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
-        data_index_path = os.path.join(project_root, "data", "index")
-
-        logger.info(f"Checking data/index folder at: {data_index_path}")
-
-        # Check if path exists
-        exists = os.path.exists(data_index_path)
-        is_directory = os.path.isdir(data_index_path) if exists else False
-
-        response_data = {
-            "exists": exists,
-            "path": data_index_path,
-            "is_directory": is_directory
-        }
-
-        if exists and is_directory:
-            try:
-                # Get directory contents
-                files = []
-                total_size = 0
-
-                for item in os.listdir(data_index_path):
-                    item_path = os.path.join(data_index_path, item)
-                    if os.path.isfile(item_path):
-                        files.append(item)
-                        total_size += os.path.getsize(item_path)
-                    elif os.path.isdir(item_path):
-                        files.append(f"{item}/")  # Mark directories with trailing slash
-
-                # Get last modification time
-                last_modified = os.path.getmtime(data_index_path)
-                last_modified_str = datetime.fromtimestamp(last_modified).isoformat()
-
-                response_data.update({
-                    "file_count": len(files),
-                    "files": files,
-                    "size_bytes": total_size,
-                    "last_modified": last_modified_str
-                })
-
-                logger.info(f"Data/index folder exists with {len(files)} items, total size: {total_size} bytes")
-
-            except Exception as e:
-                logger.error(f"Error reading directory contents: {str(e)}")
-                response_data["error"] = f"Error reading directory contents: {str(e)}"
-        else:
-            if exists and not is_directory:
-                response_data["error"] = "Path exists but is not a directory"
-                logger.warning(f"Path exists but is not a directory: {data_index_path}")
-            else:
-                logger.warning(f"Data/index folder does not exist: {data_index_path}")
-
-        return DataIndexCheckResponse(**response_data)
-
-    except Exception as e:
-        logger.error(f"Error checking data/index folder: {str(e)}")
-        return DataIndexCheckResponse(
-            exists=False,
-            path="",
-            is_directory=False,
-            error=f"Error checking data/index folder: {str(e)}"
-        )
-
-# 10. EXECUTE BUILD MAIN INDEX
-@app.post("/execute-build-index", response_model=BuildIndexResponse)
-async def execute_build_index(token: str = Depends(verify_token)):
-    """Execute the build_main_index.py script to rebuild the RAG index with real-time progress tracking."""
-    start_time = time.time()
-    started_at = datetime.now().isoformat()
-
-    try:
-        # Get the project root directory (3 levels up from this file)
-        current_file = os.path.abspath(__file__)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
-
-        # Construct the command to execute
-        script_path = os.path.join(project_root, "src", "rag", "build_main_index.py")
-        command = [sys.executable, script_path]
-        command_str = " ".join(command)
-
-        logger.info("="*60)
-        logger.info("🚀 STARTING RAG INDEX BUILD PROCESS")
-        logger.info("="*60)
-        logger.info(f"📋 Command: {command_str}")
-        logger.info(f"📁 Working directory: {project_root}")
-        logger.info(f"⏰ Started at: {started_at}")
-        logger.info("="*60)
-
-        # Execute the command with real-time output capture
-        process = subprocess.Popen(
-            command,
-            cwd=project_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,  # Line buffered
-            universal_newlines=True
-        )
-
-        stdout_lines = []
-        stderr_lines = []
-
-        # Monitor process with progress updates
-        logger.info("📊 MONITORING BUILD PROGRESS:")
-        logger.info("-" * 40)
-
-        while True:
-            # Check if process has finished
-            return_code = process.poll()
-
-            # Read available output
-            if process.stdout:
-                try:
-                    line = process.stdout.readline()
-                    if line:
-                        line = line.strip()
-                        stdout_lines.append(line)
-                        # Log progress updates
-                        if any(keyword in line.lower() for keyword in [
-                            'building', 'loading', 'initializing', 'processing',
-                            'chunks', 'documents', 'index', 'saved', 'complete'
-                        ]):
-                            logger.info(f"📈 Progress: {line}")
-                except:
-                    pass
-
-            if process.stderr:
-                try:
-                    line = process.stderr.readline()
-                    if line:
-                        line = line.strip()
-                        stderr_lines.append(line)
-                        logger.warning(f"⚠️  Error: {line}")
-                except:
-                    pass
-
-            # Check timeout
-            current_time = time.time()
-            if current_time - start_time > 1000:  # 16+ minute timeout
-                logger.error("⏰ TIMEOUT: Process exceeded timeout, terminating...")
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                raise subprocess.TimeoutExpired(command, 1000)
-
-            # If process finished, break
-            if return_code is not None:
-                break
-
-            # Small delay to prevent excessive CPU usage
-            time.sleep(0.1)
-
-        # Collect any remaining output
-        remaining_stdout, remaining_stderr = process.communicate()
-        if remaining_stdout:
-            stdout_lines.extend(remaining_stdout.strip().split('\n'))
-        if remaining_stderr:
-            stderr_lines.extend(remaining_stderr.strip().split('\n'))
-
-        end_time = time.time()
-        execution_time = end_time - start_time
-        completed_at = datetime.now().isoformat()
-
-        # Combine output
-        stdout_output = '\n'.join(filter(None, stdout_lines))
-        stderr_output = '\n'.join(filter(None, stderr_lines))
-
-        # Determine success based on return code
-        success = process.returncode == 0
-
-        logger.info("="*60)
-        logger.info("📊 BUILD PROCESS COMPLETED")
-        logger.info("="*60)
-        logger.info(f"✅ Success: {success}")
-        logger.info(f"🔢 Return code: {process.returncode}")
-        logger.info(f"⏱️  Execution time: {execution_time:.2f} seconds")
-        logger.info(f"📝 Output lines: {len(stdout_lines)}")
-        logger.info(f"⚠️  Error lines: {len(stderr_lines)}")
-        logger.info(f"🏁 Completed at: {completed_at}")
-        logger.info("="*60)
-
-        if success:
-            logger.info("🎉 RAG INDEX BUILD SUCCESSFUL!")
-        else:
-            logger.error(f"❌ RAG INDEX BUILD FAILED (code: {process.returncode})")
-
-        return BuildIndexResponse(
-            success=success,
-            command=command_str,
-            return_code=process.returncode,
-            stdout=stdout_output,
-            stderr=stderr_output,
-            execution_time=execution_time,
-            started_at=started_at,
-            completed_at=completed_at
-        )
-
-    except subprocess.TimeoutExpired:
-        end_time = time.time()
-        execution_time = end_time - start_time
-        completed_at = datetime.now().isoformat()
-
-        error_msg = "Command execution timed out after 16+ minutes"
-        logger.error(error_msg)
-
-        return BuildIndexResponse(
-            success=False,
-            command=command_str if 'command_str' in locals() else "python src/rag/build_main_index.py",
-            return_code=-1,
-            stdout="",
-            stderr="Timeout: Command execution exceeded 16+ minutes",
-            execution_time=execution_time,
-            started_at=started_at,
-            completed_at=completed_at,
-            error=error_msg
-        )
-
-    except Exception as e:
-        end_time = time.time()
-        execution_time = end_time - start_time
-        completed_at = datetime.now().isoformat()
-
-        error_msg = f"Error executing build index command: {str(e)}"
-        logger.error(error_msg)
-
-        return BuildIndexResponse(
-            success=False,
-            command=command_str if 'command_str' in locals() else "python src/rag/build_main_index.py",
-            return_code=-1,
-            stdout="",
-            stderr=str(e),
-            execution_time=execution_time,
-            started_at=started_at,
-            completed_at=completed_at,
-            error=error_msg
-        )
-
 # 11. CHECK FREECAD VERSION AND INSTALLATION
 @app.get("/check-freecad", response_model=FreeCADVersionResponse)
 async def check_freecad_version(token: str = Depends(verify_token)):
@@ -1908,7 +1637,7 @@ async def export_conversations_xlsx(
     import openpyxl
     import re as _re
     from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
+
     from datetime import timedelta
 
     # Regex to strip illegal XML/Excel control characters from cell text
@@ -1963,7 +1692,6 @@ async def export_conversations_xlsx(
             filename_suffix = f"top{top_n}_sessions"
 
         session_ids   = [s.session_id for s in target_sessions]
-        session_map   = {s.session_id: s for s in target_sessions}
         logger.info(f"Exporting {len(session_ids)} sessions to single-sheet XLSX")
 
         # ── Step 2: Workbook + single sheet ────────────────────────────────

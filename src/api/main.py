@@ -19,7 +19,7 @@ from src.api.cors import configure_cors
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from fastapi.openapi.utils import get_openapi
 
@@ -73,9 +73,8 @@ try:
     from ..utils.image_handler import ImageProcessor
     from ..core.chatbot import text_to_cad_agent
     from ..database.database import init_db, get_db
-    from ..crud import chat_processing as crud
     from ..models.sessions import Session as SessionModel, ChatHistory
-    from ..middleware.auth import auth_middleware, verify_token_dependency
+    from ..middleware.auth import auth_middleware
     from ..utils.runtime_monitor import runtime_monitor
     from ..utils.sizing_advisor import sizing_advisor
     from ..utils.context_manager import get_user_id
@@ -84,9 +83,8 @@ except ImportError:
     from src.utils.image_handler import ImageProcessor
     from src.core.chatbot import text_to_cad_agent
     from src.database.database import init_db, get_db
-    from src.crud import chat_processing as crud
     from src.models.sessions import Session as SessionModel, ChatHistory
-    from src.middleware.auth import auth_middleware, verify_token_dependency
+    from src.middleware.auth import auth_middleware
     from src.utils.runtime_monitor import runtime_monitor
     from src.utils.sizing_advisor import sizing_advisor
     from src.utils.context_manager import get_user_id
@@ -409,7 +407,7 @@ async def process_pdf(
 
             # DEBUG: Log agent_result to see what fields are available
             logger.info(f"[PROCESS-PDF] agent_result keys: {list(agent_result.keys())}")
-            logger.info(f"[PROCESS-PDF] File paths in agent_result:")
+            logger.info("[PROCESS-PDF] File paths in agent_result:")
             logger.info(f"  - obj_export: {agent_result.get('obj_export')}")
             logger.info(f"  - obj_path: {agent_result.get('obj_path')}")
             logger.info(f"  - step_export: {agent_result.get('step_export')}")
@@ -792,7 +790,7 @@ async def generate_cad_stream(
         )
 
     if not message:
-        logger.warning(f"Empty message in SSE request")
+        logger.warning("Empty message in SSE request")
         async def empty_message_stream():
             error_data = json.dumps({
                 "error": "Message is required for CAD generation."
@@ -972,7 +970,7 @@ async def generate_cad_stream(
                     else:
                         logger.debug(f"[SSE_PROGRESS] Stream {stream_id} - Step: {step_name}, Progress: {progress}%, Complete: {is_complete}")
                 elif "final_result" in update:
-                    logger.info(f"CAD generation completed successfully")
+                    logger.info("CAD generation completed successfully")
                 elif "error" in update:
                     logger.error(f"Error in update: {update.get('error')}")
 
@@ -1002,7 +1000,7 @@ async def generate_cad_stream(
             except asyncio.CancelledError:
                 pass
 
-    logger.debug(f"[SSE_RESPONSE] Creating StreamingResponse for CAD generation")
+    logger.debug("[SSE_RESPONSE] Creating StreamingResponse for CAD generation")
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
@@ -1139,7 +1137,7 @@ async def serve_3d_file(file_path: str, request: Request):
                 if not full_path.exists():
                     obj_dir = project_root / 'outputs' / 'obj'
                     if not obj_dir.exists():
-                        logger.warning(f"outputs/obj directory does not exist, creating it")
+                        logger.warning("outputs/obj directory does not exist, creating it")
                         obj_dir.mkdir(parents=True, exist_ok=True)
 
                     # Check only the 2 most recent date directories for the file
@@ -1164,7 +1162,7 @@ async def serve_3d_file(file_path: str, request: Request):
                     if not placeholder_path.exists():
                         try:
                             with open(placeholder_path, 'w') as f:
-                                f.write(f"# Placeholder OBJ file\nv 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
+                                f.write("# Placeholder OBJ file\nv 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
                             logger.info(f"Created placeholder OBJ file: {placeholder_path}")
                             full_path = placeholder_path
                         except Exception as e:
@@ -1269,7 +1267,7 @@ async def serve_step_file(file_path: str, request: Request):
                 # Check outputs/step directory
                 step_dir = project_root / 'outputs' / 'step'
                 if not step_dir.exists():
-                    logger.warning(f"outputs/step directory does not exist, creating it")
+                    logger.warning("outputs/step directory does not exist, creating it")
                     step_dir.mkdir(parents=True, exist_ok=True)
 
                 # Check only the 2 most recent date directories for the file
@@ -1506,7 +1504,6 @@ except ImportError:
 app.include_router(download_router)
 
 # Custom OpenAPI schema to add Authorization button
-from fastapi.openapi.utils import get_openapi
 
 def custom_openapi():
     if app.openapi_schema:

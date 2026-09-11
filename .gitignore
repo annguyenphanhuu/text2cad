@@ -68,10 +68,6 @@ probe_out/
 *.sqlite3
 
 # ============================================================
-# RAG index (rebuild with: python src/rag/build_main_index.py)
-# ============================================================
-data/index/
-data/chat_history.json
 
 # ============================================================
 # FreeCAD scratch scripts
@@ -103,5 +99,3 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
-# stability check output (regenerated per run)
-stability_report*.json

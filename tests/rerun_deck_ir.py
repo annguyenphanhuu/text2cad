@@ -7,7 +7,7 @@ compare.html (August legacy pipeline vs IR pipeline).
 
 Cases and prompts are the 84 of outputs/test_rerun_20260818/selection.json, so
 the two reports line up case by case.  The agent runs in-process with
-CAD_PIPELINE=ir; the part is built and the drawing is produced by the local
+the part is built and the drawing is produced by the local
 freecadcmd (no FreeCAD server / MQTT needed).  Nothing is answered on the
 customer's behalf: like in August, only "ok" is ever sent back, so a case that
 asks a real question ends as "no model" and is reported as such.
@@ -33,7 +33,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("SKIP_DB", "true")
-os.environ["CAD_PIPELINE"] = "ir"
 
 OLD = ROOT / "outputs" / "test_rerun_20260818"
 WORKER_ROOT = ROOT.parent / "tolery-freecad"
@@ -65,10 +64,8 @@ class Harness:
         agent._build_user_text_with_history = types.MethodType(
             lambda a, sid, cur: self.transcripts.get(sid, "") + ("[USER]: %s\n" % cur if cur else ""), agent)
 
-    async def _fake_save_outputs(self, code, requirements, base_filename="generated_cad", user_text="",
-                                 session_id=None, priority=0, skip_metadata=False):
-        self.captured[session_id] = {"code": code, "shape_type": requirements.shape_type,
-                                     "title": requirements.title, "description": requirements.description}
+    async def _fake_save_outputs(self, code, shape_type, title, user_text="", session_id=None, priority=0):
+        self.captured[session_id] = {"code": code, "shape_type": shape_type, "title": title}
         return (None, None, None)
 
     async def turn(self, sid, msg):
@@ -81,6 +78,8 @@ class Harness:
             elif upd.get("step") and (not steps or steps[-1] != upd["step"]):
                 steps.append(upd["step"])
         final = final or {}
+        if final.get("code") and sid in self.captured:
+            self.captured[sid]["description"] = final.get("explanation")
         if final.get("error"):
             resp = str(final["error"])
         elif final.get("message") and not final.get("code"):
@@ -137,11 +136,6 @@ class Harness:
             cap = self.captured.get(sid) or {}
             rec["shape_type"] = cap.get("shape_type")
             rec["description"] = cap.get("description")
-            if cap.get("code") and not rec["ir"]:
-                # legacy path (perforated sheets): the old code generator produced a script
-                rec["legacy_code"] = True
-                rec["final_reply"] = (rec["final_reply"] or "") + ("\n\n(legacy pipeline: this shape is still built by the old "
-                                                                    "code generator; the script is not executed in this offline harness)")
             rec["exports"] = {}
             rec["files"] = {}
             rec["generated"] = False
@@ -282,7 +276,7 @@ def write_report(out, runs=1):
     s = s.replace("local API on :8124 with local FreeCAD &middot; 3 runs per case.",
                   "same 84 prompts as <code>test_rerun_20260818</code>, plus chapter 9 (triangular, circular and "
                   "circular-bent plates, perforated sheets, T/I profiles, DFM rule cases that are not in the deck) &middot; "
-                  "agent in-process with <code>CAD_PIPELINE=ir</code>, part built and drawn by local freecadcmd &middot; "
+                  "agent in-process, part built and drawn by local freecadcmd &middot; "
                   "%d run(s) per case. Side by side with August: <a href=\"compare.html\">compare.html</a>." % runs)
     html_path.write_text(s, encoding="utf-8")
 
@@ -399,7 +393,7 @@ async def main_async(args):
     write_compare(recs, out)
     (out / "README.md").write_text(
         "# OK test-case re-run - IR pipeline (%s)\n\nThe 84 deck prompts of `test_rerun_20260818` (selection.json) plus the chapter-9 "
-        "prompts of tests/fixtures/shape_cases_*.json, %d run(s) each, through the IR pipeline (`CAD_PIPELINE=ir`). The agent ran "
+        "prompts of tests/fixtures/shape_cases_*.json, %d run(s) each, through the IR pipeline. The agent ran "
         "in-process; the part was built and drawn with the local freecadcmd (no FreeCAD server / MQTT). Only `ok` was ever sent back, "
         "never an answer to a question.\n\nOpen `report.html` (same layout as August, one column per run) or `compare.html` "
         "(August vs now run 1, side by side) from this folder.\n" % (time.strftime("%Y-%m-%d"), max(runs)), encoding="utf-8")

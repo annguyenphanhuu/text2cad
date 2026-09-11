@@ -9,17 +9,14 @@ import logging
 import uuid
 import random
 import re
-import json
-import pprint
 import time
 import traceback
 from datetime import datetime
 
-import asyncio # Added for async operations
-from ..models.sessions import Session as SessionModel, ChatHistory
+from ..models.sessions import Session as SessionModel
 from ..schemas.sessions import ChatRequest, ChatResponse
 from ..core.text_to_cad_agent import TextToCADAgent
-from .sessions import create_session, get_session_by_id, update_session, get_latest_code, add_chat_history_entry
+from .sessions import create_session, get_session_by_id, get_latest_code, add_chat_history_entry
 from ..utils.web_search_handler import WebSearchProcessor
 from ..utils.messages import get_success_message, get_error_message
 from ..database.db_retry import retry_db_operation, DatabaseRetryError, is_connection_error
@@ -68,40 +65,27 @@ async def _apply_web_search(agent, session_id: str, message: str, tag: str):
     return enhanced_text, metadata
 
 
-def _apply_face_selection(agent, session_id: str, processed_message: str, tag: str):
-    """
-    Enhance `processed_message` with CAD face-selection context when the user
-    has picked a face in the viewer.
+def _face_selection_metadata(agent, session_id: str, message: str, tag: str) -> dict:
+    """Metadata of the face the user picked in the viewer (for the response), if any.
 
-    Returns (processed_message, face_metadata); face_metadata always carries a
-    'face_detected' key so downstream consumers can branch on it safely.
+    The message itself is left untouched: the IR edit flow parses the
+    `Face Selection: ...` text again to find the matching face of the part.
+    Always carries a 'face_detected' key.
     """
-    if not hasattr(agent, 'face_processor'):
-        logger.debug(f"[{tag}_FACE] Processor not available")
-        return processed_message, {'face_detected': False, 'error': 'face_processor not available'}
-
     try:
-        face_data = agent.face_processor.parse_face_selection(processed_message)
+        face_data = agent.face_processor.parse_face_selection(message)
     except Exception as e:
         logger.warning(f"[{tag}_FACE] Error: {e}")
-        return processed_message, {'face_detected': False, 'error': str(e)}
+        return {'face_detected': False, 'error': str(e)}
 
     if not face_data:
-        logger.debug(f"[{tag}_FACE] No selection detected")
-        return processed_message, {'face_detected': False}
+        return {'face_detected': False}
 
     logger.info(
         f"[{tag}_FACE] Detected - ID:{face_data['face_id']} "
         f"Type:{face_data['shape_type']} Session:{session_id}"
     )
-    try:
-        processed_message = agent.face_processor.enhance_user_request(processed_message)
-    except Exception as e:
-        logger.warning(f"[{tag}_FACE] Error: {e}")
-        return processed_message, {'face_detected': False, 'error': str(e)}
-
-    logger.debug(f"[{tag}_FACE] Enhanced message: {len(processed_message)} chars")
-    return processed_message, {
+    return {
         'face_detected': True,
         'face_id': face_data['face_id'],
         'shape_type': face_data['shape_type'],
@@ -114,12 +98,10 @@ def _apply_face_selection(agent, session_id: str, processed_message: str, tag: s
 
 def _sync_latest_code_from_db(db, agent, session_id: str, tag: str) -> None:
     """
-    Copy the session's most recent generated code from the DB into agent state.
+    Copy the session's most recent generated script from the DB into agent state.
 
-    Required before an edit request: the edit-mode gate in
-    process_request_with_progress() tests `is_edit_request AND
-    state['latest_code']`, so without this the request falls through to normal
-    generation and the Confirm chain fires even though edit mode is active.
+    Required before an edit request after an API restart: the in-memory state is
+    empty, and the IR edit flow takes the part IR back out of this stub script.
     """
     db_latest_code = get_latest_code(db, session_id)
     if db_latest_code:
@@ -197,21 +179,7 @@ async def handle_chat_request(
             f"{f'{len(latest_code)} characters' if latest_code else 'none'}"
         )
 
-        try:
-            state = agent._get_session_state(session_id)
-            requirements = state.get('latest_requirements')
-            if requirements:
-                try:
-                    rendered = json.dumps(requirements.dict(), indent=2)
-                except Exception:
-                    rendered = pprint.pformat(requirements, indent=2)
-                logger.debug(f"[AGENT_STATE] Latest requirements: {rendered}")
-            else:
-                logger.debug(f"[AGENT_STATE] No latest requirements in agent state")
-        except Exception as e:
-            logger.warning(f"[AGENT_STATE] Error accessing agent state: {str(e)}")
-
-        logger.debug(f"[SESSION] Ensuring session exists in database")
+        logger.debug("[SESSION] Ensuring session exists in database")
         session = get_session_by_id(db, session_id)
         if not session:
             session_name = chat_req.message[:50].strip() if chat_req.message else "User Session"
@@ -231,9 +199,7 @@ async def handle_chat_request(
         processed_message, web_metadata = await _apply_web_search(
             agent, session_id, chat_req.message, tag="CHAT"
         )
-        processed_message, face_metadata = _apply_face_selection(
-            agent, session_id, processed_message, tag="CHAT"
-        )
+        face_metadata = _face_selection_metadata(agent, session_id, processed_message, tag="CHAT")
 
         logger.debug(f"[AGENT] Starting agent processing for session {session_id}")
         agent_start_time = time.time()
@@ -271,7 +237,7 @@ async def handle_chat_request(
             agent_result["face_metadata"] = face_metadata
             logger.info(f"[FACE] Added metadata - ID:{face_metadata.get('face_id')} Type:{face_metadata.get('shape_type')}")
 
-        logger.debug(f"[RESPONSE] Processing agent result and creating response")
+        logger.debug("[RESPONSE] Processing agent result and creating response")
         
         # Wrap database operations with retry logic
         @retry_db_operation(max_retries=3, delay=1.0)
@@ -321,7 +287,7 @@ def _resolve_session_id(db: Session, chat_req: ChatRequest) -> str:
     """
     Resolve session ID - create new if not provided.
     """
-    logger.debug(f"[SESSION_RESOLVE] Starting session ID resolution")
+    logger.debug("[SESSION_RESOLVE] Starting session ID resolution")
     session_id = chat_req.session_id
     logger.debug(f"[SESSION_RESOLVE] Input session_id: {session_id}")
 
@@ -338,7 +304,7 @@ def _resolve_session_id(db: Session, chat_req: ChatRequest) -> str:
             return session_id
 
     if chat_req.message:
-        logger.debug(f"[SESSION_RESOLVE] Checking message for existing session ID pattern")
+        logger.debug("[SESSION_RESOLVE] Checking message for existing session ID pattern")
         session_pattern = re.compile(r'session_[a-f0-9]{6}_\d{6}')
         session_matches = session_pattern.findall(chat_req.message)
         if session_matches:
@@ -413,13 +379,13 @@ def _process_agent_result(
         logger.error(f"[RESULT_PROCESS] Using error message as response: {agent_result.get('error')}")
     elif agent_result.get("message") and not agent_result.get("code"):
         chat_response_content = agent_result.get("message")
-        logger.info(f"[RESULT_PROCESS] Using agent message as response (no code generated)")
+        logger.info("[RESULT_PROCESS] Using agent message as response (no code generated)")
     elif agent_result.get("code"):
         chat_response_content = get_success_message()
-        logger.info(f"[RESULT_PROCESS] Code generated successfully, using success message")
+        logger.info("[RESULT_PROCESS] Code generated successfully, using success message")
     else:
         chat_response_content = get_error_message("processing_completed")
-        logger.info(f"[RESULT_PROCESS] Using default completion message")
+        logger.info("[RESULT_PROCESS] Using default completion message")
 
     # Add response to agent_result for database storage
     agent_result["response"] = chat_response_content
@@ -494,10 +460,9 @@ def _handle_export_paths(chat_req: ChatRequest, agent_result: dict) -> tuple:
     has_error = bool(agent_result.get("error"))
 
     if not obj_path and not step_path and code_generated and not has_error:
-        logger.info(f"[EXPORT_PATHS] No paths in agent result but code was generated, searching for recent files")
+        logger.info("[EXPORT_PATHS] No paths in agent result but code was generated, searching for recent files")
         try:
             from src.utils.file_finder import find_step_file, find_obj_files
-            import time
 
             # Look for recent STEP files
             recent_step = find_step_file(time_window=300)  # 5 minutes
@@ -514,16 +479,16 @@ def _handle_export_paths(chat_req: ChatRequest, agent_result: dict) -> tuple:
         except Exception as e:
             logger.error(f"[EXPORT_PATHS] Error searching for recent files: {e}")
     elif not obj_path and not step_path and not code_generated:
-        logger.info(f"[EXPORT_PATHS] No paths in agent result and no code generated, skipping file search")
+        logger.info("[EXPORT_PATHS] No paths in agent result and no code generated, skipping file search")
 
     if export_format is None or export_format == "":
-        logger.info(f"[EXPORT_PATHS] No specific format requested, returning both paths")
+        logger.info("[EXPORT_PATHS] No specific format requested, returning both paths")
         return obj_path, step_path, pdf_path
     elif export_format.lower() == "obj":
-        logger.info(f"[EXPORT_PATHS] OBJ format requested, returning OBJ path only")
+        logger.info("[EXPORT_PATHS] OBJ format requested, returning OBJ path only")
         return obj_path, None, pdf_path
     elif export_format.lower() == "step":
-        logger.info(f"[EXPORT_PATHS] STEP format requested, returning STEP path only")
+        logger.info("[EXPORT_PATHS] STEP format requested, returning STEP path only")
         return None, step_path, pdf_path
     else:
         logger.warning(f"[EXPORT_PATHS] Unknown export format '{export_format}', returning both paths")
@@ -589,7 +554,7 @@ async def generate_cad_realtime_stream(
 
     try:
         # Use short-lived connection for initial session setup
-        logger.debug(f"[STREAM] Resolving session ID for streaming request")
+        logger.debug("[STREAM] Resolving session ID for streaming request")
         with get_db_session() as db:
             # Distinguish clearly: session_id provided by CLIENT vs generated by SERVER
             client_provided_session_id = session_id  # Save the original value from the client
@@ -614,7 +579,7 @@ async def generate_cad_realtime_stream(
             elif not client_provided_session_id:
                 logger.info("[SESSION] New session (no client id provided)")
 
-            logger.debug(f"[STREAM] Ensuring session exists in database")
+            logger.debug("[STREAM] Ensuring session exists in database")
             session_name = message[:50].strip() if message else "User Session"
 
             # ─────────────────────────────────────────────────────────────────
@@ -680,16 +645,14 @@ async def generate_cad_realtime_stream(
         processed_message, web_metadata = await _apply_web_search(
             agent, resolved_session_id, message, tag="STREAM"
         )
-        processed_message, face_metadata = _apply_face_selection(
-            agent, resolved_session_id, processed_message, tag="STREAM"
-        )
+        face_metadata = _face_selection_metadata(agent, resolved_session_id, processed_message, tag="STREAM")
 
         # Sync BEFORE streaming starts — see _sync_latest_code_from_db for why.
         if is_edit_request:
             with get_db_session() as _db_edit:
                 _sync_latest_code_from_db(_db_edit, agent, resolved_session_id, tag="STREAM")
 
-        logger.debug(f"[STREAM] Initializing progress tracking")
+        logger.debug("[STREAM] Initializing progress tracking")
         step_progress = {
             "analysis": False,
             "parameters": False,
@@ -769,22 +732,8 @@ async def generate_cad_realtime_stream(
                     "overall_percentage": overall_percentage,
                 }
 
-                # Forward additional fields from progress_update (e.g., design_type, export ETA)
-                for key in [
-                    "design_type",
-                    "assembly_warning",
-                    "assembly_confirmed",
-                    "estimated_time_seconds",
-                    "estimated_time_label",
-                    "initial_estimated_time_seconds",
-                    "initial_estimated_time_label",
-                    "estimated_elapsed_seconds",
-                    "is_estimate_overrun",
-                    "hole_count",
-                    "perforation_notation",
-                ]:
-                    if key in progress_update:
-                        response_data[key] = progress_update[key]
+                if "design_type" in progress_update:
+                    response_data["design_type"] = progress_update["design_type"]
 
                 yield response_data
 
@@ -805,13 +754,13 @@ async def generate_cad_realtime_stream(
                             f"({len(content.get('content', ''))} chars)"
                         )
                 else:
-                    logger.debug(f"[STREAM_FINAL] No web metadata to add")
+                    logger.debug("[STREAM_FINAL] No web metadata to add")
                 
                 if face_metadata and face_metadata.get('face_detected'):
                     agent_result["face_metadata"] = face_metadata
                     logger.info(f"[STREAM_FINAL] ✅ Face metadata - ID:{face_metadata.get('face_id')} Type:{face_metadata.get('shape_type')}")
                 else:
-                    logger.debug(f"[STREAM_FINAL] No face metadata")
+                    logger.debug("[STREAM_FINAL] No face metadata")
                 
                 # ── Collect per-request cost summary ──────────────────────────
                 # get_request_summary() is snapshot-based: always returns cost for
@@ -843,7 +792,7 @@ async def generate_cad_realtime_stream(
                         "overall_percentage": 100,
                     }
                 
-                logger.debug(f"[STREAM_FINAL] Processing agent result and creating final response")
+                logger.debug("[STREAM_FINAL] Processing agent result and creating final response")
                 # Use short-lived connection for final result processing
                 with get_db_session() as db:
                     # CRITICAL FIX: Process result if we have code OR no error

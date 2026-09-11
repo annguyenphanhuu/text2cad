@@ -6,13 +6,6 @@ This script starts the FastAPI server for the DFM Shape ChatBot application.
 """
 import os
 import sys
-
-# Configure FAISS for CPU-only usage before any other imports
-os.environ['FAISS_DISABLE_GPU'] = '1'
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-os.environ['OMP_NUM_THREADS'] = '1'
-
 import logging
 import uvicorn
 from pathlib import Path
@@ -20,9 +13,6 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-
-# Suppress FAISS GPU warnings
-logging.getLogger('faiss').setLevel(logging.ERROR)
 
 # Set console encoding to UTF-8 for Windows before configuring logging
 if sys.platform.startswith('win'):

@@ -1,12 +1,10 @@
 import os
 import logging
-import time
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends
 from src.api.cors import configure_cors
-from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
@@ -34,9 +32,9 @@ except ImportError:
 
 # Import authentication
 try:
-    from ..middleware.auth import verify_token_dependency as verify_token, get_token_info
+    from ..middleware.auth import verify_token_dependency as verify_token
 except ImportError:
-    from src.middleware.auth import verify_token_dependency as verify_token, get_token_info
+    from src.middleware.auth import verify_token_dependency as verify_token
 
 # FastAPI app with security configuration
 app = FastAPI(
@@ -239,8 +237,6 @@ async def delete_session(session_id: str, delete_type: str = "soft", db: Session
                     Default is 'soft'.
     """
     try:
-        # Import CRUD function
-        from src.crud.sessions import delete_session as crud_delete_session
         
         # Check if session exists
         session = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
