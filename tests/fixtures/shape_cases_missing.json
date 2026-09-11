@@ -1,0 +1,28 @@
+{
+ "run": [
+  {"uid": "928", "dir": "928_9_4_perforated_n1", "section": "9.4 PERFORATED SHEET", "num": 1,
+   "prompt": "perforated sheet 200x200x2 R12 T16"},
+  {"uid": "929", "dir": "929_9_4_perforated_n2", "section": "9.4 PERFORATED SHEET", "num": 2,
+   "prompt": "Perforated plate 300 x 200 mm, 1.5 mm steel, square holes of 10 mm in line, 30% open area, plus 4 Ø6 holes in the corners 15 mm from the edges."},
+  {"uid": "930", "dir": "930_9_4_perforated_n3", "section": "9.4 PERFORATED SHEET", "num": 3,
+   "prompt": "I want a perforated sheet 500x400x2 in galvanised steel with oblong holes LR5x20, pitch Z9x24, corner radius 10 mm."},
+  {"uid": "931", "dir": "931_9_4_perforated_n4", "section": "9.4 PERFORATED SHEET", "num": 4,
+   "prompt": "Perforated panel 400 x 250 mm, thickness 2 mm, round holes staggered at 60° with a 16 mm pitch, 40% open area."},
+  {"uid": "932", "dir": "932_9_5_profile_n1", "section": "9.5 T / I PROFILE", "num": 1,
+   "prompt": "T profile in 3 mm steel: flange 120 mm wide, web 60 mm high, length 500 mm, with 3 Ø9 holes evenly spaced along the flange."},
+  {"uid": "933", "dir": "933_9_5_profile_n2", "section": "9.5 T / I PROFILE", "num": 2,
+   "prompt": "I-beam profile, 100 mm wide flanges, web 150 mm high between the flanges, 4 mm thick, 300 mm long, with a 40 x 12 mm slot centred on the web."},
+  {"uid": "934", "dir": "934_9_6_dfm_rules_n1", "section": "9.6 DFM RULES", "num": 1,
+   "prompt": "Plate 150 x 100 mm in 1 mm steel with 4 M2 tapped holes, 10 mm from the corners."},
+  {"uid": "935", "dir": "935_9_6_dfm_rules_n2", "section": "9.6 DFM RULES", "num": 2,
+   "prompt": "Z bracket in 2 mm steel: top leg 40 mm, vertical web 8 mm, bottom leg 40 mm in the opposite direction, length 100 mm."},
+  {"uid": "936", "dir": "936_9_6_dfm_rules_n3", "section": "9.6 DFM RULES", "num": 3,
+   "prompt": "Plate 120 x 80 x 5 mm with 2 blind holes Ø8, 20 mm from each end, centred in width."},
+  {"uid": "937", "dir": "937_9_6_dfm_rules_n4", "section": "9.6 DFM RULES", "num": 4,
+   "prompt": "Plate 100 x 60 mm, thickness 2.2 mm, with one Ø10 hole in the centre and one M10x1.1 tapped hole 20 mm from the left edge, centred."},
+  {"uid": "938", "dir": "938_9_7_half_moon_n1", "section": "9.7 HALF-MOON CUTOUT", "num": 1,
+   "prompt": "Plate 200 x 100 x 3 mm with a half-moon notch Ø30 centred on the front edge, and a D-shaped hole Ø20 at 50 mm from the left edge, centred in width, flat side toward the right."},
+  {"uid": "939", "dir": "939_9_7_half_moon_n2", "section": "9.7 HALF-MOON CUTOUT", "num": 2,
+   "prompt": "L bracket 100 x 60, wall 50 mm, 2 mm steel, length 120 mm, with a semicircular notch Ø16 in the middle of the free edge of the wall."}
+ ]
+}

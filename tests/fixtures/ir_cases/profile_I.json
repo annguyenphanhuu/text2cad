@@ -1,0 +1,10 @@
+{
+ "family": "profile",
+ "thickness": 4,
+ "profile": {"section": "I", "width": 100, "height": 150, "length": 300, "radius": 4},
+ "features": [
+  {"type": "slot", "face": "web", "size": [40, 12], "orientation": "u", "at": {"u": {"from": "center"}, "v": {"from": "center"}}},
+  {"type": "hole", "face": "top_flange", "diameter": 11, "at": {"u": {"from": "start", "dist": 30}, "v": {"from": "center"}}, "mirror": ["u"]}
+ ],
+ "_expect": {"bbox": [0, 100, 0, 300, 0, 158], "tools": 3}
+}

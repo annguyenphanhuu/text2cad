@@ -27,7 +27,7 @@ Tubes are a separate family (section + length + end cuts + features).
 {
   "intent": "cad",                       // cad | assembly | unsupported | info | chat
   "part": {
-    "family": "sheet",                   // sheet | tube
+    "family": "sheet",                   // sheet | tube | profile (T / I structural profile)
     "name": "L-bracket 160x50, wall 80", // short English title
     "material": "steel",                 // steel | stainless | aluminum | null
     "material_note": "S235, galvanised", // grade / finish / free text, or null
@@ -89,7 +89,7 @@ Tubes are a separate family (section + length + end cuts + features).
 ### features (cutouts) — `type` is one of
 | type | required fields | notes |
 |---|---|---|
-| hole | diameter | through hole; add `depth` for a blind hole |
+| hole | diameter | through hole; add `depth` for a blind hole. "blind / borgne" with no depth given → `"blind": true, "depth": null` (a question is asked, never guess) |
 | thread | thread ("M6"), optional pitch | tapped hole, drill diameter is derived automatically |
 | countersink | diameter, cs_diameter, cs_angle (default 90), cs_side | cs_side: base → "top"/"bottom"; wall → "outer"/"inner" |
 | counterbore | diameter, cb_diameter, cb_depth, cb_side | "lamage" / counterbored hole (flat-bottomed larger bore) |
@@ -101,6 +101,8 @@ Tubes are a separate family (section + length + end cuts + features).
 | corner_fillet | radius, corners ("all" or list) | rounded plate corners (same as blank.corner_radius) |
 | boss | diameter, height, inner_diameter (optional), side | welded bushing / standoff / pin ADDED on the plate (fused, not cut); side top/bottom |
 | engrave | note | engraving / marking: recorded only, not modelled |
+| half_moon | diameter, flat ("front"/"back"/"left"/"right") | half-moon / D-shaped cutout / demi-lune. Position = centre of the FULL circle; `flat` = the side its straight edge faces. A semicircular notch on the front edge: centre ON that edge (dist 0), flat "front" |
+| perforation | shape "R"/"C"/"LR"/"LC", size, pitch_type "T"/"U"/"Z", pitch, open_area_pct | perforated sheet: holes over the whole plate (see PERFORATED SHEETS). Not for a handful of holes with explicit counts (those are hole patterns) |
 
 Every feature has `"face"` (default "base") and a position:
 ```json
@@ -153,6 +155,28 @@ Every feature has `"face"` (default "base") and a position:
   v across the face); round → "top"/"bottom"/"front"/"back" or `"angle"` in degrees. `"through": "both"`
   drills through both walls, default "one".
 
+### profile family (structural T / I profile, extruded, no bends)
+```json
+"family": "profile", "thickness": 3, "profile": {"section": "T"|"I", "width": 200, "height": 80, "length": 400, "radius": null}
+```
+- `width` = flange width, `height` = web height (I: between the two flanges), `length` = extrusion length,
+  `thickness` = plate thickness of flange and web. Faces for features: "flange" (u along the length, v across the
+  width), "web" (u along the length, v = height from the flange), I only: "top_flange".
+
+### PERFORATED SHEETS (tôle perforée)
+One feature `perforation` on the base, the holes cover the whole plate in a centred grid. RMIG notation:
+- shape: `R<D>` round Ø D (`"shape": "R", "size": D`), `C<S>` square side S, `LR<W>x<L>` oblong with rounded ends
+  (`"size": [W, L]`), `LC<W>x<L>` rectangular slot. Words: "trous ronds Ø5" → R 5, "carrés 10" → C 10, "oblongs 5x20" → LR.
+- pitch: `T<P>` staggered 60° / "en quinconce" / "triangular" (`"pitch_type": "T", "pitch": P`), `U<P>` square grid /
+  "en ligne" / "aligned", `U<py>x<px>` rectangular grid (`"pitch": [py, px]`), `Z<py>x<px>` generic stagger.
+  "spaced 20 mm" with no pattern word → pitch 20, pitch_type null (T is assumed for round/square holes).
+- `open_area_pct`: "% open area" / "% de vide" / "taux de perforation". Two of {size, pitch, open_area_pct} are
+  enough: the third is computed. Bare letters ("R T16 22%", "C U40 25%") mean the shape / pitch TYPE is known
+  and the size is to be computed → `"size": null`. Never invent a size or pitch.
+- The plate itself is a normal blank (x, y, thickness); other features (corner holes...) are listed as usual.
+- "8 rows of 8 holes spaced 15 mm, the first 50 mm from the edges" is NOT a perforation: it is a `hole` with a
+  `grid` pattern (explicit count and start position).
+
 ## HOW TO MAP COMMON PARTS
 - Flat plate / platine / plaque: blank rect + features. "400 x 400 x 8" → x 400, y 400, thickness 8.
 - Angle / cornière / équerre / L-bracket "section A x B, longueur L" → blank x = A, y = L; one bend on
@@ -195,8 +219,8 @@ Every feature has `"face"` (default "base") and a position:
   "Tenon A x B" where B equals the wall thickness → protrusion A, width null (B is just the sheet).
 - Welded bushings, standoffs, positioning pins on a plate → feature `boss` (one part, not an assembly).
 - Hexagonal holes are allowed on tubes and plates (`hex`, across_flats).
-- Perforated sheets (tôle perforée, R/T notation, % open area) are handled elsewhere: set intent "unsupported"
-  with reason "perforated sheet".
+- Perforated sheets are a `perforation` feature on a rect blank (see PERFORATED SHEETS), never "unsupported".
+- T / I structural profiles ("profilé en T", "poutre en I", "T-bar") → `"family": "profile"` (see profile family).
 
 ## DECISIONS
 1. Read the WHOLE conversation. Values in [USER] answers to [CHATBOT] questions win; the latest value wins.
@@ -349,6 +373,32 @@ Every feature has `"face"` (default "base") and a position:
 "bends":[{"name":"spigot","on":"base","edge":"inner_rim","length":40,"angle":90,"direction":"up","radius":null}],
 "features":[{"type":"hole","face":"base","diameter":6,"at":{"u":{"from":"center"},"v":{"from":"center"}},"pattern":{"type":"polar","count":4,"circle_diameter":220,"start_angle":0}}],"tube":null},
 "questions":[],"assumptions":["The Ø160 is the bore of the spigot"],"skip_questions":false,"unsupported_reason":null,"reply":null}
+
+### Example 14
+[USER]: perforated sheet 200x200x2 R12 T16
+→
+{"intent":"cad","part":{"family":"sheet","name":"Perforated sheet 200x200x2 R12 T16","material":null,"material_note":null,"thickness":2,"bend_radius":null,
+"blank":{"type":"rect","x":200,"y":200},"bends":[],
+"features":[{"type":"perforation","face":"base","shape":"R","size":12,"pitch_type":"T","pitch":16,"open_area_pct":null}],"tube":null},
+"questions":[],"assumptions":[],"skip_questions":false,"unsupported_reason":null,"reply":null}
+
+### Example 15
+[USER]: Tôle perforée 300x200 ép. 1.5 mm, trous carrés de 10 en ligne, 30% de vide, 4 trous Ø6 dans les coins à 15 mm des bords.
+→
+{"intent":"cad","part":{"family":"sheet","name":"Perforated sheet 300x200x1.5 C10 U, 30% open","material":null,"material_note":null,"thickness":1.5,"bend_radius":null,
+"blank":{"type":"rect","x":300,"y":200},"bends":[],
+"features":[{"type":"perforation","face":"base","shape":"C","size":10,"pitch_type":"U","pitch":null,"open_area_pct":30},
+{"type":"hole","face":"base","diameter":6,"at":{"u":{"from":"x-","dist":15},"v":{"from":"y-","dist":15}},"mirror":["u","v"]}],"tube":null},
+"questions":[],"assumptions":["The pitch is computed from the 30% open area"],"skip_questions":false,"unsupported_reason":null,"reply":null}
+
+### Example 16
+[USER]: Profilé en T acier 3 mm, semelle 120 de large, âme 60 de haut, longueur 500, 3 trous Ø9 répartis sur la semelle.
+→
+{"intent":"cad","part":{"family":"profile","name":"T profile 120x60x3, L500","material":"steel","material_note":null,"thickness":3,"bend_radius":null,
+"blank":null,"bends":[],
+"features":[{"type":"hole","face":"flange","diameter":9,"at":{"u":{"from":"center"},"v":{"from":"center"}},"pattern":{"type":"linear","count":3,"pitch":"even","axis":"u"}}],
+"tube":null,"profile":{"section":"T","width":120,"height":60,"length":500,"radius":null}},
+"questions":[],"assumptions":["The three holes are evenly distributed along the length, centred across the flange width"],"skip_questions":false,"unsupported_reason":null,"reply":null}
 '''
 
 _INPUTS = '''

@@ -1,0 +1,10 @@
+{
+ "thickness": 2,
+ "blank": {"type": "rect", "x": 400, "y": 200, "corner_radius": 10},
+ "bends": [],
+ "features": [
+  {"type": "perforation", "face": "base", "shape": "LR", "size": [5, 20], "pitch_type": "Z", "pitch": [9, 24]},
+  {"type": "hole", "face": "base", "diameter": 6, "at": {"u": {"from": "x-", "dist": 12}, "v": {"from": "y-", "dist": 12}}, "mirror": ["u", "v"]}
+ ],
+ "_expect": {"bbox": [0, 400, 0, 200, 0, 2], "tools": 4}
+}

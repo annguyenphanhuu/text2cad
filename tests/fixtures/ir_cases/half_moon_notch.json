@@ -1,0 +1,10 @@
+{
+ "thickness": 3,
+ "blank": {"type": "rect", "x": 200, "y": 100},
+ "bends": [],
+ "features": [
+  {"type": "half_moon", "face": "base", "diameter": 30, "flat": "front", "at": {"u": {"from": "center"}, "v": {"from": "y-", "dist": 0}}},
+  {"type": "half_moon", "face": "base", "diameter": 20, "flat": "right", "at": {"u": {"from": "x-", "dist": 50}, "v": {"from": "center"}}}
+ ],
+ "_expect": {"bbox": [0, 200, 0, 100, 0, 3], "tools": 2, "volume": 58467.9}
+}

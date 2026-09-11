@@ -32,6 +32,8 @@ def _face_word(face_name: str, plan) -> str:
     if w is None:
         return face_name
     label = face_name.replace("_", " ")
+    if w.kind == "tube":
+        return "%s face" % label
     if any(label.endswith(k) for k in ("wall", "flange", "leg", "return", "tab", "wing", "lip", "shelf", "side", "back", "front", "left", "right", "top", "bottom")):
         return label
     return "%s wall" % label if w.parent == "base" else "%s return" % label
@@ -101,6 +103,22 @@ def feature_lines(ir, plan) -> List[str]:
                 _num(f["cut_length"]), _num(f["cut_width"]), f["corner"].replace("x-", "left ").replace("x+", "right ").replace("y-", "front").replace("y+", "back"),
                 (", %s mm from the corner" % _num(f["distance_from_corner"])) if f.get("distance_from_corner") else ""))
             continue
+        if f["type"] == "perforation":
+            lay = f.get("layout") or {}
+            shape = {"R": "round holes Ø%s mm" % _num(f["hole_w"]), "C": "square holes %s mm" % _num(f["hole_w"]),
+                     "LR": "oblong holes %s x %s mm" % (_num(f["hole_w"]), _num(f["hole_l"])),
+                     "LC": "rectangular slots %s x %s mm" % (_num(f["hole_w"]), _num(f["hole_l"]))}[f["shape"]]
+            pitch = {"T": "staggered 60°, pitch %s mm" % _num(f["pitch_x"]), "Z": "Z stagger, pitch %s x %s mm" % (_num(f["pitch_y"]), _num(f["pitch_x"])),
+                     "U": "square grid, pitch %s mm" % _num(f["pitch_x"]) if abs(f["pitch_x"] - f["pitch_y"]) < 1e-6
+                     else "rectangular grid, pitch %s x %s mm" % (_num(f["pitch_y"]), _num(f["pitch_x"]))}[f["pitch_type"]]
+            txt = "Perforation %s: %s, %s, %s%% open area (theoretical)" % (f["notation"], shape, pitch, _num(round(f["pct_theoretical"], 1)))
+            if lay:
+                txt += ", %d holes on the plate (%s%% actual), margins %s / %s mm" % (
+                    lay["count"], _num(round(lay["pct_actual"], 1)), _num(round(lay["margin_x"], 1)), _num(round(lay["margin_y"], 1)))
+            if f.get("_resolved_from_pct"):
+                txt += " - %s derived from the requested %s%% open area" % ("pitch" if f["_resolved_from_pct"] == "reverse_C" else "hole size", _num(f["open_area_pct"]))
+            lines.append(txt)
+            continue
         n, ptxt = _pattern_text(f)
         t = f["type"]
         if t in ("hole", "blind_hole"):
@@ -134,6 +152,9 @@ def feature_lines(ir, plan) -> List[str]:
         elif t == "corner_fillet":
             lines.append("Corner radius %s mm on the free corners of the %s" % (_num(f["radius"]), _face_word(f["face"], plan)))
             continue
+        elif t == "half_moon":
+            side = {"u-": "left", "u+": "right", "v-": "front" if face.kind == "base" else "bend", "v+": "back" if face.kind == "base" else "free edge"}[f["flat"]]
+            head = "%d half-moon cutout%s Ø%s mm (straight edge toward the %s, position = centre of the full circle)" % (n, "s" if n > 1 else "", _num(f["diameter"]), side)
         else:
             head = "%d %s" % (n, t)
         lines.append("%s %s, %s%s" % (head, where, _position_text(f, face, plan), ptxt))
@@ -142,6 +163,13 @@ def feature_lines(ir, plan) -> List[str]:
 
 def parameter_lines(ir, plan) -> List[str]:
     lines = []
+    if ir["family"] == "profile":
+        p = ir["profile"]
+        lines.append("%s profile: flange %s mm wide, web %s mm high%s, thickness %s mm, length %s mm" % (
+            p["section"], _num(p["width"]), _num(p["height"]), " between the flanges" if p["section"] == "I" else "", _num(p["thickness"]), _num(p["length"])))
+        if p.get("radius"):
+            lines.append("Inner radius %s mm at the junctions" % _num(p["radius"]))
+        return lines
     if ir["family"] == "tube":
         tube = ir["tube"]
         if tube["section"] == "rect":

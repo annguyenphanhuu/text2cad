@@ -1,0 +1,9 @@
+{
+ "thickness": 2,
+ "blank": {"type": "rect", "x": 200, "y": 200},
+ "bends": [],
+ "features": [
+  {"type": "perforation", "face": "base", "shape": "R", "size": 12, "pitch_type": "T", "pitch": 16}
+ ],
+ "_expect": {"bbox": [0, 200, 0, 200, 0, 2], "volume": 47654.2, "tools": 0}
+}

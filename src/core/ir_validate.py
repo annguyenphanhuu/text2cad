@@ -12,6 +12,7 @@ data/**/rules.json).
 """
 from __future__ import annotations
 
+import copy
 import os
 import sys
 from dataclasses import dataclass, field
@@ -76,6 +77,9 @@ def validate(ir: dict) -> ValidationResult:
     res.questions = missing_required(ir or {})
     if res.questions:
         return res
+    ir = _resolve_perforations(copy.deepcopy(ir or {}), res)
+    if res.questions:
+        return res
     try:
         nir, plan = F.plan_part(ir)
     except F.IRError as exc:
@@ -85,7 +89,7 @@ def validate(ir: dict) -> ValidationResult:
     t = nir.get("thickness")
     mat = material_key(nir.get("material"))
 
-    # ---- thickness limits (laser / bending)
+    # ---- thickness limits (laser / bending) and standard thickness list
     if t is not None:
         lo, hi = THICKNESS_LIMITS[mat]
         if not (lo <= t <= hi):
@@ -94,9 +98,21 @@ def validate(ir: dict) -> ValidationResult:
         if nir["family"] == "sheet" and nir.get("bends") and not (BENDING_LIMITS[0] <= t <= BENDING_LIMITS[1]):
             res.warnings.append("In industrial sheet metal work, it will be difficult to bend below %g mm and beyond %g mm (thickness %g mm). Do you want to continue?"
                                 % (BENDING_LIMITS[0], BENDING_LIMITS[1], t))
+        std = set(STANDARD_THICKNESS) | (STANDARD_THICKNESS_EXTRA[mat] if nir.get("material") else
+                                          set().union(*STANDARD_THICKNESS_EXTRA.values()))
+        if nir["family"] != "tube" and not any(abs(t - s) < 1e-6 for s in std):
+            res.warnings.append("Warning! This thickness is not standard, do you want to continue? Do you want to know the standard thicknesses?")
+
+    # ---- threads: size vs thickness (TH_04), nominal outside the ISO tables (TH_08), non-ISO pitch (TH_09)
+    for f in nir.get("features") or []:
+        if f.get("type") == "thread" and t is not None:
+            _check_thread(f, t, mat, res)
 
     if nir["family"] == "tube":
         _check_tube(nir, plan, res)
+        return res
+    if nir["family"] == "profile":
+        _check_face_positions(plan, res)
         return res
 
     # ---- flange lengths (B_04a) and bend radius sanity
@@ -112,6 +128,14 @@ def validate(ir: dict) -> ValidationResult:
             res.warnings.append("Inner bend radius %g mm on the %s bend is below half the thickness; we recommend a radius equal to the thickness."
                                 % (w.bend["radius"], name))
 
+    # ---- Z counter-bends: distance between two opposite bends of the base (B_06)
+    _check_counter_bends(nir, plan, t, row[3], res)
+
+    # ---- perforation pattern (PERF-001..004 of the perforated sheet calculator)
+    for f in nir.get("features") or []:
+        if f.get("type") == "perforation":
+            _check_perforation(f, t, res)
+
     # ---- re-interpretations made while normalising (shown so the user can object)
     for f in nir.get("features") or []:
         lbl = _feature_label(f) if f.get("type") not in ("engrave",) else "note"
@@ -124,7 +148,7 @@ def validate(ir: dict) -> ValidationResult:
     seen_edge_warn = set()
     for inst in plan.instances:
         f = inst["feature"]
-        if f["type"] in ("corner_cut", "corner_fillet"):
+        if f["type"] in ("corner_cut", "corner_fillet", "perforation"):
             continue
         face = plan.faces[inst["face"]]
         u, v, hu, hv = inst["u"], inst["v"], inst["hu"], inst["hv"]
@@ -157,7 +181,7 @@ def validate(ir: dict) -> ValidationResult:
             res.warnings.append("%s on the %s reaches past the edge of the face and will be cut as an open notch." % (label, face.name))
             continue
         # size vs thickness (LC_01 / LC_03)
-        if f["type"] in ("hole", "thread", "blind_hole", "countersink", "counterbore") and f["diameter"] < 0.7 * t:
+        if f["type"] in ("hole", "thread", "blind_hole", "countersink", "counterbore", "half_moon") and f["diameter"] < 0.7 * t:
             res.warnings.append("%s: diameter %g mm is below 0.7 x thickness (%g mm), difficult to laser cut. Do you want to continue?"
                                 % (label, f["diameter"], 0.7 * t))
         if f["type"] == "slot" and f["size"][1] < 0.7 * t:
@@ -246,6 +270,10 @@ def _check_tube(nir, plan, res):
             res.warnings.append("Tenon width was not given: the tenon takes the full flat width of the %s face(s)." % "/".join(tb["faces"]))
     if tube.get("length") and tube["length"] > 5800:
         res.warnings.append("Tube length %g mm exceeds our maximum of 5800 mm. Do you want to continue?" % tube["length"])
+    _check_face_positions(plan, res)
+
+
+def _check_face_positions(plan, res):
     for inst in plan.instances:
         f = inst["feature"]
         face = plan.faces[inst["face"]]
@@ -256,10 +284,150 @@ def _check_tube(nir, plan, res):
             res.errors.append("%s on the %s face is positioned outside the face (%g x %g mm)." % (_feature_label(f), face.name, face.U, face.V))
 
 
+# standard thickness lists (legacy DFM step 3): common values + per-material additions
+STANDARD_THICKNESS = (0.5, 0.6, 0.8, 1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100)
+STANDARD_THICKNESS_EXTRA = {"steel": {35, 70, 90, 120, 150, 200}, "stainless": {0.4}, "aluminum": {0.3, 0.4, 150}}
+
+
+def _thread_range(t: float, mat: str):
+    """TH_04: (min nominal, max nominal) offered for a thickness, None below 1.5 mm."""
+    if t < 1.5 - 1e-9:
+        return None
+    if t < 2.0:
+        return (3, 5)
+    if t <= 3.0 + 1e-9:
+        return (3, 10)
+    if t <= 12.0 + 1e-9:
+        return (4 if mat == "stainless" else 3, 16)
+    return (3, 24)
+
+
+def _check_thread(f, t, mat, res):
+    key = f.get("thread") or ""
+    try:
+        nominal = float(key[1:])
+    except (ValueError, IndexError):
+        return
+    rng = _thread_range(t, mat)
+    if rng is None:
+        res.warnings.append("Tapped hole %s: we only add threads from 1.5 mm thickness (sheet %g mm). Do you want to continue?" % (key, t))
+    elif not (rng[0] - 1e-9 <= nominal <= rng[1] + 1e-9):
+        res.warnings.append("Tapped hole %s on %g mm sheet: our threading range for this thickness is M%d-M%d. Do you want to continue?"
+                            % (key, t, rng[0], rng[1]))
+    fine_keys = {k for k, _p in F.TAP_DRILL_FINE.keys()}
+    if key not in F.TAP_DRILL and key not in fine_keys:
+        res.warnings.append("Warning! This type of threading (%s) is outside the metric thread data table. Do you want to continue or see the metric thread data?" % key)
+    elif f.get("pitch") is not None:
+        p = float(f["pitch"])
+        coarse = F.ISO_COARSE_PITCH.get(key)
+        if (key, p) not in F.TAP_DRILL_FINE and not (coarse is not None and abs(coarse - p) < 1e-6):
+            res.warnings.append("Warning! The entered data (%s x %g) does not correspond to standard or fine ISO pitch threading data. Do you want to continue or see this data?" % (key, p))
+
+
+def _check_counter_bends(nir, plan, t, z_min, res):
+    """B_06: two opposite bends on the base (Z profile) need a web of at least z_bend_dist between them."""
+    blank = nir["blank"]
+    walls = [plan.faces[n] for n in plan.order[1:] if plan.faces[n].parent == "base" and plan.faces[n].kind == "wall"]
+    seen = set()
+    for a in walls:
+        for b in walls:
+            if a.name >= b.name or a.bend["direction"] == b.bend["direction"]:
+                continue
+            ea, eb = a.edge_of_parent, b.edge_of_parent
+            web = None
+            if a.bend.get("fold") and b.bend.get("fold") and a.bend["axis"] == b.bend["axis"]:
+                web = abs(a.bend["x_c"] - b.bend["x_c"])
+            elif {ea, eb} == {"x-", "x+"} and blank["type"] in ("rect", "stadium"):
+                web = blank["x"]
+            elif {ea, eb} == {"y-", "y+"} and blank["type"] in ("rect", "stadium"):
+                web = blank["y"]
+            if web is not None and web < z_min - 1e-6 and (a.name, b.name) not in seen:
+                seen.add((a.name, b.name))
+                res.warnings.append("The two opposite bends %s / %s are only %g mm apart (web); for %g mm sheet the minimum distance between counter-bends is %g mm. Do you want to continue?"
+                                    % (a.name, b.name, web, t, z_min))
+
+
+def _check_perforation(f, t, res):
+    lay = f["layout"]
+    if lay["count"] == 0:
+        res.errors.append("Perforation %s: no hole fits on the plate with this pitch." % f["notation"])
+        return
+    pct = f["pct_theoretical"]
+    if pct > 65:
+        res.warnings.append("Perforation %s: open area %.1f%% is above 65%%, structural integrity is insufficient - increase the pitch or reduce the hole size. Do you want to continue?" % (f["notation"], pct))
+    elif pct > 50:
+        res.warnings.append("Perforation %s: open area %.1f%% is above 50%%, plate rigidity may be reduced. Do you want to continue?" % (f["notation"], pct))
+    if f.get("open_area_pct") is not None and abs(f["open_area_pct"] - pct) > 0.5 and not f.get("_resolved_from_pct"):
+        res.warnings.append("Perforation %s gives %.1f%% open area, not the %g%% requested; the notation was kept." % (f["notation"], pct, f["open_area_pct"]))
+    min_dim = min(f["hole_w"], f["hole_l"])
+    if min_dim < t:
+        res.warnings.append("Perforation %s: hole size %g mm is below the sheet thickness (%g mm), laser cutting may be difficult. Do you want to continue?" % (f["notation"], min_dim, t))
+    min_margin = min_dim / 2.0 + t
+    if lay["margin_x"] < min_margin or lay["margin_y"] < min_margin:
+        res.warnings.append("Perforation %s: the margins to the plate edges (%.1f / %.1f mm) are small; we recommend at least %.1f mm (half a hole + one thickness). Do you want to continue?"
+                            % (f["notation"], lay["margin_x"], lay["margin_y"], min_margin))
+
+
+_PERF_TYPES = ("perforation", "perforated", "perforations", "perf", "perforated_pattern", "hole_grid", "perforation_pattern")
+
+
+def _resolve_perforations(ir: dict, res: ValidationResult) -> dict:
+    """% open area -> the missing pitch (reverse_C) or hole size (reverse_D), with the perforated-sheet calculator."""
+    for f in ir.get("features") or []:
+        if str(f.get("type") or "").lower() not in _PERF_TYPES:
+            continue
+        shape = F.PERF_SHAPES.get(str(f.get("shape") or f.get("hole_shape") or "").strip().lower().replace(" ", "_").replace("-", "_"))
+        size = f.get("size")
+        if size is None:
+            size = f.get("diameter") if shape == "R" else f.get("side")
+        pitch, pct = f.get("pitch"), f.get("open_area_pct")
+        if shape is None or (size is not None and pitch is not None) or pct is None:
+            continue
+        ptype = F.PERF_PITCHES.get(str(f.get("pitch_type") or f.get("pattern_type") or "").strip().lower().replace(" ", "_").replace("-", "_"))
+        ptype = ptype or ("U" if isinstance(pitch, (list, tuple)) else "T")
+        fmt = lambda v: ("%g" % float(v))
+        if size is None:
+            shape_tok = shape
+        elif isinstance(size, (list, tuple)):
+            shape_tok = "%s%sx%s" % (shape, fmt(min(size)), fmt(max(size)))
+        else:
+            shape_tok = "%s%s" % (shape, fmt(size))
+        if pitch is None:
+            pitch_tok = ptype
+        elif isinstance(pitch, (list, tuple)):
+            pitch_tok = "%s%sx%s" % (ptype, fmt(pitch[0]), fmt(pitch[1] if len(pitch) > 1 else pitch[0]))
+        else:
+            pitch_tok = "%s%s" % (ptype, fmt(pitch))
+        mode = "reverse_C" if pitch is None else "reverse_D"
+        try:
+            from src.utils.perforated_sheet_calculator import compute_perforated_sheet_from_extracted_params
+            blank = ir.get("blank") or {}
+            result = compute_perforated_sheet_from_extracted_params(shape_tok, pitch_tok, pct, mode, blank.get("x"), blank.get("y"), ir.get("thickness"))
+        except Exception as exc:
+            result = {"error": "calc", "message": str(exc)}
+        if result.get("error"):
+            what = "pitch (centre to centre, mm)" if mode == "reverse_C" else "hole size (mm)"
+            why = str(result.get("message") or result["error"]).split(". ")[0].rstrip(".")
+            res.questions.append("the %s of the perforation - it cannot be derived from %g%% open area alone (%s)" % (what, pct, why))
+            continue
+        val = float(result["inferred_value_mm"])
+        if mode == "reverse_C":
+            f["pitch"] = round(val, 3)
+        else:
+            f["size"] = round(val, 3)
+        f["pitch_type"] = ptype
+        f["_resolved_from_pct"] = mode
+    return ir
+
+
 def _feature_label(f) -> str:
     t = f["type"]
     if t in ("hole", "blind_hole"):
         return "Hole Ø%g" % f["diameter"]
+    if t == "half_moon":
+        return "Half-moon cutout Ø%g" % f["diameter"]
+    if t == "perforation":
+        return "Perforation %s" % f.get("notation", "")
     if t == "thread":
         return "Tapped hole %s" % f["thread"]
     if t == "countersink":

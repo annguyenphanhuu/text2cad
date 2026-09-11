@@ -186,6 +186,20 @@ def missing_required(ir: dict) -> List[str]:
             q.extend(_feature_missing(f))
         return _dedupe(q)
 
+    if fam == "profile":
+        p = ir.get("profile") or {}
+        if p.get("width") is None and p.get("flange_width") is None:
+            q.append("the flange width of the profile (mm)")
+        if p.get("height") is None and p.get("web_height") is None:
+            q.append("the web height of the profile (mm)")
+        if p.get("length") is None:
+            q.append("the profile length (mm)")
+        if p.get("thickness") is None and ir.get("thickness") is None:
+            q.append("the profile thickness (mm)")
+        for f in ir.get("features") or []:
+            q.extend(_feature_missing(f))
+        return _dedupe(q)
+
     if ir.get("thickness") is None:
         q.append("the sheet thickness (mm)")
     blank = ir.get("blank") or {}
@@ -253,10 +267,20 @@ def _feature_missing(f: dict) -> List[str]:
     t = (f.get("type") or "hole").lower()
     face = f.get("face") or "base"
     where = "" if face == "base" else " on the %s" % face
+    blind = t == "blind_hole" or bool(f.get("blind"))
     if t in ("hole", "circle", "round_hole", "drill", "drilling", "blind_hole") and f.get("diameter") is None:
         return ["the diameter of the hole(s)%s (mm)" % where]
+    if t in ("hole", "blind_hole") and blind and f.get("depth") is None:
+        return ["the depth of the blind hole(s)%s (mm)" % where]                     # LC_04
     if t in ("thread", "tapped", "tapped_hole", "threaded", "threaded_hole") and not (f.get("thread") or f.get("size") or f.get("designation")):
         return ["the thread size of the tapped hole(s)%s (e.g. M6)" % where]
+    if t in ("thread", "tapped", "tapped_hole", "threaded", "threaded_hole") and blind and f.get("depth") is None:
+        return ["the depth of the blind tapped hole(s)%s (mm)" % where]              # TH_03
+    if t in ("half_moon", "halfmoon", "half_moon_cutout", "d_cut", "d_shape", "semicircle", "semi_circle", "demi_lune") \
+            and f.get("diameter") is None and f.get("radius") is None:
+        return ["the diameter of the half-moon cutout(s)%s (mm)" % where]
+    if t in ("perforation", "perforated", "perf", "perforated_pattern", "hole_grid"):
+        return _perforation_missing(f)
     if t in ("countersink", "countersunk", "csk") and (f.get("diameter") is None or f.get("cs_diameter") is None):
         return ["the hole diameter and countersink diameter%s (mm)" % where]
     if t in ("counterbore", "counterbored", "cbore", "lamage") and (f.get("diameter") is None or (f.get("cb_diameter") is None and f.get("cs_diameter") is None)
@@ -275,6 +299,28 @@ def _feature_missing(f: dict) -> List[str]:
     if t in ("boss", "bushing", "standoff", "pin", "stud", "spacer") and (f.get("diameter") is None or (f.get("height") is None and f.get("length") is None)):
         return ["the outer diameter and height of the %s%s (mm)" % (t, where)]
     return []
+
+
+def _perforation_missing(f: dict) -> List[str]:
+    """A perforation needs the hole shape plus two of {hole size, pitch, % open area}; the third is computed."""
+    q: List[str] = []
+    shape = f.get("shape") or f.get("hole_shape")
+    if not shape:
+        q.append("the hole shape of the perforation: round (R), square (C) or oblong (LR rounded / LC rectangular)")
+    has_size = f.get("size") is not None or f.get("diameter") is not None or f.get("side") is not None
+    has_pitch = f.get("pitch") is not None
+    has_pct = f.get("open_area_pct") is not None
+    if sum((has_size, has_pitch, has_pct)) < 2:
+        if not has_size and not has_pitch:
+            q.append("the hole size and the pitch of the perforation (e.g. R12 T16), or one of them plus the % open area")
+        elif not has_size:
+            q.append("the hole size of the perforation (mm), or the % open area")
+        else:
+            q.append("the pitch of the perforation (centre to centre, mm), or the % open area")
+    ptype = str(f.get("pitch_type") or f.get("pattern_type") or "").strip().lower()
+    if has_pitch and not ptype and str(shape or "").upper() in ("LR", "LC", "OBLONG", "SLOT"):
+        q.append("the perforation pattern: staggered 60° (T), square grid (U) or Z stagger")
+    return q
 
 
 def _dedupe(items: List[str]) -> List[str]:

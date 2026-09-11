@@ -1,0 +1,10 @@
+{
+ "family": "profile",
+ "thickness": 3,
+ "profile": {"section": "T", "width": 120, "height": 60, "length": 500},
+ "features": [
+  {"type": "hole", "face": "flange", "diameter": 9, "at": {"u": {"from": "center"}, "v": {"from": "center"}}, "pattern": {"type": "linear", "count": 3, "pitch": "even", "axis": "u"}},
+  {"type": "hole", "face": "web", "diameter": 6, "at": {"u": {"from": "start", "dist": 40}, "v": {"from": "center"}}, "mirror": ["u"]}
+ ],
+ "_expect": {"bbox": [0, 120, 0, 500, 0, 63], "tools": 5}
+}
