@@ -1,0 +1,11 @@
+{
+ "thickness": 1.5,
+ "blank": {"type": "disc", "diameter": 200},
+ "bends": [
+  {"name": "rim", "on": "base", "edge": "rim", "length": 15, "angle": 90, "direction": "down"}
+ ],
+ "features": [
+  {"type": "hole", "face": "base", "diameter": 8, "at": {"u": {"from": "center"}, "v": {"from": "center"}}}
+ ],
+ "_expect": {"bbox": [0, 200, 0, 200, -13.5, 1.5], "tools": 1}
+}

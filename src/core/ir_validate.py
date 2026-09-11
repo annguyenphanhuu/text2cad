@@ -140,8 +140,18 @@ def validate(ir: dict) -> ValidationResult:
             res.errors.append("%s on the %s is positioned at (%.1f, %.1f) mm, outside the face (%g x %g mm). Please check its position."
                               % (label, face.name, u, v, face.U, face.V))
             continue
-        # crossing an edge -> notch (allowed, but say so)
-        crossing = u - hu < -1e-6 or u + hu > face.U + 1e-6 or v - hv < -1e-6 or v + hv > face.V + 1e-6
+        if face.kind == "base":
+            blank = nir["blank"]
+            if blank["type"] != "rect" and not F.point_on_blank(blank, u, v):
+                res.errors.append("%s on the base plate is positioned at (%.1f, %.1f) mm, outside the plate outline. Please check its position."
+                                  % (label, u, v))
+                continue
+            if _check_fold_and_rim_zones(nir, plan, face, label, u, v, hu, hv, t, res):
+                continue
+        # crossing an edge -> notch (allowed, but say so); u wraps around on a rim
+        crossing = v - hv < -1e-6 or v + hv > face.V + 1e-6
+        if not face.closed_u:
+            crossing = crossing or u - hu < -1e-6 or u + hu > face.U + 1e-6
         if crossing and (face.name, label) not in seen_edge_warn:
             seen_edge_warn.add((face.name, label))
             res.warnings.append("%s on the %s reaches past the edge of the face and will be cut as an open notch." % (label, face.name))
@@ -162,6 +172,8 @@ def validate(ir: dict) -> ValidationResult:
                 pass
         # distance to free edges (LC_02 / TH_02) and to bends (B_05)
         dists = {"u-": u - hu, "u+": face.U - u - hu, "v-": v - hv, "v+": face.V - v - hv}
+        if face.closed_u:
+            dists = {"v-": v - hv, "v+": face.V - v - hv}
         for side, d in dists.items():
             bent = _side_is_bent(face, side, plan)
             if bent:
@@ -175,6 +187,40 @@ def validate(ir: dict) -> ValidationResult:
                                     % (label, face.name, d, t))
     _dedupe_inplace(res.warnings)
     return res
+
+
+def _check_fold_and_rim_zones(nir, plan, face, label, u, v, hu, hv, t, res) -> bool:
+    """Base features vs bend lines across the plate and rims: True when an error was recorded."""
+    import math
+    for fn in plan.folds:
+        fb = plan.faces[fn].bend
+        q, hq = (u, hu) if fb["axis"] == "x" else (v, hv)
+        lo, hi = sorted((fb["x0"], fb["x1"]))
+        if (q - fb["x1"]) * fb["sign"] > 1e-6:
+            res.errors.append("%s on the base plate lies on the part that is folded up as the %s; place it on the %s face instead."
+                              % (label, fn.replace("_", " "), fn))
+            return True
+        if q + hq > lo - t + 1e-6 and q - hq < hi + t - 1e-6:
+            res.warnings.append("%s on the base plate is within one thickness of the %s bend line; at least %g mm of flat material is needed between a cutout and a bend. Do you want to continue?"
+                                % (label, fn.replace("_", " "), t))
+    for rn in plan.rims:
+        rb = plan.faces[rn].bend
+        cx, cy = rb["center"]
+        d = math.hypot(u - cx, v - cy)
+        h = max(hu, hv)
+        if rb["rim"] == "outer":
+            if d - h > rb["x0"] + 1e-6:
+                res.errors.append("%s on the base plate lies in the rim; place it on the %s face instead." % (label, rn))
+                return True
+            if d + h > rb["x0"] - t:
+                res.warnings.append("%s on the base plate is within one thickness of the rim bend. Do you want to continue?" % label)
+        else:
+            if d + h < rb["x0"] - 1e-6:
+                res.errors.append("%s on the base plate lies in the neck; place it on the %s face instead." % (label, rn))
+                return True
+            if d - h < rb["x0"] + t:
+                res.warnings.append("%s on the base plate is within one thickness of the neck bend. Do you want to continue?" % label)
+    return False
 
 
 def _side_is_bent(face, side, plan) -> bool:

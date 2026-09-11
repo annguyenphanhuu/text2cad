@@ -1,0 +1,9 @@
+{
+ "thickness": 2,
+ "blank": {"type": "disc", "diameter": 160},
+ "bends": [
+  {"name": "flange", "on": "base", "edge": "fold", "offset": 40, "angle": 120, "direction": "up"}
+ ],
+ "features": [],
+ "_expect": {"zmax": 36.9247}
+}

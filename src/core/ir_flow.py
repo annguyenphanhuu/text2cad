@@ -163,8 +163,11 @@ class IRFlow:
             return {"kind": "message", "message": CAPABILITIES + "Please describe the part with its dimensions."}
         val = validate(ir)
         questions = list(envelope.get("questions") or [])
+        llm_words = {w for q in questions for w in re.findall(r"[a-zà-ÿ]{5,}", q.lower())}
         for q in val.questions:
-            if q not in questions:
+            # the extractor often asks the same thing in its own words ("which triangle definition...?"):
+            # do not ask twice; the deterministic check runs again on the next turn anyway
+            if q not in questions and not (llm_words & set(re.findall(r"[a-zà-ÿ]{5,}", q.lower()))):
                 questions.append(q)
         for e in val.errors:
             questions.append("Please check: %s" % e)

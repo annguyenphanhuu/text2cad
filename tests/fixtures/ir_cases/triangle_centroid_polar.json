@@ -1,0 +1,10 @@
+{
+ "thickness": 3,
+ "blank": {"type": "triangle", "triangle": {"kind": "equilateral", "side": 180}},
+ "bends": [],
+ "features": [
+  {"type": "hole", "face": "base", "diameter": 8, "at": {"u": {"from": "center"}, "v": {"from": "center"}},
+   "pattern": {"type": "polar", "count": 3, "circle_diameter": 90, "start_angle": 90}}
+ ],
+ "_expect": {"bbox": [0, 180, 0, 155.8846, 0, 3], "tools": 3}
+}

@@ -1,0 +1,12 @@
+{
+ "thickness": 2,
+ "blank": {"type": "disc", "diameter": 200},
+ "bends": [
+  {"name": "flange", "on": "base", "edge": "fold", "offset": 60, "angle": 90, "direction": "up"}
+ ],
+ "features": [
+  {"type": "hole", "face": "flange", "diameter": 8, "at": {"u": {"from": "center"}, "v": {"from": "tip", "dist": 15}},
+   "pattern": {"type": "linear", "count": 2, "pitch": 40, "axis": "u"}}
+ ],
+ "_expect": {"bbox": [0, 160, 0, 200, 0, 43.2876], "tools": 2}
+}

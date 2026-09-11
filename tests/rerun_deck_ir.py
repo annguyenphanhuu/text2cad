@@ -273,7 +273,8 @@ def write_report(out):
     s = s.replace("<title>OK test-case re-run</title>", "<title>OK test-case re-run - IR pipeline</title>")
     s = s.replace("<h1>OK test-case re-run</h1>", "<h1>OK test-case re-run &mdash; IR pipeline (%s)</h1>" % out.name)
     s = s.replace("local API on :8124 with local FreeCAD &middot; 3 runs per case.",
-                  "same 84 prompts as <code>test_rerun_20260818</code> &middot; agent in-process with "
+                  "same 84 prompts as <code>test_rerun_20260818</code>, plus chapter 9 (triangular, circular and "
+                  "circular-bent plates that are not in the deck) &middot; agent in-process with "
                   "<code>CAD_PIPELINE=ir</code>, part built and drawn by local freecadcmd &middot; 1 run per case. "
                   "Side by side with August: <a href=\"compare.html\">compare.html</a>.")
     html_path.write_text(s, encoding="utf-8")
@@ -311,8 +312,9 @@ def write_compare(recs, out):
 
         def col(title, run_rel, res, info, reply, built):
             imgs = ""
-            if (out / run_rel / "drawing-1.png").exists() if run_rel.startswith(d) else (ROOT / "outputs" / run_rel / "drawing-1.png").exists():
-                pass
+            if not built and not (OLD / d).exists() and run_rel.startswith("../"):
+                return ('<div class="col"><h4>%s &mdash; <span class="flag">not in the August deck</span></h4>'
+                        '<p>This case was added in September to test triangular / circular / circular-bent plates.</p></div>' % title)
             base = run_rel
             draw = base + "/drawing-1.png"
             rend = base + "/render_3d.png"
@@ -353,7 +355,8 @@ async def main_async(args):
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
     from src.core.chatbot import text_to_cad_agent as agent
-    cases = json.loads((OLD / "selection.json").read_text(encoding="utf-8"))["run"]
+    cases_file = Path(args.cases) if args.cases else OLD / "selection.json"
+    cases = json.loads(cases_file.read_text(encoding="utf-8"))["run"]
     if args.only:
         wanted = [w.strip() for w in args.only.split(",") if w.strip()]
         cases = [c for c in cases if any(w in c["uid"] or w in c["dir"] for w in wanted)]
@@ -377,10 +380,11 @@ async def main_async(args):
     draw_res = draw_all(recs, out)
     print("drawings done in %.0fs" % (time.time() - t2))
     finish_records(recs, out, build_res, draw_res)
-    with open(out / "results.jsonl", "w", encoding="utf-8") as fh:
+    tag = "" if not args.cases else "_" + Path(args.cases).stem
+    with open(out / ("results%s.jsonl" % tag), "w", encoding="utf-8") as fh:
         for r in recs:
             fh.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
-    (out / "selection.json").write_text(json.dumps({"run": cases}, ensure_ascii=False, indent=1), encoding="utf-8")
+    (out / ("selection%s.json" % tag)).write_text(json.dumps({"run": cases}, ensure_ascii=False, indent=1), encoding="utf-8")
     write_report(out)
     write_compare(recs, out)
     (out / "README.md").write_text(
@@ -399,6 +403,8 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out")
+    ap.add_argument("--cases", help="JSON {\"run\": [{uid, dir, section, num, prompt}]} instead of the August selection "
+                                    "(e.g. tests/fixtures/shape_cases_round_triangle.json); results land in the same --out folder")
     args = ap.parse_args()
     asyncio.run(main_async(args))
 

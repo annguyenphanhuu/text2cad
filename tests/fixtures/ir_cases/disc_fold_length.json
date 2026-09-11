@@ -1,0 +1,9 @@
+{
+ "thickness": 2,
+ "blank": {"type": "disc", "diameter": 180},
+ "bends": [
+  {"name": "flange", "on": "base", "edge": "fold", "length": 30, "angle": 90, "direction": "up"}
+ ],
+ "features": [],
+ "_expect": {"bbox": [0, 153.2876, 0, 180, 0, 30]}
+}

@@ -1,0 +1,11 @@
+{
+ "thickness": 5,
+ "blank": {"type": "hexagon", "across_flats": 200},
+ "bends": [],
+ "features": [
+  {"type": "hole", "face": "base", "diameter": 40, "at": {"u": {"from": "center"}, "v": {"from": "center"}}},
+  {"type": "thread", "face": "base", "thread": "M8", "at": {"u": {"from": "center"}, "v": {"from": "center"}},
+   "pattern": {"type": "polar", "count": 6, "circle_diameter": 150}}
+ ],
+ "_expect": {"bbox": [0, 230.9401, 0, 200, 0, 5], "tools": 7}
+}

@@ -1,0 +1,13 @@
+{
+ "thickness": 1,
+ "blank": {"type": "disc", "diameter": 120},
+ "bends": [
+  {"name": "wall", "on": "base", "edge": "rim", "length": 20, "angle": 90, "direction": "up"}
+ ],
+ "features": [
+  {"type": "hole", "face": "base", "diameter": 8, "at": {"u": {"from": "center"}, "v": {"from": "center"}}},
+  {"type": "hole", "face": "wall", "diameter": 4, "at": {"u": {"from": "center"}, "v": {"from": "bend", "dist": 10}},
+   "pattern": {"type": "linear", "count": 4, "pitch": "even", "axis": "u"}}
+ ],
+ "_expect": {"bbox": [0, 120, 0, 120, 0, 20], "tools": 5}
+}

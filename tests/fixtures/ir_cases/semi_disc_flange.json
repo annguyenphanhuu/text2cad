@@ -1,0 +1,12 @@
+{
+ "thickness": 3,
+ "blank": {"type": "disc", "diameter": 200, "arc": 180},
+ "bends": [
+  {"name": "flange", "on": "base", "edge": "diameter", "length": 25, "angle": 90, "direction": "up"}
+ ],
+ "features": [
+  {"type": "hole", "face": "flange", "diameter": 10, "at": {"u": {"from": "center"}, "v": {"from": "center"}}},
+  {"type": "hole", "face": "base", "diameter": 8, "at": {"u": {"from": "center", "dist": -60}, "v": {"from": "y-", "dist": 30}}, "mirror": ["u"]}
+ ],
+ "_expect": {"bbox": [0, 200, 0, 100, 0, 25], "tools": 3}
+}

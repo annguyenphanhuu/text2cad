@@ -1,0 +1,11 @@
+{
+ "thickness": 2,
+ "blank": {"type": "rect", "x": 200, "y": 100},
+ "bends": [
+  {"name": "flange", "on": "base", "edge": "fold", "offset": 30, "angle": 90, "direction": "up"}
+ ],
+ "features": [
+  {"type": "hole", "face": "flange", "diameter": 6, "at": {"u": {"from": "center"}, "v": {"from": "tip", "dist": 10}}}
+ ],
+ "_expect": {"bbox": [0, 130, 0, 100, 0, 73.2876], "tools": 1}
+}

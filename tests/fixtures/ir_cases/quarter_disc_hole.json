@@ -1,0 +1,9 @@
+{
+ "thickness": 2,
+ "blank": {"type": "disc", "diameter": 300, "arc": 90},
+ "bends": [],
+ "features": [
+  {"type": "hole", "face": "base", "diameter": 10, "at": {"u": {"from": "x-", "dist": 50}, "v": {"from": "y-", "dist": 50}}}
+ ],
+ "_expect": {"bbox": [0, 150, 0, 150, 0, 2], "tools": 1}
+}

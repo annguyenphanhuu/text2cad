@@ -54,18 +54,32 @@ Tubes are a separate family (section + length + end cuts + features).
   Brackets (L / U / Z) and flat plates keep "outside".
   `corner_radius` applies to all four corners; `corners` overrides single corners
   ("x-y-" front-left, "x+y-" front-right, "x-y+" back-left, "x+y+" back-right).
-- `{"type": "disc", "diameter": D, "inner_diameter": d or null}` — round plate / flange / ring.
+- `{"type": "disc", "diameter": D, "inner_diameter": d or null, "arc": 360}` — round plate / flange / ring.
+  `arc`: 360 full disc (default), 180 half disc / demi-lune / semicircle, 90 quarter disc. A ring / washer /
+  collerette with a central hole → `inner_diameter` (or `band_width`).
 - `{"type": "stadium", "x": <total length>, "y": <width>}` — oblong outline.
 - `{"type": "triangle", "triangle": {"kind": "equilateral"|"isosceles"|"right"|"right_isosceles"|"scalene",
    "side": s, "base": b, "equal_side": e, "legs": [a, b], "hypotenuse": h, "leg": l, "sides": [a, b, c]}}`
+  A bare "triangle 200x200" has no usable roles: ask which definition it is (do not guess).
+- `{"type": "hexagon"|"pentagon"|"octagon"|"regular_polygon", "sides": 6, "across_flats": AF}` — regular polygon
+  plate (`across_flats` = entre plats; or `circumscribed_diameter` = across corners, or `side`).
 - `{"type": "polygon", "points": [[x, y], ...]}` — any other straight outline (counter-clockwise).
 
 ### bends (each one creates a wall / flange / return / tab)
 `{"name": "wall", "on": "base", "edge": "x+", "length": 80, "angle": 90, "direction": "up", "radius": null}`
 - `on`: the face the bend hangs from — `"base"` or the name of another bend (a return on a wall).
 - `edge` on the base: `"x-"` (left), `"x+"` (right), `"y-"` (front), `"y+"` (back).
-  On a triangle: `"base"` (A-B), `"hypotenuse"` (B-C), `"left"` (C-A). On a wall: `"tip"` (its free edge).
-- `length`: the flange height measured on the OUTSIDE of the finished part (REQUIRED).
+  On a triangle: `"base"` (A-B, the first leg of a right triangle), `"hypotenuse"` (B-C), `"left"` (C-A, the second
+  leg). On a wall: `"tip"` (its free edge).
+  On a disc: `"fold"` = a straight bend line across the disc (disc bent in L / U / Z): give `"offset"` = distance
+  from the centre to the OUTSIDE of the finished flange (a negative offset folds the other half; two parallel
+  bends = one bend with +o and one with -o; a fold through the centre = offset 0), or give `length` when the
+  customer gives the flange height instead. `"rim"` = flange all around the edge (round cover / cup / pan /
+  bord tombé tout autour) with `length` = its height. `"inner_rim"` = neck / spigot / manchon standing around the
+  central hole of a ring (duct collar). On a half disc `"diameter"` is its straight edge (a normal flange),
+  on a quarter disc `"x-"` / `"y-"` are its two straight edges.
+- `length`: the flange height measured on the OUTSIDE of the finished part (REQUIRED, except for a disc fold
+  given by `offset`).
 - `angle`: the interior angle between the two legs as the customer says it — 90 for a square bend,
   120 for "pli à 120° ouvert"; `0` means a hem / crushed fold / "retour écrasé". Default 90.
 - `direction`: base bends `"up"` (default) or `"down"`; bends on a wall `"in"` (toward the part, default)
@@ -121,6 +135,11 @@ Every feature has `"face"` (default "base") and a position:
   faces `"edge:x-"`, `"edge:x+"`, `"edge:y-"`, `"edge:y+"` (u along that edge, v across the thickness, "center" = mid-thickness).
 - Which physical side is x- vs x+ does not matter for symmetric parts; stay consistent within one part.
 - The customer's "length" is the larger plan dimension unless they say otherwise; put it on x.
+- On a disc / triangle / polygon the base (u, v) still run over the bounding box (0 at the left / front extreme);
+  `"from": "center"` is the disc centre or the triangle's centroid, so "hole in the centre", "bolt circle"
+  (polar pattern) and "N holes on a Ø circle" all use `from: center`. On a half disc the straight edge is
+  `"y-"` (front) and the centre of the circle lies on it. On a rim face u runs along the circumference:
+  "N holes evenly around the wall" → `pattern linear, count N, pitch "even", axis "u"`.
 
 ### tube family
 ```json
@@ -150,7 +169,16 @@ Every feature has `"face"` (default "base") and a position:
 - "Support mural: dos vertical H x W plié en bas pour former une tablette de profondeur P" → blank x = H,
   y = W (the back), bend x+ (bottom of the back) length P. Say which is which in `assumptions`.
 - Flange / flasque / disc → blank disc; bolt circle → polar pattern.
-- Triangle / gousset triangulaire → blank triangle; flanges on its edges by edge name.
+- "Disque / rond Ø D plié à 90° à X mm du centre", "round plate bent along a chord", "circular L / U / Z" → blank disc,
+  bends `edge: "fold"` with `offset` X (one per bend line; opposite directions for a Z). "Half of it bent up" → offset 0.
+- "Couvercle rond / round cover Ø D avec bord tombé de h", "cup", "pan", "coupelle" → blank disc, one bend
+  `edge: "rim", length: h` (direction down for a lid that covers, up for a cup / tray).
+- "Collerette / duct collar Ø D with a Ø d spigot (manchon) of height h" → blank disc with inner_diameter d,
+  one bend `edge: "inner_rim", length: h` (the spigot's bore is Ø d).
+- "Demi-lune / half-moon / semicircular plate Ø D" → disc with `arc: 180`; a flange on its straight edge → `edge: "diameter"`.
+- Triangle / gousset triangulaire → blank triangle; flanges on its edges by edge name. A right-triangle gusset
+  with flanges "on both legs" → bends on `"base"` and `"left"`. A hole "in the centre" → `from: center` (centroid).
+- Hexagonal / octagonal plate "X mm across flats / entre plats" → blank hexagon / octagon with `across_flats`.
 - Hem / retour écrasé / bord tombé à 180° → bend with `"angle": 0` on the wall tip (or base edge).
 - On the base of a single-bend part `from: "bend"` (the bent edge) and `from: "tip"` (the opposite free edge) are accepted.
 - INSIDE dimensions ("80 mm wide inner", "200 intérieur") → outside = inner + 2 x thickness for a U, + thickness for an L.
@@ -293,6 +321,34 @@ Every feature has `"face"` (default "base") and a position:
 [USER]: Peux tu me fournir un fichier 3d pour un garde corps en plat de 100x8mm et des ronds Ø20. Faire 2 plats de longueur 1200mm à l'horizontal et intégrer 9 ronds entre eux.
 →
 {"intent":"assembly","part":null,"questions":[],"assumptions":[],"skip_questions":false,"unsupported_reason":"several separate bars welded together","reply":null}
+
+### Example 11
+[USER]: Round plate Ø200, 2 mm steel, bent at 90° along a line 60 mm from the centre, flange upward. 2 Ø8 holes on the flange, 15 mm from the free edge, 40 mm apart, centred.
+→
+{"intent":"cad","part":{"family":"sheet","name":"Disc Ø200 bent in L, 2 mm","material":"steel","material_note":null,"thickness":2,"bend_radius":null,
+"blank":{"type":"disc","diameter":200,"inner_diameter":null,"arc":360},
+"bends":[{"name":"flange","on":"base","edge":"fold","offset":60,"length":null,"angle":90,"direction":"up","radius":null}],
+"features":[{"type":"hole","face":"flange","diameter":8,"at":{"u":{"from":"center"},"v":{"from":"tip","dist":15}},"pattern":{"type":"linear","count":2,"pitch":40,"axis":"u"}}],"tube":null},
+"questions":[],"assumptions":["The 60 mm is measured from the centre to the outside of the flange"],"skip_questions":false,"unsupported_reason":null,"reply":null}
+
+### Example 12
+[USER]: I need a right-triangle gusset in 4 mm steel, legs 150 mm and 100 mm, with a Ø9 hole at the centroid and 15 mm flanges bent up on both legs.
+→
+{"intent":"cad","part":{"family":"sheet","name":"Right-triangle gusset 150x100, 4 mm","material":"steel","material_note":null,"thickness":4,"bend_radius":null,
+"blank":{"type":"triangle","triangle":{"kind":"right","legs":[150,100]}},
+"bends":[{"name":"leg1","on":"base","edge":"base","length":15,"angle":90,"direction":"up","radius":null},
+{"name":"leg2","on":"base","edge":"left","length":15,"angle":90,"direction":"up","radius":null}],
+"features":[{"type":"hole","face":"base","diameter":9,"at":{"u":{"from":"center"},"v":{"from":"center"}}}],"tube":null},
+"questions":[],"assumptions":[],"skip_questions":false,"unsupported_reason":null,"reply":null}
+
+### Example 13
+[USER]: Duct collar: flat ring outer Ø250, with a Ø160 spigot 40 mm high bent up from the inner edge, sheet 1 mm galvanised, 4 Ø6 holes at 90° on Ø220.
+→
+{"intent":"cad","part":{"family":"sheet","name":"Duct collar Ø250 / spigot Ø160 x 40","material":"steel","material_note":"galvanised","thickness":1,"bend_radius":null,
+"blank":{"type":"disc","diameter":250,"inner_diameter":160,"arc":360},
+"bends":[{"name":"spigot","on":"base","edge":"inner_rim","length":40,"angle":90,"direction":"up","radius":null}],
+"features":[{"type":"hole","face":"base","diameter":6,"at":{"u":{"from":"center"},"v":{"from":"center"}},"pattern":{"type":"polar","count":4,"circle_diameter":220,"start_angle":0}}],"tube":null},
+"questions":[],"assumptions":["The Ø160 is the bore of the spigot"],"skip_questions":false,"unsupported_reason":null,"reply":null}
 '''
 
 _INPUTS = '''

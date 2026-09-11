@@ -195,9 +195,17 @@ def missing_required(ir: dict) -> List[str]:
             q.append("the length of the plate (mm)")
         if blank.get("y") is None:
             q.append("the width of the plate (mm)")
-    elif bt in ("disc", "disk", "circle", "circular", "round", "ring", "annulus"):
-        if blank.get("diameter") is None:
+    elif bt in ("disc", "disk", "circle", "circular", "round", "ring", "annulus", "half_disc", "semicircle", "semi_disc",
+                "half_moon", "quarter_disc", "quarter_circle", "sector"):
+        if blank.get("diameter") is None and blank.get("radius") is None:
             q.append("the plate diameter (mm)")
+        if bt in ("ring", "annulus") and blank.get("inner_diameter") is None and blank.get("band_width") is None:
+            q.append("the inner diameter of the ring (mm)")
+    elif bt in ("hexagon", "hexagonal", "pentagon", "octagon", "octagonal", "heptagon", "regular_polygon", "regular"):
+        if bt in ("regular_polygon", "regular") and not (blank.get("sides") or blank.get("n")):
+            q.append("the number of sides of the polygon")
+        if all(blank.get(k) is None for k in ("across_flats", "af", "circumradius", "diameter", "circumscribed_diameter", "across_corners", "side", "width")):
+            q.append("the size of the polygonal plate (across flats or across corners, mm)")
     elif bt == "triangle":
         tri = blank.get("triangle") or {}
         kind = (tri.get("kind") or "").lower()
@@ -216,12 +224,29 @@ def missing_required(ir: dict) -> List[str]:
             q.append("the three side lengths of the triangle (mm)")
     elif bt == "polygon" and not blank.get("points"):
         q.append("the outline points of the plate")
+    is_disc = bt in ("disc", "disk", "circle", "circular", "round", "ring", "annulus") or (
+        bt in ("half_disc", "semicircle", "semi_disc", "half_moon", "quarter_disc", "quarter_circle", "sector") and (blank.get("arc") or 0) >= 360)
     for b in ir.get("bends") or []:
+        edge = str(b.get("edge") or "").lower().replace(" ", "_").replace("-", "_")
+        on_base = str(b.get("on") or "base").lower() == "base"
+        fold = on_base and (b.get("offset") is not None or edge in _FOLD_EDGE_WORDS
+                            or (is_disc and edge not in _RIM_EDGE_WORDS))
+        if fold:
+            if b.get("offset") is None and b.get("length") is None:
+                q.append("where the %s bend line is (distance from the centre of the plate, mm) or the height of that flange (mm)"
+                         % (b.get("name") or "").replace("_", " ").strip() or "the")
+            continue
         if b.get("length") is None:
             q.append("the height of the %s flange (mm)" % (b.get("name") or "bent"))
     for f in ir.get("features") or []:
         q.extend(_feature_missing(f))
     return _dedupe(q)
+
+
+_FOLD_EDGE_WORDS = ("fold", "fold_line", "line", "chord", "bend_line", "across", "offset", "middle", "center", "centre", "diameter_line")
+_RIM_EDGE_WORDS = ("rim", "perimeter", "circumference", "outer", "outer_edge", "all_around", "around", "border", "periphery",
+                   "outside", "edge", "outer_rim", "circular_edge", "round_edge", "skirt",
+                   "inner_rim", "inner", "bore", "inner_edge", "hole", "inside", "neck", "collar", "spigot", "central_hole", "inner_circle")
 
 
 def _feature_missing(f: dict) -> List[str]:

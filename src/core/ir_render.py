@@ -10,7 +10,8 @@ from typing import List, Optional
 
 CONFIRM_FOOTER = '<span style="color:#8023ff">✅ **Reply yes/ok to generate the CAD file, or tell me what to change.**</span>'
 
-_EDGE_WORDS = {"x-": "left", "x+": "right", "y-": "front", "y+": "back", "tip": "tip"}
+_EDGE_WORDS = {"x-": "left", "x+": "right", "y-": "front", "y+": "back", "tip": "tip", "rim": "outer", "inner_rim": "inner",
+               "e0": "base (A-B)", "e1": "hypotenuse / B-C", "e2": "left (C-A)"}
 _REF_WORDS_BASE = {"u-": "the left edge", "u+": "the right edge", "v-": "the front edge", "v+": "the back edge", "center": "centre"}
 _REF_WORDS_WALL = {"u-": "the start end", "u+": "the far end", "v-": "the bend", "v+": "the free edge", "center": "centre"}
 
@@ -43,9 +44,15 @@ def _position_text(f, face, plan) -> str:
     at = f["at"]
     words = _REF_WORDS_BASE if face.kind == "base" else _REF_WORDS_WALL
     parts = []
-    for axis, span_name in (("u", "length" if face.kind == "base" else "width"), ("v", "width" if face.kind == "base" else "height")):
+    spans = (("u", "length" if face.kind == "base" else "width"), ("v", "width" if face.kind == "base" else "height"))
+    if face.kind == "rim":
+        spans = (("u", "circumference"), ("v", "height"))
+    for axis, span_name in spans:
         spec = at[axis]
-        if spec["from"] == "center":
+        if face.kind == "rim" and axis == "u":
+            parts.append("%s mm along the circumference from the +x direction" % _num(spec["dist"]) if spec["dist"]
+                         else "starting from the +x direction")
+        elif spec["from"] == "center":
             parts.append("centred" + (" (offset %s mm)" % _num(spec["dist"]) if spec["dist"] else "") + " along the " + span_name)
         else:
             what = "centre" if spec["of"] == "center" else "edge"
@@ -163,13 +170,25 @@ def parameter_lines(ir, plan) -> List[str]:
     elif blank["type"] == "stadium":
         lines.append("Oblong plate: %s x %s mm" % (_num(blank["x"]), _num(blank["y"])))
     elif blank["type"] == "disc":
-        lines.append("Circular plate: Ø%s mm" % _num(blank["diameter"]) + (", inner Ø%s mm" % _num(blank["inner_diameter"]) if blank.get("inner_diameter") else ""))
+        arc = blank.get("arc", 360.0)
+        if arc >= 360.0:
+            what = "Circular plate"
+        elif abs(arc - 180.0) < 1e-6:
+            what = "Half-disc plate"
+        elif abs(arc - 90.0) < 1e-6:
+            what = "Quarter-disc plate"
+        else:
+            what = "Circular sector plate (%s°)" % _num(arc)
+        lines.append("%s: Ø%s mm" % (what, _num(blank["diameter"])) + (", inner Ø%s mm" % _num(blank["inner_diameter"]) if blank.get("inner_diameter") else ""))
     elif blank["type"] == "polygon":
         pts = blank["points"]
         if len(pts) == 3:
             import math
             a = math.dist(pts[0], pts[1]); b = math.dist(pts[1], pts[2]); c = math.dist(pts[2], pts[0])
             lines.append("Triangular plate, sides %s / %s / %s mm" % (_num(a), _num(b), _num(c)))
+        elif blank.get("regular"):
+            name = {5: "Pentagonal", 6: "Hexagonal", 8: "Octagonal"}.get(blank["regular"], "Regular %d-sided" % blank["regular"])
+            lines.append("%s plate, %s mm across flats" % (name, _num(blank["across_flats"])))
         else:
             lines.append("Polygonal plate with %d sides" % len(pts))
     corner = {}
@@ -181,6 +200,17 @@ def parameter_lines(ir, plan) -> List[str]:
     for name in plan.order[1:]:
         w = plan.faces[name]
         b = w.bend
+        dword = {"up": "upward", "down": "downward", "in": "inward", "out": "outward"}[b["direction"]]
+        if b.get("fold"):
+            what = "hem (crushed fold)" if b["rho"] >= 175 else "bent %s° %s" % (_num(b["angle"]), dword)
+            lines.append("%s: %s along a straight line %s mm from the centre of the plate (measured to the outside of the flange); flange %s mm high, inner radius %s mm"
+                         % (name.replace("_", " ").capitalize(), what, _num(b["offset"]), _num(w.V), _num(b["radius"])))
+            continue
+        if b.get("rim"):
+            where = "all around the edge of the disc" if b["rim"] == "outer" else "all around the central hole (neck)"
+            lines.append("%s: %s mm flange %s, bent %s° %s, inner radius %s mm (outside Ø%s mm)"
+                         % (name.replace("_", " ").capitalize(), _num(w.V), where, _num(b["angle"]), dword, _num(b["radius"]), _num(2 * b["R_edge"])))
+            continue
         if b["rho"] >= 175:
             lines.append("%s: hem (crushed fold) %s mm on the %s" % (name.replace("_", " ").capitalize(), _num(w.V), _face_word(w.parent, plan)))
             continue

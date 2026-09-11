@@ -1,0 +1,12 @@
+{
+ "thickness": 4,
+ "blank": {"type": "triangle", "triangle": {"kind": "right", "legs": [150, 100]}},
+ "bends": [
+  {"name": "leg1", "on": "base", "edge": "base", "length": 15, "angle": 90, "direction": "up"},
+  {"name": "leg2", "on": "base", "edge": "left", "length": 15, "angle": 90, "direction": "up"}
+ ],
+ "features": [
+  {"type": "hole", "face": "base", "diameter": 9, "at": {"u": {"from": "center"}, "v": {"from": "center"}}}
+ ],
+ "_expect": {"bbox": [0, 150, 0, 100, 0, 15], "tools": 1}
+}

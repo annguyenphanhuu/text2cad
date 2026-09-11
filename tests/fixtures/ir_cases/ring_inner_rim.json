@@ -1,0 +1,12 @@
+{
+ "thickness": 1,
+ "blank": {"type": "ring", "diameter": 250, "inner_diameter": 160},
+ "bends": [
+  {"name": "neck", "on": "base", "edge": "inner_rim", "length": 40, "angle": 90, "direction": "up"}
+ ],
+ "features": [
+  {"type": "hole", "face": "base", "diameter": 6, "at": {"u": {"from": "center"}, "v": {"from": "center"}},
+   "pattern": {"type": "polar", "count": 4, "circle_diameter": 220, "start_angle": 45}}
+ ],
+ "_expect": {"bbox": [0, 250, 0, 250, 0, 40], "tools": 4}
+}

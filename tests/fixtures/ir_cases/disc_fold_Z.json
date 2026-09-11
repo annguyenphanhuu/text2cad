@@ -1,0 +1,10 @@
+{
+ "thickness": 3,
+ "blank": {"type": "disc", "diameter": 250},
+ "bends": [
+  {"name": "right_up", "on": "base", "edge": "fold", "offset": 80, "angle": 90, "direction": "up"},
+  {"name": "left_down", "on": "base", "edge": "fold", "offset": -80, "angle": 90, "direction": "down"}
+ ],
+ "features": [],
+ "_expect": {"bbox": [45, 205, 0, 250, -46.9314, 49.9314]}
+}

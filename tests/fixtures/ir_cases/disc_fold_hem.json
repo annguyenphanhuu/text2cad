@@ -1,0 +1,9 @@
+{
+ "thickness": 2,
+ "blank": {"type": "disc", "diameter": 200},
+ "bends": [
+  {"name": "hem", "on": "base", "edge": "fold", "offset": 62, "angle": 0, "direction": "up"}
+ ],
+ "features": [],
+ "_expect": {"bbox": [0, 162, 0, 200, 0, 8]}
+}
