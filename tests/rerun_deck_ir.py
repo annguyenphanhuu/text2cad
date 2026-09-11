@@ -98,13 +98,15 @@ class Harness:
                 "error": final.get("error"), "chat_response": resp, "cost_usd": round(cost or 0.0, 6),
                 "built": bool(final.get("code"))}
 
-    async def run_case(self, case, sem):
+    async def run_case(self, case, sem, run=1):
         async with sem:
-            rundir = self.out / case["dir"] / "run1"
+            run_dir = "run%d" % run
+            rundir = self.out / case["dir"] / run_dir
             rundir.mkdir(parents=True, exist_ok=True)
-            sid = "irrerun_%s" % case["uid"]
-            rec = dict(uid=case["uid"], section=case["section"], num=case["num"], run=1, session_id=sid,
-                       prompt=case["prompt"], started=time.strftime("%Y-%m-%d %H:%M:%S"), pipeline="ir")
+            sid = "irrerun_%s" % case["uid"] if run == 1 else "irrerun_%s_r%d" % (case["uid"], run)
+            rec = dict(uid=case["uid"], section=case["section"], num=case["num"], run=run, session_id=sid,
+                       prompt=case["prompt"], started=time.strftime("%Y-%m-%d %H:%M:%S"), pipeline="ir",
+                       _dir=case["dir"], _run_dir=run_dir)
             turns, msg = [], case["prompt"]
             for n in range(1, MAX_TURNS + 1):
                 try:
@@ -143,16 +145,20 @@ class Harness:
             rec["exports"] = {}
             rec["files"] = {}
             rec["generated"] = False
-            print("  %s %-6s %s | %d turns | %s" % ("BUILD" if rec["ir"] else "-----", case["uid"], rec.get("bot_asked"),
-                                                 len(turns), (rec["final_reply"] or "")[:70].replace("\n", " ")), flush=True)
+            print("  %s %-6s r%d %s | %d turns | %s" % ("BUILD" if rec["ir"] else "-----", case["uid"], run, rec.get("bot_asked"),
+                                                    len(turns), (rec["final_reply"] or "")[:70].replace("\n", " ")), flush=True)
             return rec
 
 
 # ----------------------------------------------------------------- build / draw / render
 
+def _key(r):
+    return "%s/%s" % (r["_dir"], r["_run_dir"])
+
+
 def build_all(recs, out):
     from tests.check_ir_builder import run_jobs
-    jobs = [{"ir": r["ir"], "title": "model", "output_dir": str(out / r["_dir"] / "run1"), "write_obj": True}
+    jobs = [{"ir": r["ir"], "title": "model", "output_dir": str(out / r["_dir"] / r["_run_dir"]), "write_obj": True}
             for r in recs if r.get("ir")]
     if not jobs:
         return {}
@@ -161,7 +167,8 @@ def build_all(recs, out):
     results = run_jobs(jobs, tmp)
     by_dir = {}
     for j, res in zip(jobs, results):
-        by_dir[Path(j["output_dir"]).parent.name] = res
+        p = Path(j["output_dir"])
+        by_dir["%s/%s" % (p.parent.name, p.name)] = res
     return by_dir
 
 
@@ -186,7 +193,7 @@ json.dump(out, open(job[0]["report"], "w", encoding="utf-8"), default=str)
 def draw_all(recs, out):
     items = []
     for r in recs:
-        step = out / r["_dir"] / "run1" / "model.step"
+        step = out / r["_dir"] / r["_run_dir"] / "model.step"
         if step.exists():
             items.append({"step": str(step), "svg": str(step.with_suffix(".svg")),
                           "title": "%s #%s" % (r["section"], r["num"]), "report": str(out / "_build" / "drawings.json")})
@@ -227,13 +234,13 @@ def finish_records(recs, out, build_res, draw_res):
     with ThreadPoolExecutor(max_workers=4) as pool:
         futs = {}
         for r in recs:
-            rundir = out / r["_dir"] / "run1"
+            rundir = out / r["_dir"] / r["_run_dir"]
             obj = rundir / "model.obj"
             if obj.exists():
-                futs[r["_dir"]] = pool.submit(render_one, obj, rundir / "render_3d.png", "%s #%s run 1" % (r["section"], r["num"]))
+                futs[_key(r)] = pool.submit(render_one, obj, rundir / "render_3d.png", "%s #%s run %d" % (r["section"], r["num"], r["run"]))
         renders = {k: f.result() for k, f in futs.items()}
     for r in recs:
-        rundir = out / r["_dir"] / "run1"
+        rundir = out / r["_dir"] / r["_run_dir"]
         files = {}
         for ext in ("step", "obj", "pdf"):
             p = rundir / ("model." + ext)
@@ -241,12 +248,12 @@ def finish_records(recs, out, build_res, draw_res):
                 files[ext] = {"file": p.name, "bytes": p.stat().st_size}
         if "pdf" in files and (rundir / "drawing-1.png").exists():
             files["pdf"]["png_pages"] = ["drawing-1.png"]
-        if "obj" in files and renders.get(r["_dir"]):
+        if "obj" in files and renders.get(_key(r)):
             files["obj"]["render"] = "render_3d.png"
-            files["obj"]["mesh_info"] = renders[r["_dir"]]
+            files["obj"]["mesh_info"] = renders[_key(r)]
         r["files"] = files
         r["generated"] = bool(files.get("step"))
-        b = build_res.get(r["_dir"])
+        b = build_res.get(_key(r))
         if b:
             r["build"] = {"ok": b.get("ok"), "error": b.get("error"),
                           **({k: b["report"].get(k) for k in ("label", "bbox", "volume", "faces_count", "solids", "valid", "warnings")} if b.get("ok") else {})}
@@ -262,7 +269,7 @@ def finish_records(recs, out, build_res, draw_res):
 
 # ----------------------------------------------------------------- reports
 
-def write_report(out):
+def write_report(out, runs=1):
     spec = importlib.util.spec_from_file_location("legacy_report", str(OLD / "harness" / "report.py"))
     rep = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(rep)
@@ -274,21 +281,21 @@ def write_report(out):
     s = s.replace("<h1>OK test-case re-run</h1>", "<h1>OK test-case re-run &mdash; IR pipeline (%s)</h1>" % out.name)
     s = s.replace("local API on :8124 with local FreeCAD &middot; 3 runs per case.",
                   "same 84 prompts as <code>test_rerun_20260818</code>, plus chapter 9 (triangular, circular and "
-                  "circular-bent plates that are not in the deck) &middot; agent in-process with "
-                  "<code>CAD_PIPELINE=ir</code>, part built and drawn by local freecadcmd &middot; 1 run per case. "
-                  "Side by side with August: <a href=\"compare.html\">compare.html</a>.")
+                  "circular-bent plates, perforated sheets, T/I profiles, DFM rule cases that are not in the deck) &middot; "
+                  "agent in-process with <code>CAD_PIPELINE=ir</code>, part built and drawn by local freecadcmd &middot; "
+                  "%d run(s) per case. Side by side with August: <a href=\"compare.html\">compare.html</a>." % runs)
     html_path.write_text(s, encoding="utf-8")
 
 
-def load_all_results(out):
+def load_all_results(out, run_dir="run1"):
     recs = []
-    for p in sorted(out.glob("*/run1/result.json")):
+    for p in sorted(out.glob("*/%s/result.json" % run_dir)):
         try:
             r = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             continue
         r["_dir"] = p.parent.parent.name
-        r["_run_dir"] = "run1"
+        r["_run_dir"] = run_dir
         recs.append(r)
     return recs
 
@@ -355,8 +362,13 @@ async def main_async(args):
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
     from src.core.chatbot import text_to_cad_agent as agent
-    cases_file = Path(args.cases) if args.cases else OLD / "selection.json"
-    cases = json.loads(cases_file.read_text(encoding="utf-8"))["run"]
+    cases = []
+    for name in (args.cases or "deck").split(","):
+        name = name.strip()
+        if not name:
+            continue
+        cases_file = OLD / "selection.json" if name == "deck" else Path(name)
+        cases += json.loads(cases_file.read_text(encoding="utf-8"))["run"]
     if args.only:
         wanted = [w.strip() for w in args.only.split(",") if w.strip()]
         cases = [c for c in cases if any(w in c["uid"] or w in c["dir"] for w in wanted)]
@@ -364,14 +376,12 @@ async def main_async(args):
         cases = cases[:args.limit]
     out = ROOT / "outputs" / (args.out or ("test_rerun_%s_ir" % time.strftime("%Y%m%d")))
     out.mkdir(parents=True, exist_ok=True)
-    print("%d cases -> %s" % (len(cases), out))
+    runs = list(range(args.from_run, args.from_run + args.runs))
+    print("%d cases x %d run(s) -> %s" % (len(cases), len(runs), out))
     h = Harness(agent, out)
     sem = asyncio.Semaphore(args.workers)
     t0 = time.time()
-    recs = await asyncio.gather(*(h.run_case(c, sem) for c in cases))
-    for r, c in zip(recs, cases):
-        r["_dir"] = c["dir"]
-        r["_run_dir"] = "run1"
+    recs = await asyncio.gather(*(h.run_case(c, sem, run=n) for n in runs for c in cases))
     print("conversations done in %.0fs, %d with an IR to build" % (time.time() - t0, sum(1 for r in recs if r.get("ir"))))
     t1 = time.time()
     build_res = build_all(recs, out)
@@ -380,21 +390,21 @@ async def main_async(args):
     draw_res = draw_all(recs, out)
     print("drawings done in %.0fs" % (time.time() - t2))
     finish_records(recs, out, build_res, draw_res)
-    tag = "" if not args.cases else "_" + Path(args.cases).stem
+    tag = "" if not args.cases or args.cases == "deck" else "_" + "_".join(Path(n.strip()).stem for n in args.cases.split(",") if n.strip())
     with open(out / ("results%s.jsonl" % tag), "w", encoding="utf-8") as fh:
         for r in recs:
             fh.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
     (out / ("selection%s.json" % tag)).write_text(json.dumps({"run": cases}, ensure_ascii=False, indent=1), encoding="utf-8")
-    write_report(out)
+    write_report(out, runs=max(runs))
     write_compare(recs, out)
     (out / "README.md").write_text(
-        "# OK test-case re-run - IR pipeline (%s)\n\nSame 84 prompts as `test_rerun_20260818` (selection.json), 1 run each, "
-        "through the IR pipeline (`CAD_PIPELINE=ir`). The agent ran in-process; the part was built and drawn with the local "
-        "freecadcmd (no FreeCAD server / MQTT). Only `ok` was ever sent back, never an answer to a question.\n\n"
-        "Open `report.html` (same layout as August) or `compare.html` (August vs now, side by side) from this folder.\n"
-        % time.strftime("%Y-%m-%d"), encoding="utf-8")
+        "# OK test-case re-run - IR pipeline (%s)\n\nThe 84 deck prompts of `test_rerun_20260818` (selection.json) plus the chapter-9 "
+        "prompts of tests/fixtures/shape_cases_*.json, %d run(s) each, through the IR pipeline (`CAD_PIPELINE=ir`). The agent ran "
+        "in-process; the part was built and drawn with the local freecadcmd (no FreeCAD server / MQTT). Only `ok` was ever sent back, "
+        "never an answer to a question.\n\nOpen `report.html` (same layout as August, one column per run) or `compare.html` "
+        "(August vs now run 1, side by side) from this folder.\n" % (time.strftime("%Y-%m-%d"), max(runs)), encoding="utf-8")
     gen = sum(1 for r in recs if r.get("generated"))
-    print("done: %d/%d cases produced a model | %s" % (gen, len(recs), out / "report.html"))
+    print("done: %d/%d runs produced a model | %s" % (gen, len(recs), out / "report.html"))
 
 
 def main():
@@ -403,8 +413,10 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out")
-    ap.add_argument("--cases", help="JSON {\"run\": [{uid, dir, section, num, prompt}]} instead of the August selection "
-                                    "(e.g. tests/fixtures/shape_cases_round_triangle.json); results land in the same --out folder")
+    ap.add_argument("--cases", help="comma list of JSON {\"run\": [{uid, dir, section, num, prompt}]} files; the word 'deck' = the "
+                                    "August selection (default). Results land in the same --out folder")
+    ap.add_argument("--runs", type=int, default=1, help="runs per case (the August report had 3)")
+    ap.add_argument("--from-run", type=int, default=1, help="first run number, to add runs to an existing folder")
     args = ap.parse_args()
     asyncio.run(main_async(args))
 
