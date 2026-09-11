@@ -161,7 +161,13 @@ class IRFlow:
         if not ir:
             return {"kind": "message", "message": CAPABILITIES + "Please describe the part with its dimensions."}
         val = validate(ir)
-        questions = list(envelope.get("questions") or [])
+        # the extractor occasionally wraps a question in an object ({"question": "..."})
+        questions = [q if isinstance(q, str) else str((q or {}).get("question") or (q or {}).get("text") or q)
+                     for q in (envelope.get("questions") or []) if q]
+        tabs = ((ir.get("tube") or {}).get("tabs") or []) if isinstance(ir.get("tube"), dict) else []
+        if tabs and not val.questions and all(tb.get("protrusion") is not None or tb.get("width") is not None or tb.get("size") for tb in tabs):
+            # the normaliser reads a lone tenon number as its protrusion (shown in the summary): do not ask for it again
+            questions = [q for q in questions if not re.search(r"tenon|protru|\btab\b", q, re.I)]
         llm_words = {w for q in questions for w in re.findall(r"[a-zà-ÿ]{5,}", q.lower())}
         for q in val.questions:
             # the extractor often asks the same thing in its own words ("which triangle definition...?"):

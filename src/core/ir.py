@@ -180,8 +180,9 @@ def missing_required(ir: dict) -> List[str]:
             size = tb.get("size") or []
             width = tb.get("width", tb.get("across", size[0] if len(size) > 0 else None))
             prot = tb.get("protrusion", tb.get("length", size[1] if len(size) > 1 else None))
-            if prot is None:
+            if prot is None and width is None:
                 q.append("how far the tenon(s) protrude beyond the tube end (mm)")
+            # a single number ("tenon 20 mm") is read as the protrusion by the normaliser
         for f in ir.get("features") or []:
             q.extend(_feature_missing(f))
         return _dedupe(q)
@@ -258,8 +259,8 @@ def missing_required(ir: dict) -> List[str]:
 
 
 _FOLD_EDGE_WORDS = ("fold", "fold_line", "line", "chord", "bend_line", "across", "offset", "middle", "center", "centre", "diameter_line")
-_RIM_EDGE_WORDS = ("rim", "perimeter", "circumference", "outer", "outer_edge", "all_around", "around", "border", "periphery",
-                   "outside", "edge", "outer_rim", "circular_edge", "round_edge", "skirt",
+_RIM_EDGE_WORDS = ("rim", "perimeter", "circumference", "outer_edge", "all_around", "around", "periphery",
+                   "outer_rim", "circular_edge", "round_edge", "skirt", "all_edges", "whole_edge", "full_perimeter",
                    "inner_rim", "inner", "bore", "inner_edge", "hole", "inside", "neck", "collar", "spigot", "central_hole", "inner_circle")
 
 

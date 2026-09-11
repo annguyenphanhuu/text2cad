@@ -266,7 +266,10 @@ def _side_is_bent(face, side, plan) -> bool:
 def _check_tube(nir, plan, res):
     tube = nir["tube"]
     for tb in tube.get("tabs") or []:
-        if tb.get("across_defaulted"):
+        if tb.get("protrusion_from_width"):
+            res.warnings.append("Tenon %g mm: read as how far it protrudes beyond the tube end, over the full flat width of the %s face(s)."
+                                % (tb["protrusion"], "/".join(tb["faces"])))
+        elif tb.get("across_defaulted"):
             res.warnings.append("Tenon width was not given: the tenon takes the full flat width of the %s face(s)." % "/".join(tb["faces"]))
     if tube.get("length") and tube["length"] > 5800:
         res.warnings.append("Tube length %g mm exceeds our maximum of 5800 mm. Do you want to continue?" % tube["length"])

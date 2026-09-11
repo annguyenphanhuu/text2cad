@@ -49,9 +49,11 @@ Tubes are a separate family (section + length + end cuts + features).
 ### blank (the flat base plate) — one of
 - `{"type": "rect", "x": <length>, "y": <width>, "dims": "outside"|"inside", "corner_radius": <r or null>,
    "corner_chamfer": <c or null>, "corners": {"x-y-": {"radius": 10}}}`  — x along u (left→right), y along v (front→back).
-  `dims` (default "outside"): use `"inside"` for a cover / tray / box / housing (walls on 3-4 edges) whose base
-  is given as "base X x Y" — the shop reads that as the inside footprint, the walls stand outside it.
-  Brackets (L / U / Z) and flat plates keep "outside".
+  `dims` (default "outside"): use `"inside"` ONLY when the customer names the bottom of a cover / tray / box /
+  housing ("base X x Y", "fond", "footprint", "intérieur") — the shop reads that as the inside footprint, the
+  walls stand outside it. When the customer gives the OVERALL size of the part ("fan cover 500 x 300 with a 15 mm
+  frame", "panel 600 x 600 with a 25 mm return", "dimensions L x H") keep "outside": the flanges are inside that
+  size. Brackets (L / U / Z) and flat plates keep "outside".
   `corner_radius` applies to all four corners; `corners` overrides single corners
   ("x-y-" front-left, "x+y-" front-right, "x-y+" back-left, "x+y+" back-right).
 - `{"type": "disc", "diameter": D, "inner_diameter": d or null, "arc": 360}` — round plate / flange / ring.
@@ -85,6 +87,9 @@ Tubes are a separate family (section + length + end cuts + features).
 - `direction`: base bends `"up"` (default) or `"down"`; bends on a wall `"in"` (toward the part, default)
   or `"out"` (away from the part). Two flanges "in opposite directions" (Z) = one up, one down.
 - `radius`: inner bend radius, null = standard = thickness. "rayon intérieur = épaisseur" → null.
+- On a round plate: `"edge": "rim"` ONLY when the flange runs all around the disc (bord tombé sur tout le pourtour,
+  couvercle rond, cuvette, "peripheral rim"). "One edge / one side bent up", "bent along a line", "pli à X du
+  centre" = `"edge": "fold"` with `length` and/or `offset`. Two parallel bends = two folds with opposite `offset` signs.
 
 ### features (cutouts) — `type` is one of
 | type | required fields | notes |
@@ -189,6 +194,9 @@ One feature `perforation` on the base, the holes cover the whole plate in a cent
   per wall (y-, y+, x-, x+), length h (= overall height of the wall from the bottom face), up. "retours de 25 sur les grands côtés dans l'autre sens" → bends on those walls,
   `"on": "<wall>", "edge": "tip", "length": 25, "direction": "out"`.
 - Frame / encadré / screen support with a central window → blank rect, feature rect centred, bends on edges.
+- Box / housing "L x W x H (depth), close it with bends on the top and bottom" → the closing bends are full
+  walls on those edges with the SAME height as the side walls (the depth of the box), not returns: a CAPOT
+  with 4 walls of `length` = depth. Only ask for a width when the customer names a separate return / lip.
 - Omega / hat profile → U with an outward return ("out") on each flange.
 - "Support mural: dos vertical H x W plié en bas pour former une tablette de profondeur P" → blank x = H,
   y = W (the back), bend x+ (bottom of the back) length P. Say which is which in `assumptions`.
@@ -232,8 +240,10 @@ One feature `perforation` on the base, the holes cover the whole plate in a cent
    angles, radii, directions or positions: default them and list the default under `assumptions`.
 4. Ambiguous face ("the flange", "one leg") → choose the most plausible engineering reading and record it
    in `assumptions`. The customer confirms before anything is built.
-5. Several separate parts, fasteners, welded assemblies, guardrails with many bars → `intent: "assembly"`,
-   part null. Shapes outside sheet/tube (sphere, cone, machined block, spring, gear...) or a request
+5. Several DIFFERENT parts joined together, fasteners, welded assemblies, guardrails with many bars →
+   `intent: "assembly"`, part null. N identical panels / pieces that tile an area ("4 panels of 600 x 600 for a
+   2400 x 1200 ceiling", "10 identical brackets") are NOT an assembly: model ONE piece and note the quantity in
+   `assumptions`. Shapes outside sheet/tube (sphere, cone, machined block, spring, gear...) or a request
    with no geometry at all → `intent: "unsupported"` with `unsupported_reason` explaining what you can
    build instead (flat plates, bent sheet parts, square/round tubes with holes, slots, threads, countersinks).
 6. Greetings, thanks, questions about prices/lead time/materials → `intent: "chat"` or `"info"` with `reply`.
