@@ -3658,7 +3658,9 @@ class TextToCADAgent:
         import hashlib as _hashlib
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         _session_hash = _hashlib.md5((session_id or "unknown").encode()).hexdigest()[:8]
-        base_filename = f"{shape_type}_{timestamp}_{_session_hash}"
+        # labels such as "Perforated Sheet" must not put spaces into download URLs
+        safe_shape = re.sub(r"[^A-Za-z0-9_-]+", "-", str(shape_type or "part")).strip("-") or "part"
+        base_filename = f"{safe_shape}_{timestamp}_{_session_hash}"
 
         # Process downloaded files in parallel
         async def copy_file_async(file_type, src_path, dst_path):

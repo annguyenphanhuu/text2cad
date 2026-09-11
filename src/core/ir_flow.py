@@ -66,9 +66,39 @@ def use_ir_pipeline(state: dict, user_text: str) -> bool:
         return False
     if state.get("perf_calc_result") is not None or state.get("perf_extracted_params") is not None:
         return False                      # a session already on the legacy perforated chain stays there
-    if state.get("latest_code") and not state.get("latest_ir"):
-        return False
-    return True
+    code = state.get("latest_code")
+    if code and not state.get("latest_ir") and "build_from_ir" not in code:
+        return False                      # a session holding LEGACY generated code stays legacy; an IR stub script
+    return True                           # (synced back from the DB before an edit) is ours even without latest_ir
+
+
+_STUB_IR_RE = re.compile(r"^IR = json\.loads\((.+)\)\s*$", re.M)
+_STUB_TITLE_RE = re.compile(r"^sanitized_title = (.+?)\s+# DO NOT CHANGE", re.M)
+
+
+def ir_from_stub_script(code: Optional[str]):
+    """(ir, title) embedded in a stub script produced by make_stub_script, or (None, None).
+
+    The DB keeps the generated script (`lasted_code`) but not the IR; after an API restart the
+    edit flow needs the IR back, and the script carries it verbatim."""
+    if not code or "build_from_ir" not in code:
+        return None, None
+    import ast
+    m = _STUB_IR_RE.search(code)
+    if not m:
+        return None, None
+    try:
+        ir = json.loads(ast.literal_eval(m.group(1)))
+    except (ValueError, SyntaxError, TypeError):
+        return None, None
+    t = _STUB_TITLE_RE.search(code)
+    title = None
+    if t:
+        try:
+            title = ast.literal_eval(t.group(1))
+        except (ValueError, SyntaxError):
+            title = None
+    return (ir if isinstance(ir, dict) else None), title
 
 
 def make_stub_script(ir: dict, title: str, material: Optional[str]) -> str:
@@ -184,8 +214,46 @@ class IRFlow:
 
     # ------------------------------------------------------------------ turns
 
+    async def _recover_ir_from_db(self, session_id: str) -> bool:
+        """After a restart the in-memory state is empty: take the IR back from the last stored stub script."""
+        try:
+            from src.database.database import SessionLocal
+            from src.models.sessions import ChatHistory
+
+            def query():
+                db = SessionLocal()
+                try:
+                    return (db.query(ChatHistory).filter(ChatHistory.session_id == session_id, ChatHistory.lasted_code.isnot(None))
+                            .order_by(ChatHistory.id.desc()).first())
+                finally:
+                    db.close()
+
+            row = await asyncio.get_event_loop().run_in_executor(None, query)
+        except Exception as exc:
+            logger.warning("[IR] recover from DB failed for %s: %s", session_id, exc)
+            return False
+        if row is None:
+            return False
+        ir, title = ir_from_stub_script(row.lasted_code)
+        if not ir:
+            return False
+        self.agent._update_session_state(session_id, latest_ir=ir, latest_code=row.lasted_code,
+                                         latest_title=title or self.agent._get_session_state(session_id).get("latest_title"))
+        logger.info("[IR] recovered the IR of session %s from the stored script", session_id)
+        return True
+
     async def turn(self, user_text: str, session_id: str, is_edit: bool, priority: int, start_time: float) -> AsyncIterator[dict]:
         state = self.agent._get_session_state(session_id)
+        if is_edit and not state.get("latest_ir"):
+            # after an API restart only the stored script is back (the API syncs lasted_code from the DB
+            # before an edit); the IR travels inside it
+            ir, title = ir_from_stub_script(state.get("latest_code"))
+            if ir:
+                self.agent._update_session_state(session_id, latest_ir=ir, latest_title=title or state.get("latest_title"))
+                logger.info("[IR] recovered the IR of session %s from the synced script", session_id)
+            elif not state.get("latest_code"):
+                await self._recover_ir_from_db(session_id)
+            state = self.agent._get_session_state(session_id)
         if is_edit and state.get("latest_ir"):
             async for upd in self._turn_edit(user_text, session_id, priority, start_time):
                 yield upd
