@@ -1,0 +1,67 @@
+{
+ "thickness": 3,
+ "blank": {
+  "type": "rect",
+  "x": 50,
+  "y": 250
+ },
+ "bends": [
+  {
+   "name": "leg",
+   "edge": "x+",
+   "length": 50,
+   "radius": 3
+  }
+ ],
+ "features": [
+  {
+   "type": "countersink",
+   "diameter": 6,
+   "cs_diameter": 11,
+   "cs_side": "top",
+   "at": {
+    "u": {
+     "from": "tip",
+     "dist": 14
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "linear",
+    "count": 2,
+    "pitch": 150,
+    "axis": "v"
+   }
+  },
+  {
+   "type": "rect",
+   "face": "leg",
+   "size": [
+    20.2,
+    5.2
+   ],
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "tip",
+     "dist": 10
+    }
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   50,
+   0,
+   250,
+   0,
+   50
+  ],
+  "tools": 3
+ }
+}

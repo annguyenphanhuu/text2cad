@@ -1,0 +1,71 @@
+{
+ "thickness": 2,
+ "blank": {
+  "type": "rect",
+  "x": 200,
+  "y": 80
+ },
+ "bends": [
+  {
+   "name": "shelf",
+   "edge": "x+",
+   "length": 100,
+   "radius": 2
+  }
+ ],
+ "features": [
+  {
+   "type": "hole",
+   "diameter": 6,
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "linear",
+    "count": 2,
+    "pitch": 150,
+    "axis": "u"
+   }
+  },
+  {
+   "type": "hole",
+   "face": "shelf",
+   "diameter": 5,
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "linear",
+    "count": 2,
+    "pitch": 40,
+    "axis": "u"
+   }
+  },
+  {
+   "type": "corner_fillet",
+   "face": "shelf",
+   "radius": 10
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   200,
+   0,
+   80,
+   0,
+   100
+  ],
+  "tools": 4
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "thickness": 2,
+ "blank": {
+  "type": "triangle",
+  "triangle": {
+   "kind": "equilateral",
+   "side": 120
+  }
+ },
+ "bends": [
+  {
+   "name": "f0",
+   "edge": "base",
+   "length": 15
+  },
+  {
+   "name": "f1",
+   "edge": "e1",
+   "length": 15
+  },
+  {
+   "name": "f2",
+   "edge": "e2",
+   "length": 15
+  }
+ ],
+ "_expect": {
+  "zmax": 15
+ }
+}

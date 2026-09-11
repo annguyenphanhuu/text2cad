@@ -1,0 +1,139 @@
+{
+ "thickness": 4,
+ "material": "steel",
+ "blank": {
+  "type": "rect",
+  "x": 200,
+  "y": 100,
+  "corner_radius": 10
+ },
+ "features": [
+  {
+   "type": "hole",
+   "diameter": 8,
+   "at": {
+    "u": {
+     "from": "x-",
+     "dist": 20
+    },
+    "v": {
+     "from": "y-",
+     "dist": 20
+    }
+   },
+   "pattern": {
+    "type": "grid",
+    "count": [
+     2,
+     2
+    ],
+    "pitch": [
+     160,
+     60
+    ]
+   }
+  },
+  {
+   "type": "slot",
+   "size": [
+    20,
+    8
+   ],
+   "orientation": "v",
+   "at": {
+    "u": {
+     "from": "center",
+     "dist": -40
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  },
+  {
+   "type": "hex",
+   "across_flats": 10,
+   "at": {
+    "u": {
+     "from": "center",
+     "dist": 40
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  },
+  {
+   "type": "thread",
+   "thread": "M6",
+   "at": {
+    "u": {
+     "from": "x-",
+     "dist": 60
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  },
+  {
+   "type": "countersink",
+   "diameter": 6.4,
+   "cs_diameter": 12,
+   "cs_side": "top",
+   "at": {
+    "u": {
+     "from": "x+",
+     "dist": 60
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  },
+  {
+   "type": "rect",
+   "size": [
+    40,
+    20
+   ],
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  },
+  {
+   "type": "keyhole",
+   "size": [
+    20,
+    10,
+    6
+   ],
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "y+",
+     "dist": 8
+    }
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   200,
+   0,
+   100,
+   0,
+   4
+  ],
+  "volume_lt": 80000,
+  "tools": 10
+ }
+}

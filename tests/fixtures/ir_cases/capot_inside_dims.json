@@ -1,0 +1,74 @@
+{
+ "thickness": 1.5,
+ "blank": {
+  "type": "rect",
+  "x": 400,
+  "y": 300,
+  "dims": "inside"
+ },
+ "bends": [
+  {
+   "name": "front",
+   "edge": "y-",
+   "length": 151.5
+  },
+  {
+   "name": "back",
+   "edge": "y+",
+   "length": 151.5
+  },
+  {
+   "name": "left",
+   "edge": "x-",
+   "length": 151.5
+  },
+  {
+   "name": "right",
+   "edge": "x+",
+   "length": 151.5
+  },
+  {
+   "name": "left_return",
+   "on": "left",
+   "length": 40,
+   "direction": "out"
+  },
+  {
+   "name": "right_return",
+   "on": "right",
+   "length": 40,
+   "direction": "out"
+  }
+ ],
+ "features": [
+  {
+   "type": "hole",
+   "face": "left_return",
+   "diameter": 8,
+   "at": {
+    "u": {
+     "from": "u-",
+     "dist": 20
+    },
+    "v": {
+     "from": "tip",
+     "dist": 20
+    }
+   },
+   "mirror": [
+    "u"
+   ]
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   -38.5,
+   441.5,
+   0,
+   303,
+   0,
+   151.5
+  ],
+  "tools": 2
+ }
+}

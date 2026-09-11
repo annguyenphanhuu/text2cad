@@ -1,0 +1,61 @@
+{
+ "source": "2511_ATN_TEST_REPORT_Roman_EN.pptx",
+ "cases": [
+  {
+   "slide": 96,
+   "section": "3.3 SQUARE TUBE",
+   "num": 9,
+   "status": "NOT OK",
+   "prompt": "I would like a square steel tube 60 mm on a side, thickness 2 mm, and total length 920 mm.\nI want the left end cut at 90°, and the right end beveled at 45°.\nOn the faces including the 45° cut on the 90°-cut side, I want to add a 30 mm long, 1.5 mm thick tenon, well centered on each face. On the other two faces (the short and long sides), I want mortises of 30.2 mm by 2.2 mm, centered 460 mm from the 90° cut edge, without overlapping the tenons.\nAlso, I would like a hexagon-shaped cutout (20.5 mm across flats), placed on the smallest face, 300 mm from the right edge not counting the tenons, well centered on the width of the face."
+  },
+  {
+   "slide": 96,
+   "section": "3.3 SQUARE TUBE",
+   "num": 10,
+   "status": "NOT OK",
+   "prompt": "I would like a square steel tube 120 mm on a side, thickness 5 mm, and total length 650 mm.\nI want the left end cut at 90°, and the right end beveled at 80°.\nOn the faces including the 45° cut on the 90°-cut side, I want to add a 50 mm long, 5 mm thick tenon, well centered on each face. On the other two faces (the short and long sides), I want mortises of 40.2 mm by 4.2 mm, centered 410 mm from the 90° cut edge, without overlapping the tenons.\nAlso, I would like a hexagon-shaped cutout (30.5 mm across flats), placed on the smallest face, 200 mm from the right edge not counting the tenons, well centered on the width of the face."
+  },
+  {
+   "slide": 120,
+   "section": "6.3 ENCLOSURE WITH PERFORATED BACK",
+   "num": 1,
+   "status": "NOT OK",
+   "prompt": "I need to make a powder-coated steel housing. The housing must be 200mm long, 100mm deep, and 250mm high — i.e. 200 mm length, 250 mm width, and 100 mm height. It must have bends to close the top and bottom of the housing. Also add 20mm bends on the 250mm-long parts. On the base, there must be 4 Ø10 holes in the corners, 30mm from the edges. Add 2x Ø40 holes centered in width, 50mm from the bottom edge for the first, and the second at an 85mm center distance on the top. The housing is 1.5mm thick."
+  },
+  {
+   "slide": 130,
+   "section": "7.2 HORIZONTALLY RIBBED PANEL",
+   "num": 1,
+   "status": "NOT OK",
+   "prompt": "I need to make a cladding panel with ribs to reinforce it. It is an omega shape with a 150mm base, 75mm flanges, and small 25mm tabs, 400mm long, thickness 1.5mm. On the flanges, make outward-stamped ribs in a slotted shape of 360x10mm centered on the bend."
+  },
+  {
+   "slide": 137,
+   "section": "7.9 CLADDING COLUMN",
+   "num": 1,
+   "status": "NOT OK",
+   "prompt": "I would like a 2000mm column cladding piece, omega-shaped, thickness 1.5mm. The base of the omega is 140mm, the flanges are 131.5mm, and the small parts are 41.5mm. Along the length, Ø4.5 holes are needed for mounting. The first holes are 70mm from the ends and 19.25mm from the edges. Repeat 5 times along the length every 372mm."
+  },
+  {
+   "slide": 138,
+   "section": "7.10 SIDE PANEL",
+   "num": 1,
+   "status": "NOT OK",
+   "prompt": "Make a side cover with a base of 300x300x2, make a 100x100 chamfer at the top right. Then add drop bends while keeping the 300mm inner dimensions on all sides."
+  },
+  {
+   "slide": 145,
+   "section": "7.17 WALL-MOUNT COVER",
+   "num": 1,
+   "status": "NOT OK",
+   "prompt": "I would like to model a cover for a wall bracket, simple U shape.\nOverall dimensions: 153 mm wide x 200 mm high (inner) x 60 mm deep.\nSteel sheet, 1.5 mm.\n90° bend on both vertical sides, 60 mm return.\nThe bottom remains open but make a 25mm bend in the other direction, and no visible mounting holes."
+  },
+  {
+   "slide": 146,
+   "section": "7.18 SCREEN FRAME",
+   "num": 1,
+   "status": "NOT OK",
+   "prompt": "I need a screen support, outer dimensions 203x203, with a central 150x150 cutout. Add 50mm bends on the right and left sides, a 20mm bend on the top and bottom."
+  }
+ ]
+}

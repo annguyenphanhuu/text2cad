@@ -1,0 +1,69 @@
+{
+ "family": "tube",
+ "tube": {
+  "section": "rect",
+  "width": 60,
+  "height": 60,
+  "length": 920,
+  "wall": 2,
+  "end_cuts": {
+   "start": 90,
+   "end": 45
+  },
+  "tabs": [
+   {
+    "end": "start",
+    "faces": [
+     "front",
+     "back"
+    ],
+    "width": 30,
+    "protrusion": 30
+   }
+  ]
+ },
+ "features": [
+  {
+   "type": "slot",
+   "face": "top",
+   "size": [
+    30.2,
+    2.2
+   ],
+   "at": {
+    "u": {
+     "from": "start",
+     "dist": 460
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  },
+  {
+   "type": "hex",
+   "face": "bottom",
+   "across_flats": 20.5,
+   "at": {
+    "u": {
+     "from": "end",
+     "dist": 300
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   60,
+   -30,
+   920,
+   0,
+   60
+  ],
+  "tools": 2
+ }
+}

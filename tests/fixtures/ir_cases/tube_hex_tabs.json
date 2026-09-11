@@ -1,0 +1,50 @@
+{
+ "family": "tube",
+ "tube": {
+  "section": "rect",
+  "width": 60,
+  "height": 60,
+  "length": 300,
+  "wall": 2,
+  "end_cuts": {
+   "start": 90,
+   "end": 45
+  },
+  "tabs": [
+   {
+    "end": "start",
+    "size": [
+     20,
+     15
+    ]
+   }
+  ]
+ },
+ "features": [
+  {
+   "type": "hex",
+   "face": "top",
+   "across_flats": 12,
+   "at": {
+    "u": {
+     "from": "start",
+     "dist": 100
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   60,
+   -15,
+   300,
+   0,
+   60
+  ],
+  "tools": 1
+ }
+}

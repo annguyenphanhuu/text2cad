@@ -1,0 +1,32 @@
+{
+ "thickness": 2,
+ "blank": {
+  "type": "rect",
+  "x": 100,
+  "y": 50
+ },
+ "bends": [
+  {
+   "name": "top",
+   "edge": "x-",
+   "length": 40,
+   "direction": "up"
+  },
+  {
+   "name": "bottom",
+   "edge": "x+",
+   "length": 30,
+   "direction": "down"
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   100,
+   0,
+   50,
+   -28,
+   40
+  ]
+ }
+}

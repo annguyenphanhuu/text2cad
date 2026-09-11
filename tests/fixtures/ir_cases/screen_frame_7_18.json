@@ -1,0 +1,57 @@
+{
+ "thickness": 1.5,
+ "blank": {
+  "type": "rect",
+  "x": 203,
+  "y": 203
+ },
+ "features": [
+  {
+   "type": "rect",
+   "size": [
+    150,
+    150
+   ],
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  }
+ ],
+ "bends": [
+  {
+   "name": "left",
+   "edge": "x-",
+   "length": 50
+  },
+  {
+   "name": "right",
+   "edge": "x+",
+   "length": 50
+  },
+  {
+   "name": "top",
+   "edge": "y+",
+   "length": 20
+  },
+  {
+   "name": "bottom",
+   "edge": "y-",
+   "length": 20
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   203,
+   0,
+   203,
+   0,
+   50
+  ]
+ }
+}

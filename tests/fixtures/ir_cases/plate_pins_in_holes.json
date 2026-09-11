@@ -1,0 +1,87 @@
+{
+ "thickness": 5,
+ "blank": {
+  "type": "rect",
+  "x": 400,
+  "y": 400
+ },
+ "features": [
+  {
+   "type": "hole",
+   "diameter": 6.2,
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "grid",
+    "count": [
+     6,
+     2
+    ],
+    "pitch": [
+     40,
+     150
+    ]
+   }
+  },
+  {
+   "type": "boss",
+   "diameter": 6,
+   "height": 20,
+   "side": "top",
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "grid",
+    "count": [
+     6,
+     2
+    ],
+    "pitch": [
+     40,
+     150
+    ]
+   }
+  },
+  {
+   "type": "thread",
+   "thread": "M8",
+   "at": {
+    "u": {
+     "from": "x-",
+     "dist": 40
+    },
+    "v": {
+     "from": "y-",
+     "dist": 40
+    }
+   },
+   "mirror": [
+    "u",
+    "v"
+   ]
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   400,
+   0,
+   400,
+   0,
+   25
+  ],
+  "tools": 16
+ }
+}

@@ -1,0 +1,31 @@
+{
+ "thickness": 2,
+ "blank": {
+  "type": "rect",
+  "x": 100,
+  "y": 50
+ },
+ "bends": [
+  {
+   "name": "left",
+   "edge": "x-",
+   "length": 40
+  },
+  {
+   "name": "right",
+   "edge": "x+",
+   "length": 30
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   100,
+   0,
+   50,
+   0,
+   40
+  ],
+  "volume": 16342.5
+ }
+}

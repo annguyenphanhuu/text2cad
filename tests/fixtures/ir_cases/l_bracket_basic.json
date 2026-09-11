@@ -1,0 +1,29 @@
+{
+ "family": "sheet",
+ "material": "steel",
+ "thickness": 2,
+ "bend_radius": 2,
+ "blank": {
+  "type": "rect",
+  "x": 100,
+  "y": 50
+ },
+ "bends": [
+  {
+   "name": "wall",
+   "edge": "x-",
+   "length": 40
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   100,
+   0,
+   50,
+   0,
+   40
+  ],
+  "volume": 13671.2
+ }
+}

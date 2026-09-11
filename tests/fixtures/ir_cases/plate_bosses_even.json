@@ -1,0 +1,58 @@
+{
+ "thickness": 5,
+ "blank": {
+  "type": "rect",
+  "x": 200,
+  "y": 100
+ },
+ "features": [
+  {
+   "type": "boss",
+   "diameter": 20,
+   "inner_diameter": 10,
+   "height": 15,
+   "at": {
+    "u": {
+     "from": "x-",
+     "dist": 40
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "mirror": [
+    "u"
+   ]
+  },
+  {
+   "type": "hole",
+   "diameter": 6,
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "y-",
+     "dist": 15
+    }
+   },
+   "pattern": {
+    "type": "linear",
+    "count": 3,
+    "pitch": "even",
+    "axis": "u"
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   200,
+   0,
+   100,
+   0,
+   20
+  ],
+  "tools": 3
+ }
+}

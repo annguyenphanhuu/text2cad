@@ -1,0 +1,63 @@
+{
+ "thickness": 4,
+ "material": "stainless",
+ "blank": {
+  "type": "rect",
+  "x": 160,
+  "y": 50
+ },
+ "bends": [
+  {
+   "name": "wall",
+   "edge": "x+",
+   "length": 80,
+   "radius": 4
+  }
+ ],
+ "features": [
+  {
+   "type": "hole",
+   "face": "wall",
+   "diameter": 12,
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "bend",
+     "dist": 50
+    }
+   }
+  },
+  {
+   "type": "hole",
+   "face": "base",
+   "diameter": 8,
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "linear",
+    "count": 2,
+    "pitch": 120,
+    "axis": "u"
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   160,
+   0,
+   50,
+   0,
+   80
+  ],
+  "tools": 3
+ }
+}

@@ -1,0 +1,63 @@
+{
+ "thickness": 1.5,
+ "blank": {
+  "type": "rect",
+  "x": 150,
+  "y": 400
+ },
+ "bends": [
+  {
+   "name": "left",
+   "edge": "x-",
+   "length": 75
+  },
+  {
+   "name": "right",
+   "edge": "x+",
+   "length": 75
+  },
+  {
+   "name": "tab_left",
+   "on": "left",
+   "length": 25,
+   "direction": "out"
+  },
+  {
+   "name": "tab_right",
+   "on": "right",
+   "length": 25,
+   "direction": "out"
+  }
+ ],
+ "features": [
+  {
+   "type": "hole",
+   "face": "tab_left",
+   "diameter": 4.5,
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "linear",
+    "count": 4,
+    "pitch": 100,
+    "axis": "u"
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   -23.5,
+   173.5,
+   0,
+   400,
+   0,
+   75
+  ]
+ }
+}

@@ -1,0 +1,41 @@
+{
+ "family": "tube",
+ "material": "steel",
+ "tube": {
+  "section": "rect",
+  "width": 60,
+  "height": 60,
+  "length": 920,
+  "wall": 2,
+  "end_cuts": {
+   "start": 90,
+   "end": 45
+  }
+ },
+ "features": [
+  {
+   "type": "hole",
+   "face": "top",
+   "diameter": 10,
+   "at": {
+    "u": {
+     "from": "start",
+     "dist": 100
+    },
+    "v": {
+     "from": "center"
+    }
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   60,
+   0,
+   920,
+   0,
+   60
+  ]
+ }
+}

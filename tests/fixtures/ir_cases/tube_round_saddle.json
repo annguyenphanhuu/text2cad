@@ -1,0 +1,37 @@
+{
+ "family": "tube",
+ "tube": {
+  "section": "round",
+  "diameter": 55,
+  "length": 750,
+  "wall": 2,
+  "end_cuts": {
+   "start": 45,
+   "end": 90
+  }
+ },
+ "features": [
+  {
+   "type": "hole",
+   "face": "top",
+   "diameter": 40,
+   "at": {
+    "u": {
+     "from": "end",
+     "dist": 400
+    }
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   -27.5,
+   27.5,
+   0,
+   750,
+   -27.5,
+   27.5
+  ],
+  "tools": 1
+ }
+}

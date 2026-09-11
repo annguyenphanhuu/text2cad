@@ -1,0 +1,33 @@
+{
+ "thickness": 3,
+ "blank": {
+  "type": "rect",
+  "x": 200,
+  "y": 150
+ },
+ "features": [
+  {
+   "type": "corner_cut",
+   "corner": "front_left",
+   "cut_length": 45,
+   "cut_width": 17
+  },
+  {
+   "type": "corner_cut",
+   "corner": "back_right",
+   "cut_length": 45,
+   "cut_width": 17,
+   "distance_from_corner": 20
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   200,
+   0,
+   150,
+   0,
+   3
+  ]
+ }
+}

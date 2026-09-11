@@ -1,0 +1,26 @@
+{
+ "thickness": 2,
+ "blank": {
+  "type": "rect",
+  "x": 100,
+  "y": 60
+ },
+ "bends": [
+  {
+   "name": "wall",
+   "edge": "x-",
+   "length": 30,
+   "angle": 120
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   -15,
+   100,
+   0,
+   60,
+   0,
+   26.98
+  ]
+ }
+}

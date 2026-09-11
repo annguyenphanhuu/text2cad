@@ -1,0 +1,30 @@
+{
+ "thickness": 3,
+ "blank": {
+  "type": "stadium",
+  "x": 400,
+  "y": 200
+ },
+ "features": [
+  {
+   "type": "hole",
+   "diameter": 20,
+   "pattern": {
+    "type": "linear",
+    "count": 2,
+    "pitch": 200,
+    "axis": "u"
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   400,
+   0,
+   200,
+   0,
+   3
+  ]
+ }
+}

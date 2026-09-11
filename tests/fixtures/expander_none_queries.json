@@ -1,0 +1,121 @@
+{
+ "source": "logs/query_expansion.log — queries where the shape classifier returned None",
+ "cases": [
+  {
+   "id": "fr01",
+   "prompt": ".Me faire un fichier 3D de coffret à profondeur réduite. 50mm de profondeur suffira. Le coffret doit faire 354mm de hauteur sur 225mm 354 mm de longueur, 225 mm de largeur et 50 mm de hauteurde d'épaisseur 2mm. Sur la base, il faut 4 trous oblongs de 8.5x8. Les orienter à la vertical et les positionner dans les coins à 50mm des bords."
+  },
+  {
+   "id": "fr02",
+   "prompt": "Can you provide a 3D file for a guardrail made of 100x8mm flat bar and Ø20 round bars. Make 2 flat bars, 1200mm long, horizontal, spaced 992mm apart. Between these 2 panels, include 9 Ø20 round bars, 984mm long, the first ones 30mm from the edges and then spaced 142.5mm apart."
+  },
+  {
+   "id": "fr03",
+   "prompt": "Faire une coiffe pliée à 90°, de longueur 250 mm, formée dans une tôle acier de 3 mm d'épaisseur, avec une section 50 x 50 mm, un rayon de pliage intérieur de 3 mm (extérieur 6 mm), comportant deux perçages Ø6 mm avec fraisurage Ø11 à 90°, implantés sur une aile avec un entraxe de 150 mm, centrés en longueur et positionnés à 14 mm du bord opposé au pli (fraisurage côté intérieur), ainsi qu’une découpe rectangulaire pour réaliser une mortaise de 20.2x5.2mm(qui peut acceuillir un tenon de 20x5mm) sur l’autre aile centré sur la longueur, positionnés à 10 mm du bord opposé au pli sur la largeur."
+  },
+  {
+   "id": "fr04",
+   "prompt": "Faire une cornière pliée à 100° ouvert, de longueur 200 mm, formée dans une tôle acier de 3 mm d'épaisseur, avec une section 50 x 50 mm, un rayon de pliage intérieur de 3 mm (extérieur 6 mm), comportant deux perçages Ø6 mm avec fraisurage Ø11 à 90°, implantés sur une aile avec un entraxe de 150 mm, centrés en longueur et positionnés à 14 mm du bord opposé au pli (fraisurage côté intérieur), ainsi que deux perçages Ø8 mm avec fraisurage Ø14 à 120° sur l’autre aile avec un entraxe de 130 mm, positionnés à 15 mm du bord opposé au pli(fraisurage côté extérieur)."
+  },
+  {
+   "id": "fr05",
+   "prompt": "Je cherche une chape ouverte latéralement, pour montage d’une rotule sans démontage axial."
+  },
+  {
+   "id": "fr06",
+   "prompt": "Je souhaite créer un support pour un petit extracteur d’air, en tôle acier galvanisée DX51D+Z d’épaisseur 2 mm. Il s’agit d’une platine verticale de 300 mm de long sur 200 mm de large, avec un retour plié à 90° sur le bas de 50 mm de profondeur pour former une équerre de fixation. , Il s’agit d’une platine verticale de 300 mm de large et 200 mm de long, avec un retour de 50 mm en bas, plié à 90° pour former une équerre de fixation. Rayon de pliage intérieur 2 mm. Sur la face verticaleje veux une découpe circulaire Ø150 mm au centre pour le passage du conduit, avec 4 trous de fixation Ø6 mm autour du cercle, espacés de 90°, à 10 mm du bord de la découpe. Sur le base retour horizontal, prévoir 2 trous Ø8 mm à 30 mm des bords."
+  },
+  {
+   "id": "fr07",
+   "prompt": "Je souhaite modéliser une platine de fixation en tôle pliée, qui servira de support pour un vérin de réglage."
+  },
+  {
+   "id": "fr08",
+   "prompt": "Je souhaite réaliser une petite grille de ventilation de dimensions 200x200x1.5 avec 4 trous Ø6 dans chaque coins à 10mm des bords."
+  },
+  {
+   "id": "fr09",
+   "prompt": "Je souhaite un encadré plié avec une base de 200x150x2 avec une découpe intérerieur de 144x94mm centrée, rajouter des plis de 30mm sur tous les bords exterieurs(rayon intérieur=1 fois l’éapisseur et rayon extérieur=2 fois l’épaisseur). Prévoir 4 trous Ø7 sur les grand plis, à 10mm du bord de la tôle sur la largeur et 22mm sur la longueur, ce qui fait un entraxe de 160mm."
+  },
+  {
+   "id": "fr10",
+   "prompt": "Je souhaite un encadré plié avec une base de 300x300x2 avec une découpe intérerieur de 244x244mm centrée, rajouter des plis de 40mm sur tous les bords exterieurs(rayon intérieur=1 fois l’éapisseur et rayon extérieur=2 fois l’épaisseur). Prévoir 4 trous découpes hexagonales Ø8 sur les 2 côtés opposés, à 15mm du bord de la tôle sur la largeur et 22mm sur la longueur, ce qui fait un entraxe de 260mm."
+  },
+  {
+   "id": "fr11",
+   "prompt": "Je souhaite un garde-corps de 1800 × 350 × 2 mm, avec un pli de 40 mm de largeur sur la longueur de 1800 mm."
+  },
+  {
+   "id": "fr12",
+   "prompt": "Je souhaite un support mural en tôle pliée en acier galvanisé de 2 mm d’épaisseur, avec un dos plat vertical de 200 mm de haut sur 80 mm de large, plié à 90° en bas pour former une tablette horizontale de 100 mm de profondeur, le pli a un rayon de 2 mm, avec deux trous de fixation de 6 mm de diamètre sur la partie verticale (espacés de 150 mm, centrés en largeur et en longueur), et deux autres trous de 5 mm sur la tablette horizontale (espacés de 40 mm sur la largeur et centrés). Rajouter des rayons de 10mm dans les coins du plis de 100m."
+  },
+  {
+   "id": "fr13",
+   "prompt": "Je souhaite un support mural en tôle pliée en acier galvanisé de 3 mm d’épaisseur, avec un dos plat vertical de 200 mm de haut sur 120 mm de large, plié à 90° en bas pour former une tablette horizontale de 100 mm de profondeur, le pli a un rayon de 3 mm, avec deux trous de fixation de 10 mm de diamètre sur la partie verticale (espacés de 150 mm, centrés en largeur et en longueur), et deux autres trous de 4 mm sur la tablette horizontale (espacés de 80 mm sur la largeur et centrés). Rajouter des rayons de 10mm dans les coins du plis de 100m."
+  },
+  {
+   "id": "fr14",
+   "prompt": "Je souhaite un support mural en tôle pliée en acier galvanisé de 3 mm d’épaisseur, avec un dos plat vertical de 250 mm de haut sur 120 mm de large, plié à 90° en bas pour former une tablette horizontale de 120 mm de profondeur, le pli a un rayon de 3 mm, avec deux trous de fixation de 10 mm de diamètre sur la partie verticale (espacés de 170 mm, centrés en largeur et en longueur), et deux autres trous de 8 mm sur la tablette horizontale (espacés de 80 mm sur la largeur et centrés). Rajouter des rayons de 12mm dans les coins du plis de 100m."
+  },
+  {
+   "id": "fr15",
+   "prompt": "Je veux créer un support en inox 316L, tôle de 2 mm, pour fixer un petit coffret électrique. Dimensions : 180 mm x 120 mm, avec 3 plis : un retour de 20 mm à gauche et à droite à 90°, et un retour arrière de 30 mm. Rayon intérieur 2 mm. Sur la face principale, prévoir une découpe rectangulaire centrée de 60 x 30 mm, et 4 trous Ø6,5 mm pour vis M6, à 10 mm des coins."
+  },
+  {
+   "id": "fr16",
+   "prompt": "Je veux un support de fixation moteur en tôle acier S355 de 5 mm d’épaisseur. Dimensions 200 x 150 mm. Je dois fixer un moteur avec entraxe de 120 mm sur la longueur et de 60mm sur la largeur entre trous, donc il me faut 4 trous Ø10,5 mm positionnés en rectangle, centrés en longueur et en largeur. Prévoir 2 trous oblongs de 20 x 8 mm pour réglage dans le sens de la longueur, à 20 mm du bord du bas et d'entraxe de 100 centré."
+  },
+  {
+   "id": "fr17",
+   "prompt": "Je voudrais un support en tôle acier pour fixation au plafond. Il s’agit d’une platine rectangulaire de 120 mm par 60 mm, avec deux ailes latérales pliées à 90°de 20mm vers le bas, , le long du côté de 120 mm. Je veux 4 trous de fixation Ø6 mm aux 4 coins de la platine, espacés à 15 mm des bords. Au centre de la platine, je veux un trou de Ø12 mm pour faire passer une tige filetée. L’acier doit faire 2 mm d’épaisseur, rayons de pliage standards."
+  },
+  {
+   "id": "fr18",
+   "prompt": "Je voudrais un support en tôle acier pour fixation au plafond. Il s’agit d’une platine rectangulaire de 150 mm par 100 mm, avec deux ailes latérales pliées à 90°de 25mm vers le bas, le long du côté de 150 mm. Je veux 4 trous de fixation Ø6 mm aux 4 coins de la platine, espacés à 20 mm des bords. Au centre de la platine, je veux un trou de Ø12 mm pour faire passer une tige filetée. L’acier doit faire 2 mm d’épaisseur, rayons de pliage standards."
+  },
+  {
+   "id": "fr19",
+   "prompt": "Modéliser une cornière en L pliée à 90°, de longueur 200 mm, formée dans une tôle acier de 3 mm d'épaisseur, avec une section 50 x 50 mm, un rayon de pliage intérieur de 3 mm (extérieur 6 mm), comportant deux perçages Ø6 mm avec fraisurage Ø11 à 90°, implantés sur une aile avec un entraxe de 150 mm, centrés en longueur et positionnés à 14 mm du bord opposé au pli (fraisurage côté intérieur), ainsi que deux perçages Ø8 mm avec fraisurage Ø14 à 120° sur l’autre aile avec un entraxe de 130 mm, positionnés à 15 mm du bord opposé au pli(fraisurage côté extérieur), et des rayons de congé de 8 mm appliqués aux quatre coins extérieurs de la pièce."
+  },
+  {
+   "id": "fr20",
+   "prompt": "Peux-tu créer un fichier 3D d’un tube rectangulaire en tôle pliée, de section 100 mm x 60 mm, avec une épaisseur de 3 mm, et une longueur totale de 1106 mm ? À chaque extrémité du tube, il faut ajouter un tenon sur chacune des deux faces de 100 mm (donc 2 tenons par extrémité) au centre. Chaque tenon est un rectangle de 40 mm de long et 3 mm d’épaisseur, dans le prolongement du tube. Ces tenons sont solidaires du tube et prolongent la tôle, ce qui explique que la longueur totale passe à 1106 mm. L’objectif est de pouvoir insérer ces tenons dans des découpes correspondantes sur une autre pièce."
+  },
+  {
+   "id": "fr21",
+   "prompt": "je souhaite modéliser un habillage en tôle pliée à angle cassé à 120°, pour couvrir le sommet d’une gaine verticale."
+  },
+  {
+   "id": "fr22",
+   "prompt": "je souhaite modéliser un pare-chaleur ventilé pour isoler un moteur thermique d’un coffrage voisin."
+  },
+  {
+   "id": "fr23",
+   "prompt": "je souhaite un fichier 3D pour une platine de 600x600x5 avec des rayons de 15mm dans les coins, en ajoutant un perçage Ø100 au centre de la pièce, avec des Ø15 tout autour de la pièce, le premier à 30mm de l’origine, puis à répéter 4 fois tout les 135mm sur la longueur et largeur, faire la symétrie de ces perçages."
+  },
+  {
+   "id": "fr24",
+   "prompt": "je souhaite un fichier 3D pour une platine de 650x400x5 avec des rayons de 15mm dans les coins, en ajoutant un perçage Ø120 au centre de la pièce, avec des Ø15 tout autour de la pièce, le premier à 30mm de l’origine, puis à répéter 4 fois tout les 147.5mm sur la longueur et 4 fois tout les 85mm sur la largeur, faire la symétrie de ces perçages."
+  },
+  {
+   "id": "fr25",
+   "prompt": "je souhaite un fichier 3D pour une platine de 850x500x8 avec des rayons de 25mm dans les coins, en ajoutant une découpe rectangulaire de 200x150mm au centre de la pièce orienté le 200mm sur la longueur de 850mm, avec des Ø25 tout autour de la pièce, le premier à 45mm de longueur et largeur de l’origine, puis à répéter 4 fois tout les 190mm sur la longueur et 3 fois tout les 136.66mm sur la largeur, faire la symétrie de ces perçages."
+  },
+  {
+   "id": "fr26",
+   "prompt": "je souhaite un habillage de plafond technique en panneaux aluminium anodisé 1,5 mm, pour une zone de 2400 mm x 1200 mm. Chaque panneau fera 600 x 600 mm, avec retour de 25 mm sur tout le périmètre, pour emboîtement."
+  },
+  {
+   "id": "fr27",
+   "prompt": "je souhaite un tube de section 40x40x2mm de longueur 815mm de longueur totale avec d’un côté une coupe à 45° et de l’autre des tenons de 20x2 centré sur les faces symétriques selon la coupe. Faire un enlèvement de matière d’un 3/4 de cercle de Ø0.75mm à la base des tenons.Egalement, sur les autres faces rajouter des mortaises 20.2x2.2mm centré à 400mm du bord de la coupe à 90° sans prendre en compte les tenons sur les autres faces."
+  },
+  {
+   "id": "fr28",
+   "prompt": "je souhaite une platine fendue pour pouvoir régler sa position sur la longueur. La dimension serait de 200x100x10 avec 2 fentes en oblong de 150x15 centré d'entraxe de 30mm. Rajouter 4 Ø8 dans les coins à 10mm des bords. Sur ces perçage, réaliser un enlèvement de matière de type lamage de Ø12 sur une profondeur de 5mm."
+  },
+  {
+   "id": "fr29",
+   "prompt": "réaliser une cornière en L à 90° d’une section de 30x20x1.5 longueur 103mm avec un rayon de pliage intérieur de 1.5mm et extérieur de 3mm, ajouter 2 perçages Ø3.2 avec un fraisurage Ø6 à 90° avec un entraxe de 82mm sur le l’aile de 20mm centré sur le 103mm mais à 12mm du bord opposé du pliage. Les fraisuages sont sur le côté intérieur du pli. Ajouter également 2 perçages Ø6.6 sur l’aile de 30mm avec un entraxe de 60.5mm à 10mm du bord opposé du pliage. Ajouter des rayons de 8mm dans les 4 coins."
+  }
+ ]
+}

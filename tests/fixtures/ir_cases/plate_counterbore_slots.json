@@ -1,0 +1,63 @@
+{
+ "thickness": 10,
+ "blank": {
+  "type": "rect",
+  "x": 200,
+  "y": 100
+ },
+ "features": [
+  {
+   "type": "slot",
+   "size": [
+    150,
+    15
+   ],
+   "orientation": "u",
+   "at": {
+    "u": {
+     "from": "center"
+    },
+    "v": {
+     "from": "center"
+    }
+   },
+   "pattern": {
+    "type": "linear",
+    "count": 2,
+    "pitch": 30,
+    "axis": "v"
+   }
+  },
+  {
+   "type": "counterbore",
+   "diameter": 8,
+   "cb_diameter": 12,
+   "cb_depth": 5,
+   "at": {
+    "u": {
+     "from": "x-",
+     "dist": 10
+    },
+    "v": {
+     "from": "y-",
+     "dist": 10
+    }
+   },
+   "mirror": [
+    "u",
+    "v"
+   ]
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   200,
+   0,
+   100,
+   0,
+   10
+  ],
+  "tools": 6
+ }
+}

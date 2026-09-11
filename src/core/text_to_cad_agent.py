@@ -283,6 +283,8 @@ class TextToCADAgent:
 
         # Enhanced face identification processor
         self.face_processor = EnhancedFaceProcessor()
+        from src.core.ir_flow import IRFlow
+        self._ir_flow = IRFlow(self)
 
     async def _invoke_unified_with_rag(self, user_text, session_id, **kwargs):
         """
@@ -1270,6 +1272,7 @@ class TextToCADAgent:
 
         dims_complete = not unified_output_obj.missing_info
 
+        state = self._get_session_state(session_id)   # P0 fix: was never assigned, every perforated request crashed
         cached_params = state.get('perf_extracted_params')
         if cached_params and dims_complete:
             logger.info(f"[PERF_PARAM_CHAIN] ♻️ Using cached perf params from previous turn | session={session_id}")
@@ -3524,7 +3527,7 @@ class TextToCADAgent:
 
 
 
-    async def save_outputs(self, code, design_requirements, base_filename="generated_cad", user_text="", session_id=None, priority: int = 0):
+    async def save_outputs(self, code, design_requirements, base_filename="generated_cad", user_text="", session_id=None, priority: int = 0, skip_metadata: bool = False):
 
         from src.utils.file_manager import save_code_file, save_metadata_file
         from src.utils.path_manager import OBJ_OUTPUT_DIR, CAD_OUTPUT_DIR, PDF_OUTPUT_DIR, PROJECT_ROOT
@@ -3584,45 +3587,48 @@ class TextToCADAgent:
 
         # 🆕 Generate threaded holes metadata (after code is saved)
         threaded_metadata_path = None
-        try:
-            from src.utils.file_manager import save_threaded_metadata_file_async
+        if skip_metadata:
+            logger.debug("[THREADED] Skipped: the IR builder writes metadata.json itself")
+        else:
+            try:
+                from src.utils.file_manager import save_threaded_metadata_file_async
 
-            logger.debug(f"[THREADED] Analyzing code for threaded holes: {code_filepath}")
+                logger.debug(f"[THREADED] Analyzing code for threaded holes: {code_filepath}")
 
-            # Get cost tracker for this session
-            cost_tracker = self._get_cost_tracker(session_id) if session_id else None
+                # Get cost tracker for this session
+                cost_tracker = self._get_cost_tracker(session_id) if session_id else None
 
-            # ── Perforated Sheet detection for metadata-skip, robust across new + edit flows ──
-            # `shape_type` alone is unreliable in the edit flow: _prepare_current_requirements()
-            # falls back to shape_type="unknown" whenever latest_requirements wasn't refreshed
-            # (text_to_cad_agent.py:3625-3631) -- this is exactly the flow that caused the
-            # original incident (session_0a8b30_297471, edit request "fais plus de rectangles").
-            # perf_calc_result is populated by _run_perf_vide_function_call() whenever the
-            # unified chain detects Perforated Sheet on ANY turn (new or edit) and persists in
-            # session state, so use it as a second, more reliable signal here.
-            metadata_shape_type = shape_type
-            if 'perforated' not in (shape_type or '').lower() and session_id:
-                if self._get_session_state(session_id).get('perf_calc_result') is not None:
-                    metadata_shape_type = "Perforated Sheet"
+                # ── Perforated Sheet detection for metadata-skip, robust across new + edit flows ──
+                # `shape_type` alone is unreliable in the edit flow: _prepare_current_requirements()
+                # falls back to shape_type="unknown" whenever latest_requirements wasn't refreshed
+                # (text_to_cad_agent.py:3625-3631) -- this is exactly the flow that caused the
+                # original incident (session_0a8b30_297471, edit request "fais plus de rectangles").
+                # perf_calc_result is populated by _run_perf_vide_function_call() whenever the
+                # unified chain detects Perforated Sheet on ANY turn (new or edit) and persists in
+                # session state, so use it as a second, more reliable signal here.
+                metadata_shape_type = shape_type
+                if 'perforated' not in (shape_type or '').lower() and session_id:
+                    if self._get_session_state(session_id).get('perf_calc_result') is not None:
+                        metadata_shape_type = "Perforated Sheet"
 
-            # Save threaded metadata (async - no executor needed)
-            threaded_metadata_path = await save_threaded_metadata_file_async(
-                Path(code_filepath),
-                metadata_shape_type,
-                dimensions,
-                design_requirements.dict() if design_requirements else None,
-                cost_tracker  # ← Pass cost tracker for OpenAI cost tracking
-            )
+                # Save threaded metadata (async - no executor needed)
+                threaded_metadata_path = await save_threaded_metadata_file_async(
+                    Path(code_filepath),
+                    metadata_shape_type,
+                    dimensions,
+                    design_requirements.dict() if design_requirements else None,
+                    cost_tracker  # ← Pass cost tracker for OpenAI cost tracking
+                )
             
-            if threaded_metadata_path:
-                # Listed as `metadata` in the [FILES] summary.
-                logger.debug(f"[THREADED] Threaded metadata generated: {threaded_metadata_path}")
-            else:
-                logger.debug(f"[THREADED] No threaded holes detected in code")
+                if threaded_metadata_path:
+                    # Listed as `metadata` in the [FILES] summary.
+                    logger.debug(f"[THREADED] Threaded metadata generated: {threaded_metadata_path}")
+                else:
+                    logger.debug(f"[THREADED] No threaded holes detected in code")
                 
-        except Exception as e:
-            logger.warning(f"[THREADED] Failed to generate threaded metadata: {e}")
-            threaded_metadata_path = None
+            except Exception as e:
+                logger.warning(f"[THREADED] Failed to generate threaded metadata: {e}")
+                threaded_metadata_path = None
 
         # Execute FreeCAD script on remote server with progress monitoring
         result, downloaded_files = await self._execute_freecad_remote(
@@ -3899,6 +3905,17 @@ class TextToCADAgent:
             
             logger.debug(f"[DEBUG] Material choice set in session state: '{state.get('material_choice', 'NOT SET')}' → Mapped: '{state.get('mapped_material', 'NOT SET')}'")
             logger.debug(f"[AGENT_PROGRESS] Material choice stored in session state: {state.get('material_choice')} → Mapped: {state.get('mapped_material')}")
+
+            # ── IR pipeline: reply to a pending IR confirmation ─────────────
+            from src.core.ir_flow import use_ir_pipeline
+            if state.get('awaiting_confirm') and state.get('ir_pending') and use_ir_pipeline(state, user_text):
+                _ir_intent = await self._detect_confirm_intent(user_text, session_id)
+                if _ir_intent == "YES":
+                    async for _upd in self._ir_flow.build_pending(session_id, priority, start_time, user_text):
+                        yield _upd
+                    return
+                # CHANGE: drop the pending IR and re-read the whole conversation below
+                self._update_session_state(session_id, awaiting_confirm=False, ir_pending=None)
 
             # ════════════════════════════════════════════════════════════════
             # CONFIRM FAST-PATH GATE
@@ -4193,6 +4210,15 @@ class TextToCADAgent:
                         )
                         greeting_result['classification'] = 'cad_request'
 
+                    # A message that carries dimensions is a CAD request whatever the classifier
+                    # says: "Can you provide a 3D file for a guardrail of 1200 mm..." was read as
+                    # a greeting by the nano tier and answered with "Hello! I'm your assistant".
+                    if (greeting_result.get('classification') in ('greeting', 'information_request', 'process_question')
+                            and re.search(r'\d\s*(mm|cm|m|x\s*\d|×)|Ø|diam', user_text, re.I)):
+                        logger.info("[AGENT_GREETING] Overriding '%s' -> cad_request (message carries dimensions)",
+                                    greeting_result.get('classification'))
+                        greeting_result['classification'] = 'cad_request'
+
                     # If it's a greeting with high confidence, return the response immediately
                     if (greeting_result.get('classification') == 'greeting' and
                         greeting_result.get('confidence', 0) > 0.8 and
@@ -4342,6 +4368,12 @@ class TextToCADAgent:
             # EDIT MODE — all edit requests route to process_edit_request.
             # process_edit_request builds conversation history internally for RAG.
             # ══════════════════════════════════════════════════════════════════════
+
+            # ── IR pipeline: every non-perforated request (new or edit) ─────
+            if use_ir_pipeline(state, user_text):
+                async for _upd in self._ir_flow.turn(user_text, session_id, is_edit_request, priority, start_time):
+                    yield _upd
+                return
 
             # 🔍 DIAGNOSTIC: log gate values to detect sync issues before edit routing
             _latest_code_len = len(state.get('latest_code') or '')

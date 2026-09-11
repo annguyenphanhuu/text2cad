@@ -1,0 +1,33 @@
+{
+ "thickness": 3,
+ "blank": {
+  "type": "disc",
+  "diameter": 200
+ },
+ "features": [
+  {
+   "type": "hole",
+   "diameter": 40
+  },
+  {
+   "type": "hole",
+   "diameter": 9,
+   "pattern": {
+    "type": "polar",
+    "count": 6,
+    "circle_diameter": 150
+   }
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   200,
+   0,
+   200,
+   0,
+   3
+  ],
+  "volume": 89332.757799075
+ }
+}

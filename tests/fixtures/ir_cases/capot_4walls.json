@@ -1,0 +1,40 @@
+{
+ "thickness": 2,
+ "blank": {
+  "type": "rect",
+  "x": 100,
+  "y": 60
+ },
+ "bends": [
+  {
+   "name": "front",
+   "edge": "y-",
+   "length": 30
+  },
+  {
+   "name": "back",
+   "edge": "y+",
+   "length": 30
+  },
+  {
+   "name": "left",
+   "edge": "x-",
+   "length": 30
+  },
+  {
+   "name": "right",
+   "edge": "x+",
+   "length": 30
+  }
+ ],
+ "_expect": {
+  "bbox": [
+   0,
+   100,
+   0,
+   60,
+   0,
+   30
+  ]
+ }
+}
