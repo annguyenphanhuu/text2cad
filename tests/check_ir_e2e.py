@@ -89,6 +89,8 @@ def main():
     ap.add_argument("--edit-text", default="Add a Ø10 hole in the centre of the base.")
     args = ap.parse_args()
     tok = token()
+    out = ROOT / "outputs" / ("e2e_%s" % time.strftime("%Y%m%d_%H%M%S"))
+    out.mkdir(parents=True, exist_ok=True)
     if args.edit_session:
         t = turn(args.base, tok, args.edit_text, args.edit_session, is_edit=True)
         f = t["final"] or {}
@@ -110,8 +112,6 @@ def main():
                 sizes[ext] = fetch(url if url.startswith("http") else args.base.rstrip("/") + "/" + url.lstrip("/"), out / ("edited." + ext), tok)
         print("ok turn %.0fs error=%s exports=%s -> %s" % (t2["duration_s"], t2["error"], sizes, out))
         return 0 if sizes.get("step") else 1
-    out = ROOT / "outputs" / ("e2e_%s" % time.strftime("%Y%m%d_%H%M%S"))
-    out.mkdir(parents=True, exist_ok=True)
     wanted = [w.strip() for w in args.only.split(",")] if args.only else list(PROMPTS)
     ok_count = 0
     for name in wanted:

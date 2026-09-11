@@ -436,6 +436,9 @@ Rules
   add or remove a bend, change material or thickness. Keep names of untouched faces unchanged.
 - If a feature is described by its face and the customer refers to "this face" / a selected face,
   use the `selected_face` hint given in the inputs.
+- Positions: `at.u` / `at.v` = {"from": <an edge of that face, or "center">, "dist": mm to the feature centre}.
+  "in the centre" / "centred" = {"from": "center", "dist": 0} on both axes — never an edge with dist 0,
+  that puts the feature ON the edge.
 - Never invent numbers: if the change needs a value the customer did not give, keep the IR
   unchanged and put one question in `questions`.
 - If the request is not an edit (a completely new part), return the new part with `"new_part": true`.
