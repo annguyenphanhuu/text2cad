@@ -52,8 +52,8 @@ Tubes are a separate family (section + length + end cuts + features).
   `dims` (default "outside"): use `"inside"` ONLY when the customer names the bottom of a cover / tray / box /
   housing ("base X x Y", "fond", "footprint", "intérieur") — the shop reads that as the inside footprint, the
   walls stand outside it. When the customer gives the OVERALL size of the part ("fan cover 500 x 300 with a 15 mm
-  frame", "panel 600 x 600 with a 25 mm return", "dimensions L x H") keep "outside": the flanges are inside that
-  size. Brackets (L / U / Z) and flat plates keep "outside".
+  frame", "panel 600 x 600 with a 25 mm return", "box 300 x 404 x 200", "dimensions L x W x H") keep "outside":
+  the walls and flanges are inside that size. Brackets (L / U / Z) and flat plates keep "outside".
   `corner_radius` applies to all four corners; `corners` overrides single corners
   ("x-y-" front-left, "x+y-" front-right, "x-y+" back-left, "x+y+" back-right).
 - `{"type": "disc", "diameter": D, "inner_diameter": d or null, "arc": 360}` — round plate / flange / ring.
