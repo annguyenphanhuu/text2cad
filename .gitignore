@@ -99,3 +99,6 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
+
+# Client decks / large binaries (the 2511 test-report deck is the source of tests/fixtures/pptx_*.json)
+*.pptx

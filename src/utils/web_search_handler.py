@@ -1,7 +1,5 @@
 import re
 import logging
-import os
-import asyncio
 from typing import Dict, Tuple, List
 from urllib.parse import urlparse
 from openai import AsyncOpenAI
@@ -485,7 +483,7 @@ class WebSearchProcessor:
             Dict[str, str]: Dictionary containing extracted content and metadata
         """
         if not self.client:
-            logger.warning(f"[WEB_EXTRACT] AsyncOpenAI client not initialized, extracting info from URL")
+            logger.warning("[WEB_EXTRACT] AsyncOpenAI client not initialized, extracting info from URL")
             url_based_description = self._extract_product_info_from_url(url)
             logger.info(f"[WEB_EXTRACT] Using URL-based description: {url_based_description}")
             return {
@@ -748,15 +746,15 @@ TARGET URL: {url}
                             )
                             logger.info(f"[WEB_EXTRACT] ✅ Tracked cost: {input_tokens} input + {output_tokens} output tokens")
                         else:
-                            logger.warning(f"[WEB_EXTRACT] Usage object has no token counts")
+                            logger.warning("[WEB_EXTRACT] Usage object has no token counts")
                     else:
-                        logger.warning(f"[WEB_EXTRACT] Response does not have usage attribute - cannot track cost")
+                        logger.warning("[WEB_EXTRACT] Response does not have usage attribute - cannot track cost")
                 except Exception as e:
                     logger.warning(f"[WEB_EXTRACT] Failed to track cost: {e}")
                     import traceback
                     logger.debug(f"[WEB_EXTRACT] Traceback: {traceback.format_exc()}")
             else:
-                logger.debug(f"[WEB_EXTRACT] No cost_tracker available for this request")
+                logger.debug("[WEB_EXTRACT] No cost_tracker available for this request")
 
             extracted_content = response.output_text
 
@@ -765,7 +763,7 @@ TARGET URL: {url}
 
             # Check if the response is an error message instead of actual content
             if self._is_error_response(extracted_content):
-                logger.warning(f"[WEB_EXTRACT] Response appears to be an error message, extracting info from URL instead")
+                logger.warning("[WEB_EXTRACT] Response appears to be an error message, extracting info from URL instead")
                 # Extract product info from URL as fallback
                 url_based_description = self._extract_product_info_from_url(url)
                 logger.info(f"[WEB_EXTRACT] Using URL-based description: {url_based_description}")
@@ -783,7 +781,7 @@ TARGET URL: {url}
 
             if validation_result["should_use_placeholder"]:
                 logger.info(f"[WEB_EXTRACT] Multiple dimension values detected. Conflicts: {validation_result['dimension_conflicts']}")
-                logger.info(f"[WEB_EXTRACT] Content will use placeholders for conflicting dimensions")
+                logger.info("[WEB_EXTRACT] Content will use placeholders for conflicting dimensions")
 
             # Log extracted content in a single readable line
             logger.info(f"[WEB_EXTRACT] ✅ OpenAI result ({len(extracted_content)} chars): '{extracted_content}'")

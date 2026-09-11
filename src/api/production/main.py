@@ -1,4 +1,3 @@
-import os
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
@@ -13,28 +12,12 @@ from sqlalchemy import or_, func
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tolery-api-production")
 
-# Import database and models
-try:
-    from ..database.database import SessionLocal
-    from ..models.sessions import Session as SessionModel, ChatHistory
-    from ..crud import chat_processing as crud
-    from ..core.chatbot import text_to_cad_agent
-except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from src.database.database import SessionLocal
-    from src.models.sessions import Session as SessionModel, ChatHistory
-    from src.crud import chat_processing as crud
-    from src.core.chatbot import text_to_cad_agent
-
-# Import routers
-# PDF and Image chat routers removed from production API
-
-# Import authentication
-try:
-    from ..middleware.auth import verify_token_dependency as verify_token
-except ImportError:
-    from src.middleware.auth import verify_token_dependency as verify_token
+from src.database.database import get_db
+from src.models.sessions import Session as SessionModel, ChatHistory
+from src.crud import chat_processing as crud
+from src.core.chatbot import text_to_cad_agent
+from src.middleware.auth import verify_token_dependency as verify_token
+from src.schemas.sessions import ChatRequest
 
 # FastAPI app with security configuration
 app = FastAPI(
@@ -49,23 +32,6 @@ app = FastAPI(
 configure_cors(app)
 
 # Note: Static files and templates are handled by main app, not sub-apps
-
-# Note: Static files and templates are handled by main app, not sub-apps
-
-# Import database dependency from main database module
-try:
-    from ...database.database import get_db
-except ImportError:
-    try:
-        from src.database.database import get_db
-    except ImportError:
-        # Fallback: create local get_db function
-        def get_db():
-            db = SessionLocal()
-            try:
-                yield db
-            finally:
-                db.close()
 
 # ============================================================================
 # API-PRODUCTION: CORE ENDPOINTS
@@ -453,11 +419,6 @@ async def get_chat_history(session_id: str, db: Session = Depends(get_db), token
         raise HTTPException(status_code=500, detail=f"Error getting chat history: {str(e)}")
 
 # 6. CHAT (Regular text chat)
-try:
-    from ...schemas.sessions import ChatRequest
-except ImportError:
-    from src.schemas.sessions import ChatRequest
-
 
 @app.post("/chat_to_cad", tags=["cad"])
 async def chat(request_data: ChatRequest, db: Session = Depends(get_db), token: str = Depends(verify_token)):

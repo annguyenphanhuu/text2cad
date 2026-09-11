@@ -12,9 +12,10 @@ from fastapi.responses import JSONResponse
 # Configure logging
 logger = logging.getLogger("tolery-auth")
 
-# Get JWT token from environment variable with fallback
-API_TOKEN = os.getenv("API_SECRET_TOKEN", "yJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMjMsInVzZXJuYW1lIjoiaHV5Iiwicm9sZSI6ImFkbWluIn0.E_YGrdhOQcuUcQ6Ugn_wUOhoMxu-bD2Ajol5YvhJit8")
-VALID_TOKEN = API_TOKEN  # Alias for backward compatibility
+# The one shared API token. No default: a deployment without it must fail closed, not open.
+API_TOKEN = os.getenv("API_SECRET_TOKEN")
+if not API_TOKEN:
+    raise RuntimeError("API_SECRET_TOKEN is not set - put it in .env (see env.example)")
 
 # FastAPI Security scheme for Swagger UI
 security = HTTPBearer()
@@ -52,20 +53,6 @@ async def verify_token_dependency(credentials: HTTPAuthorizationCredentials = De
     return credentials.credentials
 
 
-def get_token_info():
-    """
-    Get information about the JWT token for documentation/testing purposes
-    """
-    return {
-        "token": API_TOKEN,
-        "format": "JWT token",
-        "usage": {
-            "header": f"Authorization: Bearer {API_TOKEN}"
-        },
-        "example_curl": f"curl -H 'Authorization: Bearer {API_TOKEN}' http://localhost:8124/api-production/sessions"
-    }
-
-
 async def auth_middleware(request: Request, call_next):
     """
     Middleware to protect API endpoints and extract user_id.
@@ -75,16 +62,16 @@ async def auth_middleware(request: Request, call_next):
     - Extracts user_id from X-User-ID header and stores in context for logging.
     """
     from ..utils.context_manager import set_user_id, clear_context
-    
+
     # Clear context at the start of each request
     clear_context()
-    
+
     # Extract user_id from headers if present
     user_id = request.headers.get("X-User-ID")
     if user_id:
         set_user_id(user_id)
         logger.debug(f"[AUTH] Extracted user_id from header: {user_id}")
-    
+
     public_paths = [
         "/", "/docs", "/redoc", "/openapi.json", "/api/health",
         "/api-test/docs", "/api-test/redoc", "/api-test/openapi.json",
@@ -97,7 +84,7 @@ async def auth_middleware(request: Request, call_next):
         request.url.path.startswith("/api/pdf-viewer/")):
         response = await call_next(request)
         return response
-    
+
     # Allow access to public paths and static files
     if request.url.path in public_paths or request.url.path.startswith("/static"):
         response = await call_next(request)
@@ -139,4 +126,3 @@ async def auth_middleware(request: Request, call_next):
     # Proceed with the request
     response = await call_next(request)
     return response
-

@@ -4,14 +4,7 @@ SQLAlchemy models for session-related operations.
 from sqlalchemy import Column, String, Integer, Text, ForeignKey, TIMESTAMP
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-try:
-    from ..database.database import Base
-except ImportError:
-    # Fallback for direct imports
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from src.database.database import Base
+from ..database.database import Base
 
 
 class Session(Base):

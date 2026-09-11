@@ -67,27 +67,17 @@ logger.debug(f"Configured BASE_URL: {BASE_URL}")
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Import processors and dependencies
-try:
-    from ..utils.pdf_handler import PDFProcessor
-    from ..utils.image_handler import ImageProcessor
-    from ..core.chatbot import text_to_cad_agent
-    from ..database.database import init_db, get_db
-    from ..models.sessions import Session as SessionModel, ChatHistory
-    from ..middleware.auth import auth_middleware
-    from ..utils.runtime_monitor import runtime_monitor
-    from ..utils.sizing_advisor import sizing_advisor
-    from ..utils.context_manager import get_user_id
-except ImportError:
-    from src.utils.pdf_handler import PDFProcessor
-    from src.utils.image_handler import ImageProcessor
-    from src.core.chatbot import text_to_cad_agent
-    from src.database.database import init_db, get_db
-    from src.models.sessions import Session as SessionModel, ChatHistory
-    from src.middleware.auth import auth_middleware
-    from src.utils.runtime_monitor import runtime_monitor
-    from src.utils.sizing_advisor import sizing_advisor
-    from src.utils.context_manager import get_user_id
+from src.utils.pdf_handler import PDFProcessor
+from src.utils.image_handler import ImageProcessor
+from src.core.chatbot import text_to_cad_agent
+from src.database.database import init_db, get_db
+from src.models.sessions import Session as SessionModel, ChatHistory
+from src.middleware.auth import auth_middleware
+from src.utils.runtime_monitor import runtime_monitor
+from src.utils.sizing_advisor import sizing_advisor
+from src.utils.context_manager import get_user_id
+from src.schemas.sessions import ChatRequest
+from src.crud.chat_processing import generate_cad_realtime_stream
 
 # Initialize database
 init_db()
@@ -165,12 +155,6 @@ except Exception as e:
 # ============================================================================
 # REQUEST/RESPONSE MODELS
 # ============================================================================
-
-try:
-    from ..schemas.sessions import ChatRequest
-except ImportError:
-    from src.schemas.sessions import ChatRequest
-
 
 class PDFProcessingResponse(BaseModel):
     """Response model for PDF processing."""
@@ -838,12 +822,6 @@ async def generate_cad_stream(
         async def _producer():
             """Run the CAD generator and push updates into the queue."""
             try:
-                logger.debug(f"[SSE_STREAM] Importing streaming function for stream {stream_id}")
-                try:
-                    from ..crud.chat_processing import generate_cad_realtime_stream
-                except ImportError:
-                    from src.crud.chat_processing import generate_cad_realtime_stream
-
                 logger.debug(f"[SSE_STREAM] Beginning real-time CAD generation for stream {stream_id}")
                 agent = text_to_cad_agent
 
@@ -1475,31 +1453,17 @@ async def update_latest_code(request_data: UpdateCodeRequest, db: Session = Depe
 # MOUNT API-PRODUCTION and API-TEST
 # ============================================================================
 
-# Import and mount API-PRODUCTION
-try:
-    from .production.main import app as api_production_app
-except ImportError:
-    from src.api.production.main import app as api_production_app
+from src.api.production.main import app as api_production_app
+from src.api.test.main import app as api_test_app
 
 app.mount("/api-production", api_production_app)
-
-# Import and mount API-TEST
-try:
-    from .test.main import app as api_test_app
-except ImportError:
-    from src.api.test.main import app as api_test_app
-
 app.mount("/api-test", api_test_app)
 
 # ============================================================================
 # DOWNLOAD ROUTER FOR FILE DOWNLOADS
 # ============================================================================
 
-# Import and mount download router for file downloads
-try:
-    from .routes.cad import download_router
-except ImportError:
-    from src.api.routes.cad import download_router
+from src.api.routes.cad import download_router
 
 app.include_router(download_router)
 

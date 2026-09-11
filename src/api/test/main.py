@@ -25,21 +25,12 @@ from sqlalchemy import func
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tolery-api-test")
 
-# Database and model imports
-try:
-    from ...database.database import get_db
-    from ...models.sessions import Session as SessionModel, ChatHistory
-    from ... import crud
-    from ...core.chatbot import text_to_cad_agent
-    from ...middleware.auth import verify_token_dependency as verify_token
-except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from src.database.database import get_db
-    from src.models.sessions import Session as SessionModel, ChatHistory
-    import src.crud as crud
-    from src.core.chatbot import text_to_cad_agent
-    from src.middleware.auth import verify_token_dependency as verify_token
+from src.database.database import get_db
+from src.models.sessions import Session as SessionModel, ChatHistory
+import src.crud as crud
+from src.core.chatbot import text_to_cad_agent
+from src.middleware.auth import verify_token_dependency as verify_token
+from src.schemas.sessions import ChatRequest
 
 # FastAPI app (no lifespan when mounted as sub-app)
 app = FastAPI(
@@ -89,12 +80,6 @@ class ChatHistoryResponse(BaseModel):
     session_id: str = Field(..., description="Session ID")
     messages: List[dict] = Field(..., description="List of chat messages")
     total_messages: int = Field(..., description="Total number of messages")
-
-try:
-    from ...schemas.sessions import ChatRequest
-except ImportError:
-    from src.schemas.sessions import ChatRequest
-
 
 class ChatResponse(BaseModel):
     """Chat response model."""

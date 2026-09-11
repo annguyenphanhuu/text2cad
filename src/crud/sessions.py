@@ -11,16 +11,8 @@ import re
 # Set up logger
 logger = logging.getLogger(__name__)
 
-try:
-    from ..models.sessions import Session as SessionModel, ChatHistory
-    from ..database.db_retry import retry_db_operation, DatabaseRetryError, is_connection_error
-except ImportError:
-    # Fallback for direct imports
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from src.models.sessions import Session as SessionModel, ChatHistory
-    from src.database.db_retry import retry_db_operation, DatabaseRetryError, is_connection_error
+from ..models.sessions import Session as SessionModel, ChatHistory
+from ..database.db_retry import retry_db_operation, DatabaseRetryError, is_connection_error
 
 
 # Get all sessions
@@ -263,23 +255,13 @@ def get_exports_by_session_id(db: Session, session_id: str, export_format: str =
     Raises:
         HTTPException: If no exports found.
     """
-    # Import BASE_URL from main module
     import os
     from pathlib import Path
 
-    # Get BASE_URL from environment or use default
-    try:
-        from ..api.main import BASE_URL
-    except ImportError:
-        # Fallback if import fails
-        PORT = int(os.getenv("UVICORN_PORT", 8124))
-        DOMAIN = os.getenv("DOMAIN", "http://localhost")
-
-        # Only include port in BASE_URL if DOMAIN is localhost
-        if DOMAIN == "http://localhost" or DOMAIN == "localhost":
-            BASE_URL = f"{DOMAIN}:{PORT}"
-        else:
-            BASE_URL = DOMAIN
+    # Same rule as src/api/main.py BASE_URL: the port only shows on localhost
+    PORT = int(os.getenv("UVICORN_PORT", 8124))
+    DOMAIN = os.getenv("DOMAIN", "http://localhost")
+    BASE_URL = f"{DOMAIN}:{PORT}" if DOMAIN in ("http://localhost", "localhost") else DOMAIN
 
     logger.info(f"Using BASE_URL: {BASE_URL}")
 
