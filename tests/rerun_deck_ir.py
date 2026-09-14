@@ -336,16 +336,21 @@ async def main_async(args):
     load_dotenv(ROOT / ".env")
     from src.core.chatbot import text_to_cad_agent as agent
     from tests.harness import bank
-    cases, from_bank = [], False
+    data = None if args.no_bank else bank.load(args.bank)
+    cases = []
     for name in (args.cases or "deck2511").split(","):
         name = name.strip()
         if not name:
             continue
         if name in ("deck2511", "deck2511_fr"):
-            cases += bank.harness_cases(bank.load(args.bank), french=name.endswith("_fr"))
-            from_bank = True
+            cases += bank.harness_cases(data or bank.load(args.bank), french=name.endswith("_fr"))
         else:
-            cases += json.loads(Path(name).read_text(encoding="utf-8"))["run"]
+            extra = json.loads(Path(name).read_text(encoding="utf-8"))["run"]
+            cases += extra
+            if data is not None:
+                added = bank.ensure_cases(data, extra)
+                if added:
+                    print("%d case(s) from %s added to the bank" % (added, name))
     if args.only:
         wanted = [w.strip() for w in args.only.split(",") if w.strip()]
         cases = [c for c in cases if any(w in c["uid"] or w in c["dir"] for w in wanted)]
@@ -381,11 +386,11 @@ async def main_async(args):
         "(August legacy run / now, side by side) from this folder; the ground truth is in tests/deck2511.html.\n" % (time.strftime("%Y-%m-%d"), args.cases or "deck2511", max(runs)), encoding="utf-8")
     gen = sum(1 for r in recs if r.get("generated"))
     print("done: %d/%d runs produced a model | %s" % (gen, len(recs), out / "report.html"))
-    if from_bank:
-        data = bank.load(args.bank)
-        stats = bank.update_from_run(data, out, run_dir="run%d" % max(runs), label=out.name)
+    if data is not None:
+        stats = bank.update_from_run(data, out, runs=runs, label=out.name)
         size = bank.save(data, args.bank)
-        print("bank updated: %d cases, %d with a model -> %s (%.1f MB)" % (stats["cases"], stats["built"], args.bank, size / 1e6))
+        print("bank updated: %d cases | %d built in every run | %d same size in every run -> %s (%.1f MB)"
+              % (stats["cases"], stats["all_built"], stats["stable"], args.bank, size / 1e6))
 
 
 def main():
@@ -394,7 +399,8 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out")
-    ap.add_argument("--bank", default=str(ROOT / "tests" / "deck2511.html"), help="the HTML test bank read for deck2511 cases and updated with the results")
+    ap.add_argument("--bank", default=str(ROOT / "tests" / "deck2511.html"), help="the HTML test bank: source of the deck2511 cases, updated with every run's results")
+    ap.add_argument("--no-bank", action="store_true", help="do not touch the bank (throw-away experiments)")
     ap.add_argument("--cases", help="comma list: deck2511 (default) | deck2511_fr | JSON {\"run\": [{uid, dir, section, num, prompt}]} files. "
                                     "Results land in the same --out folder")
     ap.add_argument("--runs", type=int, default=1, help="runs per case (3 to measure stability)")
