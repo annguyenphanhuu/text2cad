@@ -5,9 +5,11 @@ compare.html (August legacy pipeline vs IR pipeline).
 
     SKIP_DB=true python tests/rerun_deck_ir.py [--limit N] [--only 034] [--workers 4]
 
-Cases and prompts are the 84 of outputs/test_rerun_20260818/selection.json, so
-the two reports line up case by case.  The agent runs in-process with
-the part is built and the drawing is produced by the local
+Cases come from --cases: "deck" = the 84 of outputs/test_rerun_20260818/selection.json
+(so the two reports line up case by case), "deck2511" / "deck2511_fr" = every case of the
+client deck with its ground-truth drawing (tests/fixtures/deck2511/cases.json, built by
+tools/extract_deck.py; English or French prompt), or a JSON file of {"run": [...]}.
+The agent runs in-process; the part is built and the drawing is produced by the local
 freecadcmd (no FreeCAD server / MQTT needed).  Nothing is answered on the
 customer's behalf: like in August, only "ok" is ever sent back, so a case that
 asks a real question ends as "no model" and is reported as such.
@@ -35,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("SKIP_DB", "true")
 
 OLD = ROOT / "outputs" / "test_rerun_20260818"
+DECK2511 = ROOT / "tests" / "fixtures" / "deck2511"
 WORKER_ROOT = ROOT.parent / "tolery-freecad"
 FREECADCMD = os.environ.get("FREECADCMD", r"C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe")
 RENDERER = OLD / "harness" / "render_obj.py"
@@ -105,7 +108,7 @@ class Harness:
             sid = "irrerun_%s" % case["uid"] if run == 1 else "irrerun_%s_r%d" % (case["uid"], run)
             rec = dict(uid=case["uid"], section=case["section"], num=case["num"], run=run, session_id=sid,
                        prompt=case["prompt"], started=time.strftime("%Y-%m-%d %H:%M:%S"), pipeline="ir",
-                       _dir=case["dir"], _run_dir=run_dir)
+                       gt_drawing=case.get("gt_drawing"), _dir=case["dir"], _run_dir=run_dir)
             turns, msg = [], case["prompt"]
             for n in range(1, MAX_TURNS + 1):
                 try:
@@ -329,14 +332,20 @@ def write_compare(recs, out):
                     '<details><summary>last reply</summary><pre>%s</pre></details></div>'
                     % (title, badge, H.escape(info[:40]), imgs, H.escape(reply or "")))
 
-        rows.append('<div class="case"><h2><span class="uid">%s</span>%s #%s</h2><div class="prompt">%s</div><div class="cols">%s%s</div></div>' % (
-            r["uid"], H.escape(str(r["section"])), r["num"], H.escape(r["prompt"]),
-            col("August 2026 (legacy pipeline)", "../test_rerun_20260818/%s/run1" % d, old_res, old_info, old_reply, bool(old_res.get("generated"))),
+        gt_col = ""
+        if r.get("gt_drawing") and Path(r["gt_drawing"]).exists():
+            rel = os.path.relpath(r["gt_drawing"], out).replace("\\", "/")
+            gt_col = ('<div class="col"><h4>Deck 2511 &mdash; client drawing (ground truth)</h4>'
+                      '<a href="%s"><img src="%s"></a></div>' % (rel, rel))
+        aug_col = "" if (r.get("gt_drawing") and not (OLD / d).exists()) else col(
+            "August 2026 (legacy pipeline)", "../test_rerun_20260818/%s/run1" % d, old_res, old_info, old_reply, bool(old_res.get("generated")))
+        rows.append('<div class="case"><h2><span class="uid">%s</span>%s #%s</h2><div class="prompt">%s</div><div class="cols">%s%s%s</div></div>' % (
+            r["uid"], H.escape(str(r["section"])), r["num"], H.escape(r["prompt"]), gt_col, aug_col,
             col("Now (IR pipeline)", "%s/run1" % d, r, new_info, r.get("final_reply"), bool(r.get("generated")))))
     css = """<style>body{font:15px/1.5 Calibri,Arial,sans-serif;max-width:1600px;margin:0 auto;padding:24px;color:#16202b}
 h1{font-size:26px}.case{border:1px solid #dde4ec;border-radius:12px;padding:14px 16px;margin:0 0 20px;background:#f7f9fc}
 .prompt{font-size:14px;background:#fff;border:1px solid #dde4ec;border-radius:8px;padding:8px 10px;margin:6px 0 12px}
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}.col{border:1px solid #dde4ec;border-radius:10px;padding:10px;background:#fff}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}.col{border:1px solid #dde4ec;border-radius:10px;padding:10px;background:#fff}
 .col h4{margin:0 0 6px;font-size:15px}img{max-width:100%;border:1px solid #dde4ec;border-radius:6px;margin:4px 0;background:#fff}
 .ok{color:#0f7b4f;font-weight:700}.bad{color:#b3261e;font-weight:700}.flag{font-size:12px;border:1px solid #dde4ec;border-radius:99px;padding:1px 7px;margin-left:6px;font-weight:400}
 .uid{display:inline-block;font:13px Consolas,monospace;background:#1b4f8f;color:#fff;padding:1px 8px;border-radius:6px;margin-right:8px}
@@ -344,13 +353,28 @@ details{margin:6px 0}summary{cursor:pointer;color:#1b4f8f;font-size:13px}pre{whi
 </style>"""
     n_old = sum(1 for r in recs if (OLD / r["_dir"] / "run1" / "model.step").exists())
     n_new = sum(1 for r in recs if r.get("generated"))
+    n_gt = sum(1 for r in recs if r.get("gt_drawing"))
     head = ("<title>Legacy vs IR pipeline</title>%s<h1>Legacy pipeline (August) vs IR pipeline (now)</h1>"
-            "<p>%d cases &middot; August run1 produced a model in %d, the IR pipeline in %d. Left column images come from "
-            "<code>../test_rerun_20260818</code>; open this file from its own folder.</p>" % (css, len(recs), n_old, n_new))
+            "<p>%d cases &middot; %d with the client's ground-truth drawing (tests/fixtures/deck2511) &middot; August run1 produced a model in %d, "
+            "the IR pipeline in %d. August images come from <code>../test_rerun_20260818</code>; open this file from its own folder.</p>"
+            % (css, len(recs), n_gt, n_old, n_new))
     (out / "compare.html").write_text(head + "\n".join(rows), encoding="utf-8")
 
 
 # ----------------------------------------------------------------- main
+
+def deck2511_cases(french=False):
+    """The client deck as harness cases: uid = deck number, prompt in the asked language, GT drawing path."""
+    manifest = json.loads((DECK2511 / "cases.json").read_text(encoding="utf-8"))
+    out = []
+    for c in manifest["cases"]:
+        prompt = (c.get("prompt_fr") if french else None) or c["prompt_en"]
+        sec = re.sub(r"[^a-z0-9]+", "_", (c["section"] or "").lower()).strip("_")
+        out.append({"uid": c["uid"], "dir": "%s_%s_n%s" % (c["uid"], sec, c["num"] if c["num"] is not None else "x"),
+                    "section": c["section"], "num": c["num"], "prompt": prompt, "slide": c["slide"],
+                    "gt_drawing": str(DECK2511 / c["gt_drawing"]) if c.get("gt_drawing") else None})
+    return out
+
 
 async def main_async(args):
     from dotenv import load_dotenv
@@ -360,6 +384,9 @@ async def main_async(args):
     for name in (args.cases or "deck").split(","):
         name = name.strip()
         if not name:
+            continue
+        if name in ("deck2511", "deck2511_fr"):
+            cases += deck2511_cases(french=name.endswith("_fr"))
             continue
         cases_file = OLD / "selection.json" if name == "deck" else Path(name)
         cases += json.loads(cases_file.read_text(encoding="utf-8"))["run"]
@@ -392,11 +419,10 @@ async def main_async(args):
     write_report(out, runs=max(runs))
     write_compare(recs, out)
     (out / "README.md").write_text(
-        "# OK test-case re-run - IR pipeline (%s)\n\nThe 84 deck prompts of `test_rerun_20260818` (selection.json) plus the chapter-9 "
-        "prompts of tests/fixtures/shape_cases_*.json, %d run(s) each, through the IR pipeline. The agent ran "
+        "# Test-case re-run - IR pipeline (%s)\n\nCases: `%s`, %d run(s) each, through the IR pipeline. The agent ran "
         "in-process; the part was built and drawn with the local freecadcmd (no FreeCAD server / MQTT). Only `ok` was ever sent back, "
         "never an answer to a question.\n\nOpen `report.html` (same layout as August, one column per run) or `compare.html` "
-        "(August vs now run 1, side by side) from this folder.\n" % (time.strftime("%Y-%m-%d"), max(runs)), encoding="utf-8")
+        "(ground truth / August / now, side by side) from this folder.\n" % (time.strftime("%Y-%m-%d"), args.cases or "deck", max(runs)), encoding="utf-8")
     gen = sum(1 for r in recs if r.get("generated"))
     print("done: %d/%d runs produced a model | %s" % (gen, len(recs), out / "report.html"))
 
