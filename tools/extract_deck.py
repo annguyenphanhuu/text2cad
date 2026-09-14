@@ -1,6 +1,10 @@
-"""Turn the client's 2511 test deck into a case manifest with ground-truth drawings.
+"""One-off: turn the client's 2511 test deck into a case manifest with ground-truth drawings.
 
     python tools/extract_deck.py [--deck 2511_ATN_TEST_REPORT_Roman_EN.pptx] [--out tests/fixtures/deck2511]
+
+The deck was run through this once (2026-09-14); tests/fixtures/deck2511/ is the source of
+truth from then on and nothing else in the repo reads the .pptx, which is not tracked and may
+disappear.  Re-run only if a new version of the deck arrives.
 
 Every case slide of the deck carries: the prompt ending in "(OK)" / "(NOT OK)", a small
 render of the old chatbot's output above a number label, and below the label the drawing

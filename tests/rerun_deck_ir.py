@@ -1,27 +1,23 @@
 """
-Re-run the deck's OK cases through the IR pipeline and write the same evidence
-layout + report.html as the August run, in a NEW folder, plus a side-by-side
-compare.html (August legacy pipeline vs IR pipeline).
+Run test cases through the IR pipeline offline and write the evidence + reports.
 
-    SKIP_DB=true python tests/rerun_deck_ir.py [--limit N] [--only 034] [--workers 4]
+    SKIP_DB=true python tests/rerun_deck_ir.py [--cases deck2511|deck2511_fr|file.json,...] [--limit N] [--only 127,128] [--runs 3]
 
-Cases come from --cases: "deck" = the 84 of outputs/test_rerun_20260818/selection.json
-(so the two reports line up case by case), "deck2511" / "deck2511_fr" = every case of the
-client deck with its ground-truth drawing (tests/fixtures/deck2511/cases.json, built by
-tools/extract_deck.py; English or French prompt), or a JSON file of {"run": [...]}.
+Cases: "deck2511" (default) = every case of the client deck with its ground-truth drawing
+(tests/fixtures/deck2511/cases.json, made once by tools/extract_deck.py - the deck itself is
+not needed any more), "deck2511_fr" = the same with the French prompts, or JSON files of
+{"run": [{uid, dir, section, num, prompt}]} such as tests/fixtures/shape_cases_*.json.
 The agent runs in-process; the part is built and the drawing is produced by the local
-freecadcmd (no FreeCAD server / MQTT needed).  Nothing is answered on the
-customer's behalf: like in August, only "ok" is ever sent back, so a case that
-asks a real question ends as "no model" and is reported as such.
+freecadcmd (no FreeCAD server / MQTT).  Nothing is answered on the customer's behalf: only
+"ok" is ever sent back, so a case that asks a real question ends as "no model".
 
-Output: outputs/test_rerun_<date>_ir/
-    <case dir>/run1/turnN_response.md, result.json, model.step/.obj/.pdf/.svg,
-                     drawing-1.png, render_3d.png, metadata.json, model_ir.json
-    report.html  summary.csv  results.jsonl  compare.html  README.md
+Output: outputs/<--out>/ (default test_rerun_<date>_ir)
+    <case dir>/runN/turnN_response.md, result.json, model.step/.obj/.pdf/.svg,
+                    drawing-1.png, render_3d.png, metadata.json, model_ir.json
+    report.html (ground truth + one column per run)  summary.csv  results.jsonl  compare.html  README.md
 """
 import argparse
 import asyncio
-import importlib.util
 import json
 import os
 import re
@@ -36,11 +32,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("SKIP_DB", "true")
 
-OLD = ROOT / "outputs" / "test_rerun_20260818"
 DECK2511 = ROOT / "tests" / "fixtures" / "deck2511"
+AUGUST = ROOT / "outputs" / "test_rerun_20260818"      # historical legacy-pipeline evidence; optional, only for compare.html
 WORKER_ROOT = ROOT.parent / "tolery-freecad"
 FREECADCMD = os.environ.get("FREECADCMD", r"C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe")
-RENDERER = OLD / "harness" / "render_obj.py"
+RENDERER = ROOT / "tests" / "harness" / "render_obj.py"
 SUCCESS_TEXT = "Your part generation successful."
 CONFIRM_RE = re.compile(r"reply\s+yes\s*/\s*ok\s+to\s+generate", re.I)
 MAX_TURNS = 5
@@ -108,7 +104,7 @@ class Harness:
             sid = "irrerun_%s" % case["uid"] if run == 1 else "irrerun_%s_r%d" % (case["uid"], run)
             rec = dict(uid=case["uid"], section=case["section"], num=case["num"], run=run, session_id=sid,
                        prompt=case["prompt"], started=time.strftime("%Y-%m-%d %H:%M:%S"), pipeline="ir",
-                       gt_drawing=case.get("gt_drawing"), _dir=case["dir"], _run_dir=run_dir)
+                       gt_drawing=case.get("gt_drawing"), august_uid=case.get("august_uid"), _dir=case["dir"], _run_dir=run_dir)
             turns, msg = [], case["prompt"]
             for n in range(1, MAX_TURNS + 1):
                 try:
@@ -266,22 +262,9 @@ def finish_records(recs, out, build_res, draw_res):
 
 # ----------------------------------------------------------------- reports
 
-def write_report(out, runs=1):
-    spec = importlib.util.spec_from_file_location("legacy_report", str(OLD / "harness" / "report.py"))
-    rep = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(rep)
-    rep.OUT = out
-    rep.main()
-    html_path = out / "report.html"
-    s = html_path.read_text(encoding="utf-8")
-    s = s.replace("<title>OK test-case re-run</title>", "<title>OK test-case re-run - IR pipeline</title>")
-    s = s.replace("<h1>OK test-case re-run</h1>", "<h1>OK test-case re-run &mdash; IR pipeline (%s)</h1>" % out.name)
-    s = s.replace("local API on :8124 with local FreeCAD &middot; 3 runs per case.",
-                  "same 84 prompts as <code>test_rerun_20260818</code>, plus chapter 9 (triangular, circular and "
-                  "circular-bent plates, perforated sheets, T/I profiles, DFM rule cases that are not in the deck) &middot; "
-                  "agent in-process, part built and drawn by local freecadcmd &middot; "
-                  "%d run(s) per case. Side by side with August: <a href=\"compare.html\">compare.html</a>." % runs)
-    html_path.write_text(s, encoding="utf-8")
+def write_report(out, runs=1, cases_label="deck2511"):
+    from tests.harness import report
+    report.write(out, runs=runs, cases_label=cases_label)
 
 
 def load_all_results(out, run_dir="run1"):
@@ -298,50 +281,39 @@ def load_all_results(out, run_dir="run1"):
 
 
 def write_compare(recs, out):
+    """compare.html: client drawing | August legacy run (when that folder is still around) | this run."""
     import html as H
-    recs = load_all_results(out)          # every case in the folder, not only the ones just re-run
+    recs = load_all_results(out)
     rows = []
+
+    def col(title, run_rel, info, reply, built):
+        imgs = "".join('<a href="%s"><img src="%s"></a>' % (run_rel + f, run_rel + f)
+                       for f in ("/drawing-1.png", "/render_3d.png") if (out / (run_rel + f)).exists())
+        badge = '<span class="ok">model</span>' if built else '<span class="bad">no model</span>'
+        return ('<div class="col"><h4>%s &mdash; %s <span class="flag">%s</span></h4>%s'
+                '<details><summary>last reply</summary><pre>%s</pre></details></div>'
+                % (title, badge, H.escape((info or "")[:40]), imgs, H.escape(reply or "")))
+
+    n_old = 0
     for r in sorted(recs, key=lambda x: x["_dir"]):
-        d = r["_dir"]
-        old_dir = OLD / d / "run1"
-        old_res = {}
-        if (old_dir / "result.json").exists():
-            try:
-                old_res = json.loads((old_dir / "result.json").read_text(encoding="utf-8"))
-            except Exception:
-                old_res = {}
-        old_info = ((old_res.get("files") or {}).get("obj") or {}).get("mesh_info") or ""
-        new_info = ((r.get("files") or {}).get("obj") or {}).get("mesh_info") or ""
-        old_reply = (old_res.get("turn2") or {}).get("chat_response") or (old_res.get("turns") or [{}])[-1].get("chat_response", "") if old_res else ""
-
-        def col(title, run_rel, res, info, reply, built):
-            imgs = ""
-            if not built and not (OLD / d).exists() and run_rel.startswith("../"):
-                return ('<div class="col"><h4>%s &mdash; <span class="flag">not in the August deck</span></h4>'
-                        '<p>This case was added in September to test triangular / circular / circular-bent plates.</p></div>' % title)
-            base = run_rel
-            draw = base + "/drawing-1.png"
-            rend = base + "/render_3d.png"
-            exists = lambda rel: (out / rel).exists()
-            if exists(draw):
-                imgs += '<a href="%s"><img src="%s"></a>' % (draw, draw)
-            if exists(rend):
-                imgs += '<a href="%s"><img src="%s"></a>' % (rend, rend)
-            badge = '<span class="ok">model</span>' if built else '<span class="bad">no model</span>'
-            return ('<div class="col"><h4>%s &mdash; %s <span class="flag">%s</span></h4>%s'
-                    '<details><summary>last reply</summary><pre>%s</pre></details></div>'
-                    % (title, badge, H.escape(info[:40]), imgs, H.escape(reply or "")))
-
-        gt_col = ""
+        cols = []
         if r.get("gt_drawing") and Path(r["gt_drawing"]).exists():
             rel = os.path.relpath(r["gt_drawing"], out).replace("\\", "/")
-            gt_col = ('<div class="col"><h4>Deck 2511 &mdash; client drawing (ground truth)</h4>'
-                      '<a href="%s"><img src="%s"></a></div>' % (rel, rel))
-        aug_col = "" if (r.get("gt_drawing") and not (OLD / d).exists()) else col(
-            "August 2026 (legacy pipeline)", "../test_rerun_20260818/%s/run1" % d, old_res, old_info, old_reply, bool(old_res.get("generated")))
-        rows.append('<div class="case"><h2><span class="uid">%s</span>%s #%s</h2><div class="prompt">%s</div><div class="cols">%s%s%s</div></div>' % (
-            r["uid"], H.escape(str(r["section"])), r["num"], H.escape(r["prompt"]), gt_col, aug_col,
-            col("Now (IR pipeline)", "%s/run1" % d, r, new_info, r.get("final_reply"), bool(r.get("generated")))))
+            cols.append('<div class="col"><h4>Deck 2511 &mdash; client drawing (ground truth)</h4><a href="%s"><img src="%s"></a></div>' % (rel, rel))
+        aug = sorted(AUGUST.glob("%s_*" % r["august_uid"])) if (r.get("august_uid") and AUGUST.exists()) else []
+        if aug and (aug[0] / "run1" / "result.json").exists():
+            try:
+                old = json.loads((aug[0] / "run1" / "result.json").read_text(encoding="utf-8"))
+            except Exception:
+                old = {}
+            n_old += bool(old.get("generated"))
+            old_reply = ((old.get("turns") or [{}])[-1].get("chat_response")) or (old.get("turn2") or {}).get("chat_response") or ""
+            cols.append(col("August 2026 (legacy pipeline)", os.path.relpath(aug[0] / "run1", out).replace("\\", "/"),
+                            ((old.get("files") or {}).get("obj") or {}).get("mesh_info"), old_reply, bool(old.get("generated"))))
+        cols.append(col("Now (IR pipeline)", "%s/run1" % r["_dir"], ((r.get("files") or {}).get("obj") or {}).get("mesh_info"),
+                        r.get("final_reply"), bool(r.get("generated"))))
+        rows.append('<div class="case"><h2><span class="uid">%s</span>%s #%s</h2><div class="prompt">%s</div><div class="cols">%s</div></div>'
+                    % (r["uid"], H.escape(str(r["section"])), r["num"], H.escape(r["prompt"]), "".join(cols)))
     css = """<style>body{font:15px/1.5 Calibri,Arial,sans-serif;max-width:1600px;margin:0 auto;padding:24px;color:#16202b}
 h1{font-size:26px}.case{border:1px solid #dde4ec;border-radius:12px;padding:14px 16px;margin:0 0 20px;background:#f7f9fc}
 .prompt{font-size:14px;background:#fff;border:1px solid #dde4ec;border-radius:8px;padding:8px 10px;margin:6px 0 12px}
@@ -351,13 +323,12 @@ h1{font-size:26px}.case{border:1px solid #dde4ec;border-radius:12px;padding:14px
 .uid{display:inline-block;font:13px Consolas,monospace;background:#1b4f8f;color:#fff;padding:1px 8px;border-radius:6px;margin-right:8px}
 details{margin:6px 0}summary{cursor:pointer;color:#1b4f8f;font-size:13px}pre{white-space:pre-wrap;font:12px/1.5 Consolas,monospace;background:#f7f9fc;border:1px solid #dde4ec;border-radius:6px;padding:8px}
 </style>"""
-    n_old = sum(1 for r in recs if (OLD / r["_dir"] / "run1" / "model.step").exists())
-    n_new = sum(1 for r in recs if r.get("generated"))
     n_gt = sum(1 for r in recs if r.get("gt_drawing"))
-    head = ("<title>Legacy vs IR pipeline</title>%s<h1>Legacy pipeline (August) vs IR pipeline (now)</h1>"
-            "<p>%d cases &middot; %d with the client's ground-truth drawing (tests/fixtures/deck2511) &middot; August run1 produced a model in %d, "
-            "the IR pipeline in %d. August images come from <code>../test_rerun_20260818</code>; open this file from its own folder.</p>"
-            % (css, len(recs), n_gt, n_old, n_new))
+    n_new = sum(1 for r in recs if r.get("generated"))
+    head = ("<title>Ground truth vs IR pipeline</title>%s<h1>Ground truth / legacy pipeline / IR pipeline</h1>"
+            "<p>%d cases &middot; %d with the client's drawing &middot; IR pipeline produced a model in %d &middot; "
+            "August legacy run shown for %d cases (from <code>outputs/test_rerun_20260818</code> when present). Open this file from its own folder.</p>"
+            % (css, len(recs), n_gt, n_new, n_old))
     (out / "compare.html").write_text(head + "\n".join(rows), encoding="utf-8")
 
 
@@ -372,7 +343,8 @@ def deck2511_cases(french=False):
         sec = re.sub(r"[^a-z0-9]+", "_", (c["section"] or "").lower()).strip("_")
         out.append({"uid": c["uid"], "dir": "%s_%s_n%s" % (c["uid"], sec, c["num"] if c["num"] is not None else "x"),
                     "section": c["section"], "num": c["num"], "prompt": prompt, "slide": c["slide"],
-                    "gt_drawing": str(DECK2511 / c["gt_drawing"]) if c.get("gt_drawing") else None})
+                    "gt_drawing": str(DECK2511 / c["gt_drawing"]) if c.get("gt_drawing") else None,
+                    "august_uid": c.get("august_uid")})
     return out
 
 
@@ -381,15 +353,14 @@ async def main_async(args):
     load_dotenv(ROOT / ".env")
     from src.core.chatbot import text_to_cad_agent as agent
     cases = []
-    for name in (args.cases or "deck").split(","):
+    for name in (args.cases or "deck2511").split(","):
         name = name.strip()
         if not name:
             continue
         if name in ("deck2511", "deck2511_fr"):
             cases += deck2511_cases(french=name.endswith("_fr"))
-            continue
-        cases_file = OLD / "selection.json" if name == "deck" else Path(name)
-        cases += json.loads(cases_file.read_text(encoding="utf-8"))["run"]
+        else:
+            cases += json.loads(Path(name).read_text(encoding="utf-8"))["run"]
     if args.only:
         wanted = [w.strip() for w in args.only.split(",") if w.strip()]
         cases = [c for c in cases if any(w in c["uid"] or w in c["dir"] for w in wanted)]
@@ -411,18 +382,18 @@ async def main_async(args):
     draw_res = draw_all(recs, out)
     print("drawings done in %.0fs" % (time.time() - t2))
     finish_records(recs, out, build_res, draw_res)
-    tag = "" if not args.cases or args.cases == "deck" else "_" + "_".join(Path(n.strip()).stem for n in args.cases.split(",") if n.strip())
+    tag = "" if not args.cases or args.cases == "deck2511" else "_" + "_".join(Path(n.strip()).stem for n in args.cases.split(",") if n.strip())
     with open(out / ("results%s.jsonl" % tag), "w", encoding="utf-8") as fh:
         for r in recs:
             fh.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
     (out / ("selection%s.json" % tag)).write_text(json.dumps({"run": cases}, ensure_ascii=False, indent=1), encoding="utf-8")
-    write_report(out, runs=max(runs))
+    write_report(out, runs=max(runs), cases_label=args.cases or "deck2511")
     write_compare(recs, out)
     (out / "README.md").write_text(
         "# Test-case re-run - IR pipeline (%s)\n\nCases: `%s`, %d run(s) each, through the IR pipeline. The agent ran "
         "in-process; the part was built and drawn with the local freecadcmd (no FreeCAD server / MQTT). Only `ok` was ever sent back, "
-        "never an answer to a question.\n\nOpen `report.html` (same layout as August, one column per run) or `compare.html` "
-        "(ground truth / August / now, side by side) from this folder.\n" % (time.strftime("%Y-%m-%d"), args.cases or "deck", max(runs)), encoding="utf-8")
+        "never an answer to a question.\n\nOpen `report.html` (ground truth + one column per run) or `compare.html` "
+        "(ground truth / August legacy run / now, side by side) from this folder.\n" % (time.strftime("%Y-%m-%d"), args.cases or "deck2511", max(runs)), encoding="utf-8")
     gen = sum(1 for r in recs if r.get("generated"))
     print("done: %d/%d runs produced a model | %s" % (gen, len(recs), out / "report.html"))
 
@@ -433,9 +404,9 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out")
-    ap.add_argument("--cases", help="comma list of JSON {\"run\": [{uid, dir, section, num, prompt}]} files; the word 'deck' = the "
-                                    "August selection (default). Results land in the same --out folder")
-    ap.add_argument("--runs", type=int, default=1, help="runs per case (the August report had 3)")
+    ap.add_argument("--cases", help="comma list: deck2511 (default) | deck2511_fr | JSON {\"run\": [{uid, dir, section, num, prompt}]} files. "
+                                    "Results land in the same --out folder")
+    ap.add_argument("--runs", type=int, default=1, help="runs per case (3 to measure stability)")
     ap.add_argument("--from-run", type=int, default=1, help="first run number, to add runs to an existing folder")
     args = ap.parse_args()
     asyncio.run(main_async(args))
