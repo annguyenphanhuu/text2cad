@@ -1,13 +1,12 @@
 """report.html + summary.csv for a tests/rerun_deck_ir.py results folder.
 
 Reads every <case dir>/run*/result.json under `out`; images are referenced relatively,
-so open report.html from that folder.  When a result carries `gt_drawing` (the client's
-drawing from tests/fixtures/deck2511) it is shown first, before the runs.
+so open report.html from that folder.  The client's ground-truth drawings live in the
+bank page (tests/deck2511.html), not here.
 """
 import csv
 import html
 import json
-import os
 import re
 from pathlib import Path
 
@@ -33,10 +32,6 @@ def bbox_of(rec):
         return "x".join(m.groups())
     bb = (rec.get("build") or {}).get("bbox")          # perforated sheets have no OBJ
     return "x".join("%.1f" % (bb[i + 1] - bb[i]) for i in (0, 2, 4)) if bb and len(bb) == 6 else ""
-
-
-def rel(path, out):
-    return os.path.relpath(path, out).replace("\\", "/")
 
 
 def write(out, runs=1, cases_label="deck2511"):
@@ -65,7 +60,6 @@ def write(out, runs=1, cases_label="deck2511"):
     asked = sum(1 for r in rows if r.get("bot_asked") != "standard_confirmation")
     blocked = sum(1 for r in rows if r.get("blocked_on_question"))
     cost = sum(r.get("total_cost_usd") or 0 for r in rows)
-    n_gt = sum(1 for rs in cases.values() if rs[0].get("gt_drawing"))
 
     parts = ["""<title>Test-case re-run</title>
 <style>
@@ -94,14 +88,13 @@ a{color:var(--accent)}
 </style>
 <h1>Test-case re-run</h1>"""]
     parts.append('<div class="sub">Cases <code>%s</code> &middot; IR pipeline, agent in-process, part built and drawn by local '
-                 'freecadcmd &middot; %d run(s) per case &middot; only "ok" is ever sent back, never an answer to a question. '
-                 'The first image of a case is the client\'s drawing (ground truth) when there is one.</div>' % (html.escape(cases_label), runs))
+                 'freecadcmd &middot; %d run(s) per case &middot; only "ok" is ever sent back, never an answer to a question.</div>'
+                 % (html.escape(cases_label), runs))
     parts.append('<div class="stats">'
-                 '<div class="stat"><b>%d</b>cases</div><div class="stat"><b>%d</b>with ground truth</div>'
-                 '<div class="stat"><b>%d</b>runs</div><div class="stat"><b>%d</b>produced a model</div>'
+                 '<div class="stat"><b>%d</b>cases</div><div class="stat"><b>%d</b>runs</div><div class="stat"><b>%d</b>produced a model</div>'
                  '<div class="stat"><b>%d</b>no model</div><div class="stat"><b>%d</b>bot asked first</div>'
                  '<div class="stat"><b>%d</b>blocked on a question</div><div class="stat"><b>$%.2f</b>LLM cost</div></div>'
-                 % (len(cases), n_gt, total, gen, total - gen, asked, blocked, cost))
+                 % (len(cases), total, gen, total - gen, asked, blocked, cost))
 
     for d, rs in cases.items():
         r0 = rs[0]
@@ -115,10 +108,6 @@ a{color:var(--accent)}
             html.escape(str(r0.get("uid") or d[:3])), html.escape(str(r0.get("section"))), html.escape(str(r0.get("num"))), flag))
         parts.append('<div class="prompt">%s</div>' % html.escape(r0.get("prompt") or ""))
         parts.append('<div class="runs">')
-        gt = r0.get("gt_drawing")
-        if gt and Path(gt).exists():
-            g = rel(gt, out)
-            parts.append('<div class="run"><h4>Client drawing &mdash; ground truth</h4><a href="%s"><img src="%s" alt="ground truth drawing"></a></div>' % (g, g))
         for r in rs:
             run_dir = "%s/%s" % (d, r["_run_dir"])
             badge = '<span class="ok">model produced</span>' if r.get("generated") else '<span class="bad">no model</span>'

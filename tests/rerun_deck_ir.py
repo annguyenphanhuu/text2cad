@@ -3,10 +3,12 @@ Run test cases through the IR pipeline offline and write the evidence + reports.
 
     SKIP_DB=true python tests/rerun_deck_ir.py [--cases deck2511|deck2511_fr|file.json,...] [--limit N] [--only 127,128] [--runs 3]
 
-Cases: "deck2511" (default) = every case of the client deck with its ground-truth drawing
-(tests/fixtures/deck2511/cases.json, made once by tools/extract_deck.py - the deck itself is
-not needed any more), "deck2511_fr" = the same with the French prompts, or JSON files of
+Cases: "deck2511" (default) = every case of the HTML test bank tests/deck2511.html (prompt +
+the client's ground-truth drawing, made once by tools/extract_deck.py; the deck itself is not
+needed any more), "deck2511_fr" = the same with the French prompts, or JSON files of
 {"run": [{uid, dir, section, num, prompt}]} such as tests/fixtures/shape_cases_*.json.
+After a run the latest result of every bank case (drawing, bbox, reply) is written back
+into the bank page, which renders itself: that page IS the report.
 The agent runs in-process; the part is built and the drawing is produced by the local
 freecadcmd (no FreeCAD server / MQTT).  Nothing is answered on the customer's behalf: only
 "ok" is ever sent back, so a case that asks a real question ends as "no model".
@@ -14,7 +16,7 @@ freecadcmd (no FreeCAD server / MQTT).  Nothing is answered on the customer's be
 Output: outputs/<--out>/ (default test_rerun_<date>_ir)
     <case dir>/runN/turnN_response.md, result.json, model.step/.obj/.pdf/.svg,
                     drawing-1.png, render_3d.png, metadata.json, model_ir.json
-    report.html (ground truth + one column per run)  summary.csv  results.jsonl  compare.html  README.md
+    report.html  summary.csv  results.jsonl  compare.html  README.md   (+ tests/deck2511.html updated)
 """
 import argparse
 import asyncio
@@ -32,7 +34,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("SKIP_DB", "true")
 
-DECK2511 = ROOT / "tests" / "fixtures" / "deck2511"
 AUGUST = ROOT / "outputs" / "test_rerun_20260818"      # historical legacy-pipeline evidence; optional, only for compare.html
 WORKER_ROOT = ROOT.parent / "tolery-freecad"
 FREECADCMD = os.environ.get("FREECADCMD", r"C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe")
@@ -104,7 +105,7 @@ class Harness:
             sid = "irrerun_%s" % case["uid"] if run == 1 else "irrerun_%s_r%d" % (case["uid"], run)
             rec = dict(uid=case["uid"], section=case["section"], num=case["num"], run=run, session_id=sid,
                        prompt=case["prompt"], started=time.strftime("%Y-%m-%d %H:%M:%S"), pipeline="ir",
-                       gt_drawing=case.get("gt_drawing"), august_uid=case.get("august_uid"), _dir=case["dir"], _run_dir=run_dir)
+                       august_uid=case.get("august_uid"), _dir=case["dir"], _run_dir=run_dir)
             turns, msg = [], case["prompt"]
             for n in range(1, MAX_TURNS + 1):
                 try:
@@ -281,7 +282,7 @@ def load_all_results(out, run_dir="run1"):
 
 
 def write_compare(recs, out):
-    """compare.html: client drawing | August legacy run (when that folder is still around) | this run."""
+    """compare.html: August legacy run (when that folder is still around) | this run. The ground truth lives in the bank page."""
     import html as H
     recs = load_all_results(out)
     rows = []
@@ -297,9 +298,6 @@ def write_compare(recs, out):
     n_old = 0
     for r in sorted(recs, key=lambda x: x["_dir"]):
         cols = []
-        if r.get("gt_drawing") and Path(r["gt_drawing"]).exists():
-            rel = os.path.relpath(r["gt_drawing"], out).replace("\\", "/")
-            cols.append('<div class="col"><h4>Deck 2511 &mdash; client drawing (ground truth)</h4><a href="%s"><img src="%s"></a></div>' % (rel, rel))
         aug = sorted(AUGUST.glob("%s_*" % r["august_uid"])) if (r.get("august_uid") and AUGUST.exists()) else []
         if aug and (aug[0] / "run1" / "result.json").exists():
             try:
@@ -323,42 +321,29 @@ h1{font-size:26px}.case{border:1px solid #dde4ec;border-radius:12px;padding:14px
 .uid{display:inline-block;font:13px Consolas,monospace;background:#1b4f8f;color:#fff;padding:1px 8px;border-radius:6px;margin-right:8px}
 details{margin:6px 0}summary{cursor:pointer;color:#1b4f8f;font-size:13px}pre{white-space:pre-wrap;font:12px/1.5 Consolas,monospace;background:#f7f9fc;border:1px solid #dde4ec;border-radius:6px;padding:8px}
 </style>"""
-    n_gt = sum(1 for r in recs if r.get("gt_drawing"))
     n_new = sum(1 for r in recs if r.get("generated"))
-    head = ("<title>Ground truth vs IR pipeline</title>%s<h1>Ground truth / legacy pipeline / IR pipeline</h1>"
-            "<p>%d cases &middot; %d with the client's drawing &middot; IR pipeline produced a model in %d &middot; "
-            "August legacy run shown for %d cases (from <code>outputs/test_rerun_20260818</code> when present). Open this file from its own folder.</p>"
-            % (css, len(recs), n_gt, n_new, n_old))
+    head = ("<title>Legacy vs IR pipeline</title>%s<h1>Legacy pipeline (August) / IR pipeline (now)</h1>"
+            "<p>%d cases &middot; IR pipeline produced a model in %d &middot; August legacy run shown for %d cases (from "
+            "<code>outputs/test_rerun_20260818</code> when present). The client's drawings are in tests/deck2511.html. Open this file from its own folder.</p>"
+            % (css, len(recs), n_new, n_old))
     (out / "compare.html").write_text(head + "\n".join(rows), encoding="utf-8")
 
 
 # ----------------------------------------------------------------- main
 
-def deck2511_cases(french=False):
-    """The client deck as harness cases: uid = deck number, prompt in the asked language, GT drawing path."""
-    manifest = json.loads((DECK2511 / "cases.json").read_text(encoding="utf-8"))
-    out = []
-    for c in manifest["cases"]:
-        prompt = (c.get("prompt_fr") if french else None) or c["prompt_en"]
-        sec = re.sub(r"[^a-z0-9]+", "_", (c["section"] or "").lower()).strip("_")
-        out.append({"uid": c["uid"], "dir": "%s_%s_n%s" % (c["uid"], sec, c["num"] if c["num"] is not None else "x"),
-                    "section": c["section"], "num": c["num"], "prompt": prompt, "slide": c["slide"],
-                    "gt_drawing": str(DECK2511 / c["gt_drawing"]) if c.get("gt_drawing") else None,
-                    "august_uid": c.get("august_uid")})
-    return out
-
-
 async def main_async(args):
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
     from src.core.chatbot import text_to_cad_agent as agent
-    cases = []
+    from tests.harness import bank
+    cases, from_bank = [], False
     for name in (args.cases or "deck2511").split(","):
         name = name.strip()
         if not name:
             continue
         if name in ("deck2511", "deck2511_fr"):
-            cases += deck2511_cases(french=name.endswith("_fr"))
+            cases += bank.harness_cases(bank.load(args.bank), french=name.endswith("_fr"))
+            from_bank = True
         else:
             cases += json.loads(Path(name).read_text(encoding="utf-8"))["run"]
     if args.only:
@@ -393,9 +378,14 @@ async def main_async(args):
         "# Test-case re-run - IR pipeline (%s)\n\nCases: `%s`, %d run(s) each, through the IR pipeline. The agent ran "
         "in-process; the part was built and drawn with the local freecadcmd (no FreeCAD server / MQTT). Only `ok` was ever sent back, "
         "never an answer to a question.\n\nOpen `report.html` (ground truth + one column per run) or `compare.html` "
-        "(ground truth / August legacy run / now, side by side) from this folder.\n" % (time.strftime("%Y-%m-%d"), args.cases or "deck2511", max(runs)), encoding="utf-8")
+        "(August legacy run / now, side by side) from this folder; the ground truth is in tests/deck2511.html.\n" % (time.strftime("%Y-%m-%d"), args.cases or "deck2511", max(runs)), encoding="utf-8")
     gen = sum(1 for r in recs if r.get("generated"))
     print("done: %d/%d runs produced a model | %s" % (gen, len(recs), out / "report.html"))
+    if from_bank:
+        data = bank.load(args.bank)
+        stats = bank.update_from_run(data, out, run_dir="run%d" % max(runs), label=out.name)
+        size = bank.save(data, args.bank)
+        print("bank updated: %d cases, %d with a model -> %s (%.1f MB)" % (stats["cases"], stats["built"], args.bank, size / 1e6))
 
 
 def main():
@@ -404,6 +394,7 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out")
+    ap.add_argument("--bank", default=str(ROOT / "tests" / "deck2511.html"), help="the HTML test bank read for deck2511 cases and updated with the results")
     ap.add_argument("--cases", help="comma list: deck2511 (default) | deck2511_fr | JSON {\"run\": [{uid, dir, section, num, prompt}]} files. "
                                     "Results land in the same --out folder")
     ap.add_argument("--runs", type=int, default=1, help="runs per case (3 to measure stability)")
